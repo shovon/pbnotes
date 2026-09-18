@@ -1,0 +1,80 @@
+{
+  "env": {
+    "browser": true,
+    "es6": true,
+    "node": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/eslint-recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:import/recommended",
+    "plugin:import/electron",
+    "plugin:import/typescript"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "rules": {
+    "import/no-restricted-paths": [
+      "error",
+      {
+        "zones": [
+          {
+            "target": "./src/renderer",
+            "from": "./src/main",
+            "message": "The renderer has no Node.js. Reach the main process through the preload bridge on `window.gnotes`."
+          },
+          {
+            "target": "./src/renderer",
+            "from": "./src/preload",
+            "message": "The preload bundle is not importable from the renderer; its only surface is what `contextBridge` exposes."
+          },
+          {
+            "target": "./src/main",
+            "from": "./src/renderer",
+            "message": "The main process has no DOM. Move anything both sides need into `src/shared`."
+          },
+          {
+            "target": "./src/main",
+            "from": "./src/preload",
+            "message": "Preload and main are separate bundles. Share code through `src/shared` instead."
+          },
+          {
+            "target": "./src/preload",
+            "from": "./src/main",
+            "message": "Preload runs in the renderer's process and must not pull in main-process code (or the Node modules behind it)."
+          },
+          {
+            "target": "./src/preload",
+            "from": "./src/renderer",
+            "message": "Preload runs before the app does and must not import renderer code."
+          },
+          {
+            "target": "./src/shared",
+            "from": "./src/main",
+            "message": "`src/shared` is bundled into every process, so it can depend on none of them."
+          },
+          {
+            "target": "./src/shared",
+            "from": "./src/preload",
+            "message": "`src/shared` is bundled into every process, so it can depend on none of them."
+          },
+          {
+            "target": "./src/shared",
+            "from": "./src/renderer",
+            "message": "`src/shared` is bundled into every process, so it can depend on none of them."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "vite.*.config.ts"
+      ],
+      "rules": {
+        "import/no-unresolved": "off"
+      }
+    }
+  ]
+}
