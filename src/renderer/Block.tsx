@@ -84,12 +84,19 @@ export function Block({
  * block and an existing one, so the commit rules cannot drift apart: blur
  * commits, Escape unmounts the box before blur can fire and so discards —
  * which is how the rename field in the project list behaves too.
+ *
+ * Enter ends the block and opens the next one, the way it sends a message
+ * everywhere else; Shift+Enter is the newline. Blocks are short far more
+ * often than they are multi-line, so the common key does the common thing
+ * and the rarer one takes the modifier. ⌘/Ctrl+Enter still commits too — it
+ * falls out of the same condition, and it is what the other hand reaches for.
  */
 export function BlockEditor({
   initial,
   caret,
   placeholder,
   onCommit,
+  onContinue,
   onCancel,
 }: {
   initial?: string;
@@ -97,6 +104,12 @@ export function BlockEditor({
   caret?: number;
   placeholder?: string;
   onCommit: (text: string) => void;
+  /**
+   * Commit, then open a fresh box directly beneath this block. Like
+   * `onCancel`, it has to unmount the box: blur would otherwise fire on the
+   * way out and commit the same text a second time.
+   */
+  onContinue?: (text: string) => void;
   onCancel: () => void;
 }) {
   return (
@@ -117,6 +130,23 @@ export function BlockEditor({
       onBlur={(event) => onCommit(event.target.value.trim())}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onCancel();
+        /**
+         * `isComposing` is not a nicety: an IME takes Enter to choose among
+         * candidates, and committing the block there would make a whole
+         * class of languages untypeable a character or two at a time.
+         *
+         * Guarded on `onContinue` as well, so a box with nowhere to continue
+         * to keeps Enter as an ordinary newline rather than swallowing it.
+         */
+        if (
+          onContinue &&
+          event.key === 'Enter' &&
+          !event.shiftKey &&
+          !event.nativeEvent.isComposing
+        ) {
+          event.preventDefault();
+          onContinue(event.currentTarget.value.trim());
+        }
       }}
     />
   );

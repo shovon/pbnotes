@@ -50,16 +50,35 @@ type Pages = Record<string, Block[]>;
  *
  * `page` rides along in the payload so a block can be found without scanning
  * every day the user ever wrote on.
+ *
+ * A block's position is where the fold puts it, and nowhere else: blocks carry
+ * no index, because an index stored on a record has to be rewritten on every
+ * neighbour the moment anything lands between them. `after` says which block
+ * the new one was written beneath, which is a fact about what the user did and
+ * so stays true forever; the array it produces is derived, and derived the
+ * same way on replay as it was live.
+ *
+ * Still v1. `after` is optional and its absence has always meant what it means
+ * now — at the end — so every event already on disk reads correctly with no
+ * upcast.
  */
 export const reduce: Reducer<Pages> = (state, event) => {
-  const { page, id, text } = event.payload as {
+  const { page, id, text, after } = event.payload as {
     page: string;
     id: string;
     text: string;
+    after?: string;
   };
 
   if (event.type === 'block.created') {
-    return { ...state, [page]: [...(state[page] ?? []), { id, text }] };
+    const blocks = state[page] ?? [];
+    // `addBlock` refuses an `after` the page does not have, so missing it here
+    // means a log written by something else. Append rather than drop: a block
+    // in the wrong place can be moved, one the fold discarded is just gone.
+    const at = after ? blocks.findIndex((block) => block.id === after) : -1;
+    const next = [...blocks];
+    next.splice(at === -1 ? blocks.length : at + 1, 0, { id, text });
+    return { ...state, [page]: next };
   }
 
   if (event.type === 'block.edited') {
@@ -129,18 +148,34 @@ export async function getPage(
   return { date, blocks: projection.state[date] ?? [] };
 }
 
+/**
+ * Writes a new block, at the end of the day or directly beneath `after`.
+ *
+ * Refuses an `after` that is not on this page, for the same reason `editBlock`
+ * refuses an unknown block: the fold would have to guess, and a log that keeps
+ * everything forever should not be collecting events that mean nothing.
+ */
 export async function addBlock(
   project: ProjectRef,
   date: string,
   text: string,
+  after?: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
+  const blocks = projection.state[date] ?? [];
+  if (after && !blocks.some((block) => block.id === after)) {
+    throw new Error('No such block');
+  }
+
   // dispatch appends before it folds, so this resolves only once the event is
   // durable — the page handed back can never show something a crash takes.
   await projection.dispatch('block.created', {
     page: date,
     id: randomUUID(),
     text,
+    // Left off entirely when absent, so an appended block writes the same
+    // bytes it always did.
+    ...(after ? { after } : {}),
   });
   return { date, blocks: projection.state[date] ?? [] };
 }

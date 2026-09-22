@@ -89,6 +89,44 @@ test('blocks survive a restart, in order, per project and per day', async () => 
   await closePages();
 });
 
+test('a block written after another replays in that position', async () => {
+  const it = await project();
+  await addBlock(it, TODAY, 'first');
+  await addBlock(it, TODAY, 'last');
+  const first = (await getPage(it, TODAY)).blocks[0].id;
+  const written = await addBlock(it, TODAY, 'wedged', first);
+
+  assert.deepEqual(
+    written.blocks.map((block) => block.text),
+    ['first', 'wedged', 'last'],
+  );
+
+  // The position is not stored on the blocks, so it only holds if the fold
+  // puts it back — which is the whole claim being made here.
+  await closePages();
+  assert.deepEqual(
+    (await getPage(it, TODAY)).blocks.map((block) => block.text),
+    ['first', 'wedged', 'last'],
+  );
+
+  await closePages();
+});
+
+test('adding after a block the page does not have is refused', async () => {
+  const it = await project();
+  await addBlock(it, TODAY, 'first');
+  await assert.rejects(
+    () => addBlock(it, TODAY, 'orphan', 'no-such-block'),
+    /No such block/,
+  );
+  assert.deepEqual(
+    (await getPage(it, TODAY)).blocks.map((block) => block.text),
+    ['first'],
+  );
+
+  await closePages();
+});
+
 test('a project that moved reads its log from the new directory', async () => {
   const before = await project();
   await addBlock(before, TODAY, 'written before the move');

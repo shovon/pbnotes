@@ -3,7 +3,14 @@ import { BlockEditor } from './Block';
 
 const meta = {
   component: BlockEditor,
-  args: { onCommit: () => undefined, onCancel: () => undefined },
+  // `onContinue` is wired in every story on purpose: without it Enter falls
+  // back to a newline, which is the opposite of what the box does in the app,
+  // and the keys are most of what there is to try here.
+  args: {
+    onCommit: () => undefined,
+    onContinue: () => undefined,
+    onCancel: () => undefined,
+  },
   decorators: [
     (Story) => (
       <div className="page" style={{ maxWidth: '36rem' }}>
@@ -21,7 +28,8 @@ export const New: Story = {
   args: { placeholder: 'Write something…' },
 };
 
-/** An existing block reopened. Blur commits, Escape discards. */
+/** An existing block reopened, and the place to feel the keys: Enter ends
+    the block, Shift+Enter is a newline, blur commits, Escape discards. */
 export const Editing: Story = {
   args: { initial: 'Ordered the replacement hinge. Two weeks, apparently.' },
 };
