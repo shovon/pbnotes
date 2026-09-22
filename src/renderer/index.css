@@ -100,62 +100,22 @@ button.danger:hover {
   padding: 0.5rem 0.75rem;
 }
 
-.empty {
-  border: 1px dashed var(--line);
-  border-radius: 8px;
+.welcome {
   color: var(--muted);
-  line-height: 1.5;
-  padding: 2rem 1.5rem;
+  line-height: 1.6;
+  margin-top: 20vh;
   text-align: center;
 }
 
-.project-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.welcome h1 {
+  color: var(--fg);
+  font-size: 1.6rem;
+  margin: 0 0 0.5rem;
 }
 
-.project {
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  gap: 0.6rem;
-  padding: 0.7rem 0.25rem;
-}
-
-/* Unreachable directories are dimmed, never hidden or auto-removed. */
-.project.missing,
-.project.unknown {
-  opacity: 0.55;
-}
-
-.project .actions {
-  display: flex;
-  gap: 0.35rem;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.project:hover .actions,
-.project:focus-within .actions {
-  opacity: 1;
-}
-
-.pin {
-  border: none;
-  color: var(--muted);
-  font-size: 1rem;
-  line-height: 1;
-  padding: 0.2rem;
-}
-
-.pin[aria-pressed='true'] {
-  color: var(--accent);
-}
-
-.project-body {
-  flex: 1;
-  min-width: 0;
+.welcome p {
+  margin: 0 auto 1.5rem;
+  max-width: 26rem;
 }
 
 .name {
@@ -206,15 +166,23 @@ button.danger:hover {
   padding: 0.05rem 0.35rem;
 }
 
-.back {
-  border: none;
-  color: var(--muted);
-  font-size: 0.85rem;
+/* Top-left, above everything: the one control that is not about the project
+   currently open. Native menu, so it keeps the platform's own look. */
+.picker {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
   margin-bottom: 0.75rem;
-  padding: 0.2rem 0;
+  max-width: 100%;
+  padding: 0.25rem 0.4rem;
 }
 
-/* The list hides its row actions until hover; a view's header always shows. */
+.picker:hover {
+  border-color: var(--accent);
+}
+
 .app-header .actions {
   display: flex;
   gap: 0.35rem;
@@ -229,28 +197,57 @@ button.danger:hover {
   padding-bottom: 0.4rem;
 }
 
+/* Blocks are lines of one note, not cards: with the borders gone the gap is
+   all that separates them, and a wide one reads as a list of things rather
+   than a page of writing. */
 .page {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.2rem;
 }
 
-/* Every box activates: clicking one opens it for editing, so it has to be
-   reachable by keyboard and announced as something you can activate. The
-   rendered blocks are divs rather than buttons (Markdown emits block
-   elements), so they carry the button look themselves. */
-.block {
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+/* Logseq's model, and the reason the two states share every metric below:
+   clicking a block swaps rendered markdown for a textarea in place, and the
+   only thing that should visibly change is where the caret is. No borders,
+   no box that appears or disappears under the text — the dot below is the
+   one mark a block carries, and it is painted the same way in both. */
+.block,
+.block-input {
+  /* The dot Logseq marks a block with, drawn rather than marked up. A
+     <textarea> takes no ::before and no ::marker, so a real bullet would
+     disappear the moment a block was clicked into — a background paints in
+     both states and stays put. Positioned in rem, not em, so it holds its
+     line when the block starts with a heading.
+     ponytail: when blocks nest, this becomes a real <ul> and the dot becomes
+     a control (collapse, zoom) — that is the point to spend markup on. */
+  background: radial-gradient(
+      circle at 0.4rem 0.9rem,
+      var(--muted) 2.5px,
+      transparent 3px
+    )
+    no-repeat;
+  border: none;
+  border-radius: 4px;
+  /* Stated, not inherited from a UA sheet that treats a div and a textarea
+     differently: the two have to resolve `width: 100%` to the same text
+     column, or the same words wrap at different points and the box changes
+     height as it opens. */
+  box-sizing: border-box;
   color: inherit;
-  cursor: pointer;
   display: block;
   font: inherit;
   line-height: 1.5;
-  padding: 0.55rem 0.7rem;
+  /* A textarea breaks a word too long for the line; a <p> lets it stick out.
+     Same reason as box-sizing — a differing line count is a jump. */
+  overflow-wrap: break-word;
+  padding: 0.15rem 0.3rem 0.15rem 0.95rem;
   text-align: left;
   width: 100%;
+}
+
+/* A caret, not a pointer: the block is text you type in, not a control. */
+.block {
+  cursor: text;
 }
 
 /* Markdown folds a single newline into a space; inside notes a line break is
@@ -262,13 +259,27 @@ button.danger:hover {
   white-space: pre-wrap;
 }
 
-.block:hover {
-  border-color: var(--accent);
+/* Nothing on hover — Logseq leaves the text alone and so do we. Keyboard
+   focus still has to be visible, though: without a border there is no other
+   sign of where you are. */
+.block:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .block.empty {
   color: var(--muted);
-  border-style: dashed;
+}
+
+/* A blank line between two paragraphs is a line, not a margin. The textarea
+   shows it as one empty row of 1.5em; a <p>'s default 1em margin is 8px
+   short of that, and the block would shrink the moment it was opened. */
+.block > p {
+  margin: 0;
+}
+
+.block > p + p {
+  margin-top: 1.5em;
 }
 
 /* Markdown's own blocks sit inside the box: no margin at the edges, and
@@ -333,16 +344,14 @@ button.danger:hover {
   color: var(--danger) !important;
 }
 
+/* The box grows with what is typed instead of standing at a fixed height
+   with a scrollbar inside it — a block is as tall as its text in both
+   states, which is the whole trick. Chromium does this natively; this is
+   Electron, so there is no other browser to fall back for. */
 .block-input {
-  background: var(--bg);
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  color: inherit;
-  /* Textareas default to monospace; inherit the app's sans-serif stack. */
-  font: inherit;
-  line-height: 1.5;
-  min-height: 5rem;
-  padding: 0.55rem 0.7rem;
-  resize: vertical;
-  width: 100%;
+  field-sizing: content;
+  min-height: calc(1.5em + 0.3rem);
+  outline: none;
+  /* No resize handle: the height is the text's business. */
+  resize: none;
 }

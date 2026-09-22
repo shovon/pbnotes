@@ -11,6 +11,10 @@ that choice, so deleting them loses it permanently. See the "Why the `projects`
 table exists" section of `README.md` before touching `src/main/projects-*.ts`,
 `src/shared/projects.ts`, or the `projects` migration in `src/main/db.ts`.
 
+## Design and Components
+
+Each component should have an associated story in Storybook.
+
 ## Storage boundary
 
 Two stores, and they do not swap. SQLite holds the projects registry and

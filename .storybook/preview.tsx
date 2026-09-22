@@ -1,5 +1,6 @@
 import type { Preview } from '@storybook/react-vite';
 import '../src/renderer/index.css';
+import 'katex/dist/katex.min.css';
 
 // The views destructure `window.gnotes` at module scope, so the bridge has to
 // exist before any story module is imported. ponytail: every call resolves
