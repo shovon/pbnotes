@@ -90,6 +90,11 @@ export function Block({
  * often than they are multi-line, so the common key does the common thing
  * and the rarer one takes the modifier. ⌘/Ctrl+Enter still commits too — it
  * falls out of the same condition, and it is what the other hand reaches for.
+ *
+ * Backspace in an empty box deletes the block. Which makes deleting one the
+ * same motion as clearing it — select all, Backspace, Backspace — and that is
+ * the point: the first press empties the box and writes nothing, so the user
+ * is looking at the consequence before the second press commits to it.
  */
 export function BlockEditor({
   initial,
@@ -97,6 +102,7 @@ export function BlockEditor({
   placeholder,
   onCommit,
   onContinue,
+  onDelete,
   onCancel,
 }: {
   initial?: string;
@@ -110,6 +116,16 @@ export function BlockEditor({
    * way out and commit the same text a second time.
    */
   onContinue?: (text: string) => void;
+  /**
+   * Backspace in an empty box. Unmounts the box like `onCancel` does, and for
+   * a sharper reason: letting blur fire on the way out would commit the empty
+   * text first, and the log would keep a block emptied and then deleted —
+   * an edit the user never made, on their way to doing something else.
+   *
+   * Left off for a block that does not exist yet: there is nothing to delete,
+   * and Backspace in an empty new box should do what Backspace does.
+   */
+  onDelete?: () => void;
   onCancel: () => void;
 }) {
   return (
@@ -130,6 +146,24 @@ export function BlockEditor({
       onBlur={(event) => onCommit(event.target.value.trim())}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onCancel();
+        /**
+         * Read before the key applies, so the box has to have been empty
+         * *already* — the press that clears a full box is an ordinary
+         * Backspace, and only the next one deletes.
+         *
+         * `isComposing` again: an IME uses Backspace to walk back through a
+         * half-built character, and the buffer it is walking through may not
+         * be in `value` yet.
+         */
+        if (
+          onDelete &&
+          event.key === 'Backspace' &&
+          !event.currentTarget.value &&
+          !event.nativeEvent.isComposing
+        ) {
+          event.preventDefault();
+          onDelete();
+        }
         /**
          * `isComposing` is not a nicety: an IME takes Enter to choose among
          * candidates, and committing the block there would make a whole

@@ -67,14 +67,42 @@ export default function ProjectView({ project, availability, act }: Props) {
    * appends nothing — the log takes facts, and it takes them forever.
    *
    * Emptying a block *is* an edit. A blank block is a legitimate thing to
-   * want: a gap between two thoughts, or somewhere to come back to. It is
-   * not a deleted block, and there is still no verb for that.
+   * want: a gap between two thoughts, or somewhere to come back to — which is
+   * why clearing one and leaving commits the blank, and only a further
+   * Backspace in the empty box means delete.
    */
   const commitEdit = (block: BlockType, text: string) => {
     setEditingId(null);
     if (text === block.text) return;
     act(async () => {
       setPage(await pages.editBlock(project.id, date, block.id, text));
+    });
+  };
+
+  /**
+   * Backspace in an already-empty box. Unmounts the editor first, so blur
+   * cannot slip a `block.edited` to empty into the log ahead of the delete:
+   * the user cleared the box on the way to removing the block, and an empty
+   * block is not a thing they ever asked to keep.
+   *
+   * Then the box reopens on the block above, caret at its end. Backspace at
+   * the start of a line is a movement as much as a deletion — it is how you
+   * back out of a block you did not mean to start — so the keystroke has to
+   * leave the user writing, not staring at a page with the focus dropped.
+   * Deleting the first block has nothing above it and closes the box; there
+   * is no block to fall back onto and jumping *down* would be a different
+   * key's job.
+   */
+  const commitDelete = (block: BlockType) => {
+    // Read before the delete lands, off the page still on screen. Index -1
+    // for the first block, which indexes to undefined — the no-previous case
+    // and the not-found case want the same answer.
+    const blocks = page?.blocks ?? [];
+    const previous = blocks[blocks.findIndex((it) => it.id === block.id) - 1];
+    setCaret(previous?.text.length);
+    setEditingId(previous?.id ?? null);
+    act(async () => {
+      setPage(await pages.deleteBlock(project.id, date, block.id));
     });
   };
 
@@ -125,6 +153,7 @@ export default function ProjectView({ project, availability, act }: Props) {
                   caret={caret}
                   onCancel={() => setEditingId(null)}
                   onCommit={(text) => commitEdit(block, text)}
+                  onDelete={() => commitDelete(block)}
                   onContinue={(text) => {
                     commitEdit(block, text);
                     setWriting({ after: block.id });
