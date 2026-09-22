@@ -34,6 +34,13 @@ export const Editing: Story = {
   args: { initial: 'Ordered the replacement hinge. Two weeks, apparently.' },
 };
 
+/** Empty, with a block behind it to delete: Backspace here removes the block
+    rather than doing nothing. The same box the Editing story lands in after
+    select-all and one Backspace. */
+export const Emptied: Story = {
+  args: { initial: '', onDelete: () => undefined },
+};
+
 /** The other half of Block's Paragraphs story: same text, same height, or
     the block jumps when it opens. */
 export const Paragraphs: Story = {

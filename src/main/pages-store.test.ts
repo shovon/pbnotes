@@ -15,6 +15,7 @@ import path from 'node:path';
 import {
   addBlock,
   closePages,
+  deleteBlock,
   editBlock,
   getPage,
   logDirectory,
@@ -180,6 +181,49 @@ test('editing a block the page does not have is refused', async () => {
     () => editBlock(it, TOMORROW, 'not-a-real-id', 'nope'),
     /No such block/,
   );
+
+  await closePages();
+});
+
+test('a deleted block stays gone across a restart', async () => {
+  const it = await project();
+  const created = await addBlock(it, TODAY, 'a mistake');
+  await addBlock(it, TODAY, 'kept');
+  const id = created.blocks[0].id;
+  await addBlock(it, TODAY, 'also kept', id);
+
+  const after = await deleteBlock(it, TODAY, id);
+  assert.deepEqual(
+    after.blocks.map((block) => block.text),
+    ['also kept', 'kept'],
+  );
+  await closePages();
+
+  // The delete is a fact appended after the create, so the replay has to reach
+  // the same page — including the block written *beneath* the deleted one,
+  // whose `after` now names an id the fold no longer holds. It was there when
+  // the event was written, which is the only moment `after` is read.
+  const replayed = await getPage(it, TODAY);
+  assert.deepEqual(
+    replayed.blocks.map((block) => block.text),
+    ['also kept', 'kept'],
+  );
+
+  await closePages();
+});
+
+test('deleting a block the page does not have is refused', async () => {
+  const it = await project();
+  const created = await addBlock(it, TODAY, 'the only block');
+  const id = created.blocks[0].id;
+
+  await assert.rejects(
+    () => deleteBlock(it, TODAY, 'not-a-real-id'),
+    /No such block/,
+  );
+  // Gone once, gone for good: a second delete has nothing to append about.
+  await deleteBlock(it, TODAY, id);
+  await assert.rejects(() => deleteBlock(it, TODAY, id), /No such block/);
 
   await closePages();
 });

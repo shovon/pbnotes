@@ -33,6 +33,7 @@ export const PAGE_CHANNELS = {
   open: 'pages:open',
   addBlock: 'pages:add-block',
   editBlock: 'pages:edit-block',
+  deleteBlock: 'pages:delete-block',
 } as const;
 
 /** The surface exposed on `window.gnotes.pages` by the preload bridge. */
@@ -59,5 +60,15 @@ export type PagesApi = {
     date: string,
     blockId: string,
     text: string,
+  ): Promise<Page>;
+  /**
+   * Appends a `block.deleted` event. The block leaves the fold; everything
+   * ever written into it stays on disk, because the log records that the user
+   * deleted it, not that it never existed.
+   */
+  deleteBlock(
+    projectId: string,
+    date: string,
+    blockId: string,
   ): Promise<Page>;
 };

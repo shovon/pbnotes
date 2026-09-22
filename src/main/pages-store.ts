@@ -44,7 +44,7 @@ type Pages = Record<string, Block[]>;
  * Pure, and over state that survives a structured clone: the view crosses to
  * the renderer as data and the fold may one day run off-thread.
  *
- * Both event types are v1 so far. A payload shape that changes gets a new `v`
+ * All three event types are v1 so far. A payload shape that changes gets a new `v`
  * and is upcast by branching here; the file on disk is never rewritten — an
  * edit is a second fact appended after the first, not a correction of it.
  *
@@ -90,6 +90,16 @@ export const reduce: Reducer<Pages> = (state, event) => {
         block.id === id ? { ...block, text } : block,
       ),
     };
+  }
+
+  if (event.type === 'block.deleted') {
+    const blocks = state[page];
+    if (!blocks) return state;
+    // A plain filter, no tombstone. Nothing later in the log needs to know
+    // this block was here: `after` only ever names a block that was present
+    // when it was written, and a stray edit arriving afterwards already folds
+    // to nothing through the `map` above.
+    return { ...state, [page]: blocks.filter((block) => block.id !== id) };
   }
 
   return state;
@@ -203,6 +213,30 @@ export async function editBlock(
     id: blockId,
     text,
   });
+  return { date, blocks: projection.state[date] ?? [] };
+}
+
+/**
+ * Removes a block by appending the fact that the user deleted it. Refuses one
+ * the page does not have, like `editBlock`.
+ *
+ * Nothing is taken off disk. Every word the block ever held is still in the
+ * log, in the events that put it there — what the fold stops showing is a
+ * block the user said they were done with, which is a different claim from
+ * "this was never written".
+ */
+export async function deleteBlock(
+  project: ProjectRef,
+  date: string,
+  blockId: string,
+): Promise<Page> {
+  const projection = await projectionFor(project);
+  const blocks = projection.state[date] ?? [];
+  if (!blocks.some((block) => block.id === blockId)) {
+    throw new Error('No such block');
+  }
+
+  await projection.dispatch('block.deleted', { page: date, id: blockId });
   return { date, blocks: projection.state[date] ?? [] };
 }
 
