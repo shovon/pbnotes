@@ -172,15 +172,17 @@ export default function ProjectView({ project, availability, act }: Props) {
             </Fragment>
           ))}
 
-          {/* The tail: a box when one is waiting at the end of the day, the
-              invitation when nothing is open, and neither while the box sits
-              between two blocks further up. */}
+          {/* The tail: a box when one is waiting at the end of the day, and
+              nothing at all otherwise — a written page ends on its last
+              block, and Enter out of that block is how the next one starts.
+              The exception is a page with no blocks yet, which needs
+              somewhere to click or there is no way in. */}
           {writing === null ? (
-            <button className="block empty" onClick={() => setWriting({})}>
-              {page.blocks.length === 0
-                ? 'Click to write the first block'
-                : 'Click to add a block'}
-            </button>
+            page.blocks.length === 0 && (
+              <button className="block empty" onClick={() => setWriting({})}>
+                Click to write the first block
+              </button>
+            )
           ) : writing.after === undefined ? (
             newBlockEditor
           ) : null}
