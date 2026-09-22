@@ -9,6 +9,19 @@ const AVAILABILITY_LABEL: Record<Availability, string> = {
   unknown: 'Unreachable',
 };
 
+/**
+ * Main rejects with messages meant for the user to read ("That directory is
+ * already tracked as …"), but Electron wraps them in its own IPC prefix on the
+ * way across. Strip the plumbing and keep the sentence.
+ */
+function humanize(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(
+    /^Error invoking remote method '[^']*':\s*(?:\w*Error:\s*)?/,
+    '',
+  );
+}
+
 function formatLastOpened(iso: string | null): string {
   if (!iso) return 'Never opened';
   const opened = new Date(iso);
@@ -31,13 +44,20 @@ export default function App() {
   /**
    * The list renders from the database immediately; reachability is filled in
    * afterwards so a sleeping network share cannot hold up the first paint.
+   * `loading` clears on both paths — a failed list must not leave the app
+   * showing "Loading…" with no way out.
    */
   const refresh = useCallback(async () => {
-    const next = await api.list();
-    setProjects(next);
-    setLoading(false);
-    if (next.length > 0) {
-      setAvailability(await api.availability(next.map((p) => p.id)));
+    try {
+      const next = await api.list();
+      setProjects(next);
+      setLoading(false);
+      setAvailability(
+        next.length > 0 ? await api.availability(next.map((p) => p.id)) : {},
+      );
+    } catch (error) {
+      setNotice(humanize(error));
+      setLoading(false);
     }
   }, []);
 
@@ -45,31 +65,48 @@ export default function App() {
     void refresh();
   }, [refresh]);
 
-  const addProjects = useCallback(async () => {
-    const result = await api.pick();
-    if (result.canceled) return;
-
-    const duplicates = result.outcomes.filter(
-      (outcome) => outcome.status === 'already-tracked',
-    ).length;
-    const failures = result.outcomes.filter(
-      (outcome) => outcome.status === 'failed',
-    ).length;
-
-    const parts: string[] = [];
-    if (duplicates > 0) parts.push(`${duplicates} already tracked`);
-    if (failures > 0) parts.push(`${failures} could not be read`);
-    setNotice(parts.length > 0 ? parts.join(' · ') : null);
-
-    await refresh();
-  }, [refresh]);
-
-  const update = useCallback((project: Project | null) => {
-    if (!project) return;
-    setProjects((current) =>
-      current.map((item) => (item.id === project.id ? project : item)),
-    );
+  /**
+   * Every button here reaches main, and every one of those calls can reject —
+   * relocating onto an already-tracked directory does exactly that. Unhandled,
+   * the rejection is silent and the click looks like a no-op, so they all route
+   * through here and surface the reason.
+   */
+  const run = useCallback(async (action: () => Promise<void>) => {
+    setNotice(null);
+    try {
+      await action();
+    } catch (error) {
+      setNotice(humanize(error));
+    }
   }, []);
+
+  /**
+   * Anything that changes a project re-reads the list rather than patching the
+   * row in place: the order depends on pinned, last-opened and name, so a local
+   * patch would leave a renamed project sitting in its old position.
+   */
+  const addProjects = useCallback(
+    () =>
+      run(async () => {
+        const result = await api.pick();
+        if (result.canceled) return;
+
+        const duplicates = result.outcomes.filter(
+          (outcome) => outcome.status === 'already-tracked',
+        ).length;
+        const failures = result.outcomes.filter(
+          (outcome) => outcome.status === 'failed',
+        ).length;
+
+        const parts: string[] = [];
+        if (duplicates > 0) parts.push(`${duplicates} already tracked`);
+        if (failures > 0) parts.push(`${failures} could not be read`);
+
+        await refresh();
+        setNotice(parts.length > 0 ? parts.join(' · ') : null);
+      }),
+    [run, refresh],
+  );
 
   const counts = useMemo(
     () => ({
@@ -123,10 +160,12 @@ export default function App() {
                 className="pin"
                 title={project.pinned ? 'Unpin' : 'Pin to top'}
                 aria-pressed={project.pinned}
-                onClick={async () => {
-                  await api.setPinned(project.id, !project.pinned);
-                  await refresh();
-                }}
+                onClick={() =>
+                  void run(async () => {
+                    await api.setPinned(project.id, !project.pinned);
+                    await refresh();
+                  })
+                }
               >
                 {project.pinned ? '★' : '☆'}
               </button>
@@ -137,9 +176,13 @@ export default function App() {
                     className="rename"
                     autoFocus
                     defaultValue={project.name}
-                    onBlur={async (event) => {
-                      update(await api.rename(project.id, event.target.value));
+                    onBlur={(event) => {
+                      const name = event.target.value;
                       setEditingId(null);
+                      void run(async () => {
+                        await api.rename(project.id, name);
+                        await refresh();
+                      });
                     }}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') event.currentTarget.blur();
@@ -173,27 +216,34 @@ export default function App() {
 
               <div className="actions">
                 <button
-                  onClick={async () => {
-                    update(await api.touch(project.id));
-                    await api.reveal(project.id);
-                  }}
+                  onClick={() =>
+                    void run(async () => {
+                      await api.touch(project.id);
+                      await api.reveal(project.id);
+                      await refresh();
+                    })
+                  }
                 >
                   Reveal
                 </button>
                 <button
-                  onClick={async () => {
-                    update(await api.relocate(project.id));
-                    await refresh();
-                  }}
+                  onClick={() =>
+                    void run(async () => {
+                      await api.relocate(project.id);
+                      await refresh();
+                    })
+                  }
                 >
                   Locate…
                 </button>
                 <button
                   className="danger"
-                  onClick={async () => {
-                    await api.remove(project.id);
-                    await refresh();
-                  }}
+                  onClick={() =>
+                    void run(async () => {
+                      await api.remove(project.id);
+                      await refresh();
+                    })
+                  }
                 >
                   Remove
                 </button>

@@ -7,6 +7,10 @@ import { DatabaseSync } from 'node:sqlite';
  * shipped; `PRAGMA user_version` records how many have been applied.
  */
 const MIGRATIONS: string[] = [
+  // The registry of directories the user asked us to track. Load-bearing, not
+  // scaffolding: the filesystem has no way to record that a user pointed this
+  // app at a directory, so this table is the only thing that remembers. See
+  // README.md before removing it.
   `CREATE TABLE projects (
      id             TEXT PRIMARY KEY,
      path           TEXT NOT NULL,
