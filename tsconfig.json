@@ -11,6 +11,11 @@
     "baseUrl": ".",
     "outDir": "dist",
     "moduleResolution": "bundler",
+    // Vite does the building; tsc is only ever run to check, which is what
+    // lets main import its siblings by their real `.ts` names — the form
+    // `node --test` needs to run those files without a build step.
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true
   }
 }

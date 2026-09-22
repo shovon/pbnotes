@@ -38,9 +38,12 @@ export class Projection<S> {
     this.#reduce = reduce;
   }
 
-  /** Replays `file` into `initial`, then stays open for dispatching. */
+  /**
+   * Replays the log in `directory` — every segment, in order — into `initial`,
+   * then stays open for dispatching.
+   */
   static async open<S>(
-    file: string,
+    directory: string,
     reduce: Reducer<S>,
     initial: S,
   ): Promise<Projection<S>> {
@@ -48,7 +51,7 @@ export class Projection<S> {
     // ponytail: the whole log is folded on the main thread at startup. Move
     // reduce to a worker, or cache the state alongside the log tagged with the
     // seq it is valid through, if this ever shows up as a slow launch.
-    const log = await EventLog.open(file, (event) => {
+    const log = await EventLog.open(directory, (event) => {
       state = reduce(state, event);
     });
     return new Projection(log, state, reduce);

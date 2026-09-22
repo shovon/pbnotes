@@ -205,3 +205,144 @@ button.danger:hover {
   flex: none;
   padding: 0.05rem 0.35rem;
 }
+
+.back {
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+/* The list hides its row actions until hover; a view's header always shows. */
+.app-header .actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.page-date {
+  border-bottom: 1px solid var(--line);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 1.5rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* Every box activates: clicking one opens it for editing, so it has to be
+   reachable by keyboard and announced as something you can activate. The
+   rendered blocks are divs rather than buttons (Markdown emits block
+   elements), so they carry the button look themselves. */
+.block {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  line-height: 1.5;
+  padding: 0.55rem 0.7rem;
+  text-align: left;
+  width: 100%;
+}
+
+/* Markdown folds a single newline into a space; inside notes a line break is
+   meant literally, so paragraphs and headings keep theirs. Scoped to those:
+   the parser also leaves a newline between list items, and pre-wrap on the
+   whole box would open them up into blank lines. */
+.block :is(p, h1, h2, h3, h4, h5, h6),
+.block.empty {
+  white-space: pre-wrap;
+}
+
+.block:hover {
+  border-color: var(--accent);
+}
+
+.block.empty {
+  color: var(--muted);
+  border-style: dashed;
+}
+
+/* Markdown's own blocks sit inside the box: no margin at the edges, and
+   nothing that blows the box out sideways. */
+.block > :first-child {
+  margin-top: 0;
+}
+
+.block > :last-child {
+  margin-bottom: 0;
+}
+
+.block :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1.05rem;
+  margin: 0.8rem 0 0.3rem;
+}
+
+.block :is(pre, code) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.block pre {
+  background: var(--line);
+  border-radius: 4px;
+  overflow-x: auto;
+  padding: 0.5rem 0.6rem;
+}
+
+.block blockquote {
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  margin-left: 0;
+  padding-left: 0.7rem;
+}
+
+.block :is(ul, ol) {
+  padding-left: 1.3rem;
+}
+
+.block img {
+  max-width: 100%;
+}
+
+.block a {
+  color: var(--accent);
+}
+
+/* Display math ($$…$$) is a block of its own: KaTeX gives it a full em of
+   margin, which is more air than a note block has to spare, and a long
+   formula scrolls rather than pushing the box wide. */
+.block .katex-display {
+  margin: 0.5rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.15rem 0;
+}
+
+/* KaTeX reports malformed TeX in red inside the text; keep it on the app's
+   own danger colour so it reads the same in dark mode. */
+.block .katex-error {
+  color: var(--danger) !important;
+}
+
+.block-input {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: inherit;
+  /* Textareas default to monospace; inherit the app's sans-serif stack. */
+  font: inherit;
+  line-height: 1.5;
+  min-height: 5rem;
+  padding: 0.55rem 0.7rem;
+  resize: vertical;
+  width: 100%;
+}

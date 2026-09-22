@@ -3,6 +3,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { PROJECT_CHANNELS } from '../shared/projects';
 import type { ProjectsApi } from '../shared/projects';
+import { PAGE_CHANNELS } from '../shared/pages';
+import type { PagesApi } from '../shared/pages';
 
 const projects: ProjectsApi = {
   list: () => ipcRenderer.invoke(PROJECT_CHANNELS.list),
@@ -18,6 +20,15 @@ const projects: ProjectsApi = {
   reveal: (id) => ipcRenderer.invoke(PROJECT_CHANNELS.reveal, id),
 };
 
+const pages: PagesApi = {
+  open: (projectId, date) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.open, projectId, date),
+  addBlock: (projectId, date, text) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.addBlock, projectId, date, text),
+  editBlock: (projectId, date, blockId, text) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.editBlock, projectId, date, blockId, text),
+};
+
 // Only this explicit surface crosses the context bridge; the renderer never
 // sees `ipcRenderer` itself.
-contextBridge.exposeInMainWorld('gnotes', { projects });
+contextBridge.exposeInMainWorld('gnotes', { projects, pages });

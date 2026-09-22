@@ -28,12 +28,13 @@ const reduce: Reducer<Notes> = (state, event) => {
   return state;
 };
 
+/** A fresh log directory; the projection owns everything inside it. */
 async function scratch(): Promise<string> {
-  return path.join(await mkdtemp(path.join(tmpdir(), 'gnotes-proj-')), '000001.log');
+  return mkdtemp(path.join(tmpdir(), 'gnotes-proj-'));
 }
 
-async function writeSession(file: string): Promise<Notes> {
-  const live = await Projection.open<Notes>(file, reduce, {});
+async function writeSession(directory: string): Promise<Notes> {
+  const live = await Projection.open<Notes>(directory, reduce, {});
   await live.dispatch('note.written', { id: 'a', text: 'morning' });
   await live.dispatch('note.written', { id: 'b', text: 'afternoon' });
   await live.dispatch('note.written', { id: 'a', text: 'morning, revised' });

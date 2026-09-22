@@ -19,7 +19,7 @@ function parentWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
 }
 
-function requireString(value: unknown, label: string): string {
+export function requireString(value: unknown, label: string): string {
   if (typeof value !== 'string') {
     throw new TypeError(`Expected ${label} to be a string`);
   }

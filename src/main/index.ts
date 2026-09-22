@@ -1,8 +1,10 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { closeDatabase, openDatabase } from './db';
 import { registerProjectIpc } from './projects-ipc';
+import { closePages } from './pages-store';
+import { registerPageIpc } from './pages-ipc';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -28,6 +30,28 @@ const createWindow = () => {
     );
   }
 
+  /**
+   * Notes are Markdown, so they can carry links. A link must never navigate
+   * the window away from the app — there is no way back from a renderer that
+   * has left — so anything outward opens in the real browser instead.
+   */
+  const openExternally = (url: string) => {
+    if (url.startsWith('https://') || url.startsWith('http://')) {
+      void shell.openExternal(url);
+    }
+  };
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openExternally(url);
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url === mainWindow.webContents.getURL()) return;
+    event.preventDefault();
+    openExternally(url);
+  });
+
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
 };
@@ -38,10 +62,16 @@ const createWindow = () => {
 app.on('ready', () => {
   openDatabase();
   registerProjectIpc();
+  registerPageIpc();
   createWindow();
 });
 
-app.on('will-quit', closeDatabase);
+app.on('will-quit', () => {
+  closeDatabase();
+  // Best effort, and that is enough: every append is fsynced before it is
+  // acknowledged, so a log left unclosed has already lost nothing.
+  void closePages();
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

@@ -16,6 +16,9 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import App from './App';
+// KaTeX ships its own stylesheet and fonts; the rendered math is unreadable
+// without it. Imported before index.css so the app's own rules win.
+import 'katex/dist/katex.min.css';
 import './index.css';
 
 const container = document.getElementById('root');
