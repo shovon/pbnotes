@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
-import Markdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
 import type { Availability, Project } from '../shared/projects';
 import type { Page } from '../shared/pages';
 import { AVAILABILITY_LABEL, formatLastOpened, today } from './ui';
 import type { Act } from './ui';
+import { Block, BlockEditor } from './Block';
 
 const { projects: api, pages } = window.gnotes;
 
@@ -13,46 +11,9 @@ type Props = {
   project: Project;
   availability: Availability;
   act: Act;
-  onBack: () => void;
 };
 
-/**
- * The box while it is being written in. One implementation for both the new
- * block and an existing one, so the commit rules cannot drift apart: blur
- * commits, Escape unmounts the box before blur can fire and so discards —
- * which is how the rename field in the project list behaves too.
- */
-function BlockEditor({
-  initial,
-  placeholder,
-  onCommit,
-  onCancel,
-}: {
-  initial?: string;
-  placeholder?: string;
-  onCommit: (text: string) => void;
-  onCancel: () => void;
-}) {
-  return (
-    <textarea
-      className="block-input"
-      autoFocus
-      defaultValue={initial}
-      placeholder={placeholder}
-      onBlur={(event) => onCommit(event.target.value.trim())}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') onCancel();
-      }}
-    />
-  );
-}
-
-export default function ProjectView({
-  project,
-  availability,
-  act,
-  onBack,
-}: Props) {
+export default function ProjectView({ project, availability, act }: Props) {
   // ponytail: read once per render, so a window left open across midnight
   // keeps yesterday's page until something re-renders it. Add a timer to the
   // next local midnight if that ever bites.
@@ -60,6 +21,10 @@ export default function ProjectView({
   const [page, setPage] = useState<Page | null>(null);
   const [writing, setWriting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Where the click that opened the block landed. Undefined when there was no
+  // click to read a position from — keyboard activation, or a new block.
+  const [caret, setCaret] = useState<number | undefined>(undefined);
+  const [renaming, setRenaming] = useState(false);
 
   /**
    * Today's page exists the moment it is asked for: main folds the log and
@@ -80,34 +45,6 @@ export default function ProjectView({
 
   return (
     <>
-      <button className="back" onClick={onBack}>
-        ‹ Projects
-      </button>
-
-      <header className="app-header">
-        <div>
-          <h1>{project.name}</h1>
-          <div className="meta">
-            <span className="path" title={project.path}>
-              {project.path}
-            </span>
-            <span className="dot">·</span>
-            <span>{formatLastOpened(project.lastOpenedAt)}</span>
-            {availability !== 'available' && (
-              <span className="badge">{AVAILABILITY_LABEL[availability]}</span>
-            )}
-          </div>
-        </div>
-        <div className="actions">
-          <button onClick={() => act(() => api.reveal(project.id))}>
-            Reveal
-          </button>
-          <button onClick={() => act(() => api.relocate(project.id))}>
-            Locate…
-          </button>
-        </div>
-      </header>
-
       <h2 className="page-date">{date}</h2>
 
       {page === null ? (
@@ -119,6 +56,7 @@ export default function ProjectView({
               <BlockEditor
                 key={block.id}
                 initial={block.text}
+                caret={caret}
                 onCancel={() => setEditingId(null)}
                 /**
                  * Unchanged text is not an edit, and neither is emptying the
@@ -143,37 +81,14 @@ export default function ProjectView({
                 }}
               />
             ) : (
-              /**
-               * Not a <button>: Markdown emits block elements, and a button
-               * may not contain them. A div with the button role keeps the
-               * click-to-edit affordance reachable and announced.
-               */
-              <div
+              <Block
                 key={block.id}
-                className="block"
-                role="button"
-                tabIndex={0}
-                onClick={() => setEditingId(block.id)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    setEditingId(block.id);
-                  }
+                text={block.text}
+                onActivate={(at) => {
+                  setCaret(at);
+                  setEditingId(block.id);
                 }}
-              >
-                <Markdown
-                  remarkPlugins={[remarkMath]}
-                  /**
-                   * KaTeX throws on malformed TeX by default, which would
-                   * take the whole page down over a half-typed formula. Bad
-                   * math renders as flagged source instead; the note is
-                   * still readable and still editable.
-                   */
-                  rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
-                >
-                  {block.text}
-                </Markdown>
-              </div>
+              />
             ),
           )}
 
