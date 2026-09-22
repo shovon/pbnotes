@@ -43,11 +43,20 @@ export function registerPageIpc(): void {
 
   ipcMain.handle(
     PAGE_CHANNELS.addBlock,
-    async (_event, id: unknown, date: unknown, text: unknown) =>
+    async (
+      _event,
+      id: unknown,
+      date: unknown,
+      text: unknown,
+      after: unknown,
+    ) =>
       addBlock(
         await requireProject(id),
         requireDate(date),
         requireString(text, 'text'),
+        // Absent means the end of the page; anything else has to be a block id
+        // before it reaches a log that keeps it forever.
+        after === undefined ? undefined : requireString(after, 'after'),
       ),
   );
 

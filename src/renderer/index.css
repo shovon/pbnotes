@@ -237,6 +237,11 @@ button.danger:hover {
   display: block;
   font: inherit;
   line-height: 1.5;
+  /* An empty block is one empty line, not a 5px sliver: without this it
+     collapses to its padding, taking the dot (centred 0.9rem down) outside
+     the box with it, and leaves nothing to aim a click at. Costs nothing on
+     a block that has text — one line is already this tall. */
+  min-height: 1.5em;
   /* A textarea breaks a word too long for the line; a <p> lets it stick out.
      Same reason as box-sizing — a differing line count is a jump. */
   overflow-wrap: break-word;

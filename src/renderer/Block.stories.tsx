@@ -37,6 +37,14 @@ export const Paragraphs: Story = {
   },
 };
 
+/** A block with nothing in it is allowed, so it has to stay a line you can
+    see and click: one empty row with its dot, the same height the textarea
+    opens at. Collapsed to its padding it would be unreachable — and there is
+    no way to delete a block you cannot click. */
+export const Empty: Story = {
+  args: { text: '' },
+};
+
 export const Markdown: Story = {
   args: {
     text: [

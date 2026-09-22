@@ -18,7 +18,7 @@ export type Block = {
 export type Page = {
   /** `YYYY-MM-DD`, in the user's local time. */
   date: string;
-  /** Oldest first — the order the blocks were written. */
+  /** In the order they belong on the page, which is the order they fold. */
   blocks: Block[];
 };
 
@@ -39,8 +39,17 @@ export const PAGE_CHANNELS = {
 export type PagesApi = {
   /** The day's page, empty if nothing has been written to it yet. */
   open(projectId: string, date: string): Promise<Page>;
-  /** Appends a `block.created` event and returns the page it folded into. */
-  addBlock(projectId: string, date: string, text: string): Promise<Page>;
+  /**
+   * Appends a `block.created` event and returns the page it folded into.
+   * `after` puts the new block directly beneath that one; without it the block
+   * goes at the end of the day.
+   */
+  addBlock(
+    projectId: string,
+    date: string,
+    text: string,
+    after?: string,
+  ): Promise<Page>;
   /**
    * Appends a `block.edited` event. The earlier text is not replaced on disk —
    * the log keeps both facts, and the fold shows the later one.
