@@ -222,3 +222,35 @@ test('events this build cannot fold are counted, not silently dropped', async ()
   assert.equal(older.state.a, 'understood');
   await older.close();
 });
+
+/**
+ * Appends, the way the real page reducer does: a block's place on the page
+ * comes from the fold, so an event folded twice is a block on the page twice.
+ * `reduce` above is keyed by id and so is idempotent — it would fold the same
+ * log ten times and look right, which is exactly why it cannot test this.
+ */
+const appendReduce: Reducer<string[]> = (state, event) =>
+  event.type === 'note.written'
+    ? [...state, (event.payload as { id: string }).id]
+    : state;
+
+test('re-folding a log that was not empty at open does not double it', async () => {
+  const file = await scratch();
+  await writeSession(file);
+
+  // The case the watcher hits all day and no test above reaches: every
+  // earlier refold test opens on an empty folder, where "the state at open"
+  // and "the state the fold started from" happen to be the same thing.
+  const reopened = await Projection.open<string[]>(file, appendReduce, [], {
+    device: DEVICE,
+  });
+  assert.deepEqual(reopened.state, ['a', 'b', 'a', 'c']);
+
+  await reopened.refold();
+  assert.deepEqual(
+    reopened.state,
+    ['a', 'b', 'a', 'c'],
+    'a refold rebuilds the view; it must not fold the log onto itself',
+  );
+  await reopened.close();
+});
