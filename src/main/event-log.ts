@@ -25,7 +25,14 @@
  * the log — which is why the numbers are zero-padded wide enough to sort
  * lexicographically for longer than the app will exist.
  */
-import { open, mkdir, readdir, truncate, stat } from 'node:fs/promises';
+import {
+  open,
+  mkdir,
+  readdir,
+  truncate,
+  stat,
+  appendFile,
+} from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
@@ -224,6 +231,13 @@ async function recover(
       );
     }
     await truncate(file, bytes);
+  } else if (bytes > (await logSize(file))) {
+    // A crash between the record and its newline: readline hands the line
+    // over either way, so the record is intact and counted, but the file is
+    // one byte shorter than `bytes` says. Put the newline back, or the next
+    // append lands on the same line and destroys a record already shown as
+    // saved.
+    await appendFile(file, '\n');
   }
   return { seq, bytes, day };
 }
