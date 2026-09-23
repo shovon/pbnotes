@@ -208,3 +208,28 @@ test("rolls to a new segment when the local day changes", async () => {
   assert.equal(same.segment, 2);
   await same.close();
 });
+
+test("survives a crash that cut off only the final newline", async () => {
+  const dir = await scratch();
+
+  const first = await EventLog.open(dir);
+  for (let i = 0; i < 2; i++) await first.append("note.written", { i });
+  await first.close();
+
+  // The record landed; the newline after it did not.
+  await truncate(segment(dir), (await logSize(segment(dir))) - 1);
+
+  const { log, seen } = await collect(dir);
+  assert.deepEqual(seen, [1, 2], "the whole record was written, so keep it");
+
+  await log.append("note.written", { i: 2 });
+  await log.close();
+
+  const reopened = await collect(dir);
+  assert.deepEqual(
+    reopened.seen,
+    [1, 2, 3],
+    "the appended record must not have landed on the previous line",
+  );
+  await reopened.log.close();
+});
