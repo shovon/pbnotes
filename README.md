@@ -64,9 +64,21 @@ so on — as the app grows.
 
 ### Segments
 
-`gnotes/` holds numbered segments, `0000000000000001.log` upward. Only the
-newest is written to; the rest are sealed, and `seq` keeps counting across
-them, so the segments concatenated in name order *are* the log.
+`gnotes/` holds **one directory per device**, each holding numbered segments,
+`0000000000000001.log` upward. Only the newest is written to; the rest are
+sealed, and `seq` keeps counting across them within that device.
+
+The directory per device is what makes the folder safe to leave in Dropbox:
+**one writer per file, forever**, so two machines never touch the same path and
+a sync tool never has a divergence to resolve. `seq` therefore counts within a
+device rather than across the folder — it detects damage, and ordering is the
+hybrid logical clock's job. See `docs/multi-writer.md`, which is the design in
+full: what a foreign log may and may not be repaired to, how the clock is
+floored and bounded, and what the reducer still gets wrong when two machines
+edit the same page at once.
+
+Nothing is written at the top of `gnotes/`, and files found there are reported
+rather than folded.
 
 The numbers are zero-padded to sixteen digits because `ls`, `readdir` and every
 archive tool sort names as text, and a fixed width makes text order and
@@ -84,6 +96,13 @@ Rolling happens before the write that would breach the limit, so no segment
 ever exceeds it, and an empty segment is never rolled — a record larger than
 16 MiB gets a file to itself rather than a fresh file that starts over
 budget.
+
+A device's own torn tail is repaired on load, because only its own crash can
+cause one. **A file belonging to another device is never written to**: under a
+sync tool "the tail has not arrived yet" is an ordinary state, and truncating
+it would turn something transient into permanent loss. Such a log stalls — it
+folds as far as it is intact, reports itself, and tries again on the next
+change. One stalled device can never stop a project opening.
 
 The corollary is that an unreachable project cannot be written to, and says so.
 `EventLog.open` creates its parent directories, so writing to an unmounted
@@ -121,7 +140,9 @@ generic bookkeeping that earns nothing from being event-sourced.
 | `src/renderer/App.tsx` | Owns the project data and switches between the two views |
 | `src/renderer/ProjectsList.tsx` | The project list UI |
 | `src/renderer/ProjectView.tsx` | One project: today's page and its blocks |
-| `src/main/event-log.ts` | The append-only log: framing, fsync, crash recovery, segment rollover |
+| `src/main/event-log.ts` | The append-only log: framing, fsync, crash recovery, segment rollover, the merge across devices |
+| `src/main/device-store.ts` | This machine's id and what it remembers per project. In `notes.db`, never in the shared folder |
+| `src/shared/log.ts` | What the log can report about itself: devices read, files skipped, events not understood |
 | `src/main/projection.ts` | Folds the log into the in-memory view. Main process only |
 | `src/main/pages-store.ts` | One pages projection per project, at `<project>/gnotes/` |
 | `src/main/pages-ipc.ts` | The `pages:*` channels. Checks the project against the registry, and its directory for reachability, before opening a log |

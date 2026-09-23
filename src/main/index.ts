@@ -3,7 +3,8 @@ import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { closeDatabase, openDatabase } from './db';
 import { registerProjectIpc } from './projects-ipc';
-import { closePages } from './pages-store';
+import { bindDevice, closePages } from './pages-store';
+import { deviceId, recall, remember, rotateDeviceId } from './device-store';
 import { registerPageIpc } from './pages-ipc';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -61,6 +62,15 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', () => {
   openDatabase();
+  // Who we are in a shared log folder, and what we remember about it. Has to
+  // happen before any log is opened: a device that appends before it knows its
+  // own identity writes in somebody else's directory.
+  bindDevice({
+    device: deviceId(),
+    recall,
+    remember,
+    rotate: rotateDeviceId,
+  });
   registerProjectIpc();
   registerPageIpc();
   createWindow();

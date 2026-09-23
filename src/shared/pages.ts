@@ -10,6 +10,8 @@
  * looking at today is not something they did.
  */
 
+import type { ViewStatus } from './log';
+
 export type Block = {
   id: string;
   text: string;
@@ -75,12 +77,24 @@ export const PAGE_CHANNELS = {
   deleteBlock: 'pages:delete-block',
   indentBlock: 'pages:indent-block',
   outdentBlock: 'pages:outdent-block',
+  status: 'pages:status',
 } as const;
 
 /** The surface exposed on `window.gnotes.pages` by the preload bridge. */
 export type PagesApi = {
   /** The day's page, empty if nothing has been written to it yet. */
   open(projectId: string, date: string): Promise<Page>;
+  /**
+   * How much of the project's log folder could be read, and what the fold
+   * could not use.
+   *
+   * The folder is shared with whatever sync tool the user pointed at it, so a
+   * device that is still arriving, a file that is only a placeholder, and a
+   * note written by a newer build are all ordinary states rather than errors.
+   * They must be visible all the same: skipping something without a word is
+   * how a single-writer log loses a machine's notes silently.
+   */
+  status(projectId: string): Promise<ViewStatus>;
   /**
    * Appends a `block.created` event and returns the page it folded into.
    * `after` puts the new block directly beneath that one; without it the block

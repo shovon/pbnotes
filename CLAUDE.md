@@ -40,9 +40,19 @@ holds `notes.db` and nothing else that matters.
   structured-cloneable state, so the fold can move to a worker later.
 - Log events are immutable. A payload shape that changes gets a new `v` and is
   upcast when read; the file on disk is never rewritten or compacted.
-- The log is segmented: `gnotes/0000000000000001.log` upward, sixteen digits so
-  text order matches numeric order. Only the newest segment is written to, and
-  `seq` keeps counting across them. Sealed at 16 MiB or at local midnight,
-  whichever comes first.
+- The log is segmented per device: `gnotes/<device-id>/0000000000000001.log`
+  upward, sixteen digits so text order matches numeric order. Only the newest
+  segment is written to, and `seq` keeps counting across them *within that
+  device*. Sealed at 16 MiB or at local midnight, whichever comes first.
+- **One writer per file, forever.** A device appends only inside its own
+  directory; nothing is written at the top of `gnotes/`. This is what makes the
+  folder safe in Dropbox, and it is not negotiable — two machines on one path
+  is how the folder loses notes silently.
+- `seq` detects damage within a device. Ordering across devices is the hybrid
+  logical clock (`hlc`), floored by what has been seen and bounded against a
+  clock set to the wrong year. Never order by `at`; it is for display.
+- Never truncate, rewrite or repair a file belonging to another device. A
+  half-arrived foreign log stalls and retries; it must never stop a project
+  from opening. See `docs/multi-writer.md`.
 - The renderer reaches main only through `window.gnotes`; keep new surface
   behind the context bridge in `src/preload/index.ts`.

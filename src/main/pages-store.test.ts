@@ -24,7 +24,7 @@ import {
   reduce,
 } from './pages-store.ts';
 import type { ProjectRef } from './pages-store.ts';
-import { logSize } from './event-log.ts';
+import { logSize, segmentName } from './event-log.ts';
 import { lastLeaf, locate } from '../shared/pages.ts';
 import type { Block } from '../shared/pages.ts';
 
@@ -38,18 +38,32 @@ async function project(): Promise<ProjectRef> {
   };
 }
 
+/**
+ * The first segment of the only device writing in a project's log folder.
+ *
+ * The layout is `gnotes/<device>/<segment>`, and the device id is not fixed
+ * here: these tests run with no binding, so each projection mints one. What
+ * matters to a test is that exactly one machine wrote, which is asserted.
+ */
+async function segment(projectPath: string): Promise<string> {
+  const directory = logDirectory(projectPath);
+  const devices = await readdir(directory);
+  assert.equal(devices.length, 1, 'one device should have written here');
+  return path.join(directory, devices[0], segmentName(1));
+}
+
 test('the log is written into the project\'s own gnotes folder', async () => {
   const it = await project();
   await addBlock(it, TODAY, 'lives here');
 
   assert.equal(logDirectory(it.path), path.join(it.path, 'gnotes'));
-  assert.deepEqual(await readdir(logDirectory(it.path)), [
+  // One directory per device, and the segments inside it. Nothing is written
+  // at the top of `gnotes/`, so two machines never share a path.
+  const [device] = await readdir(logDirectory(it.path));
+  assert.deepEqual(await readdir(path.join(logDirectory(it.path), device)), [
     '0000000000000001.log',
   ]);
-  assert.ok(
-    (await logSize(path.join(logDirectory(it.path), '0000000000000001.log'))) >
-      0,
-  );
+  assert.ok((await logSize(await segment(it.path))) > 0);
 
   await closePages();
 });
@@ -58,10 +72,7 @@ test('opening a day that was never written to appends nothing', async () => {
   const it = await project();
 
   assert.deepEqual(await getPage(it, TODAY), { date: TODAY, blocks: [] });
-  assert.equal(
-    await logSize(path.join(logDirectory(it.path), '0000000000000001.log')),
-    0,
-  );
+  assert.equal(await logSize(await segment(it.path)), 0);
 
   await closePages();
 });
@@ -235,6 +246,8 @@ test('deleting a block the page does not have is refused', async () => {
 test('the fold ignores events it does not know', async () => {
   const state = reduce({}, {
     seq: 1,
+    device: 'd',
+    hlc: { l: 1, c: 0 },
     id: 'x',
     type: 'something.else',
     v: 1,
@@ -301,9 +314,7 @@ test('indenting the first of its siblings appends nothing', async () => {
   const it = await project();
   const first = (await addBlock(it, TODAY, 'first')).blocks[0].id;
   await addBlock(it, TODAY, 'second');
-  const before = await logSize(
-    path.join(logDirectory(it.path), '0000000000000001.log'),
-  );
+  const before = await logSize(await segment(it.path));
 
   const page = await indentBlock(it, TODAY, first);
   assert.deepEqual(
@@ -311,7 +322,7 @@ test('indenting the first of its siblings appends nothing', async () => {
     ['first', 'second'],
   );
   assert.equal(
-    await logSize(path.join(logDirectory(it.path), '0000000000000001.log')),
+    await logSize(await segment(it.path)),
     before,
     'a keystroke that changed nothing is not a fact',
   );
@@ -510,9 +521,7 @@ test('indent then outdent puts the page back as it was', async () => {
 test('outdenting a top-level block appends nothing', async () => {
   const it = await project();
   const first = (await addBlock(it, TODAY, 'top level')).blocks[0].id;
-  const before = await logSize(
-    path.join(logDirectory(it.path), '0000000000000001.log'),
-  );
+  const before = await logSize(await segment(it.path));
 
   const page = await outdentBlock(it, TODAY, first);
   assert.deepEqual(
@@ -520,7 +529,7 @@ test('outdenting a top-level block appends nothing', async () => {
     ['top level'],
   );
   assert.equal(
-    await logSize(path.join(logDirectory(it.path), '0000000000000001.log')),
+    await logSize(await segment(it.path)),
     before,
     'a keystroke that changed nothing is not a fact',
   );
