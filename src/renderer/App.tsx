@@ -162,6 +162,10 @@ export default function App() {
 
       {project ? (
         <ProjectView
+          // Remounted per project, so nothing survives the switch: the page,
+          // the open editor and the block id it is editing all belong to the
+          // project that was showing a moment ago.
+          key={project.id}
           project={project}
           availability={availability[project.id] ?? 'available'}
           act={act}

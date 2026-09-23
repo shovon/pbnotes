@@ -57,10 +57,15 @@ export class Projection<S> {
     fold: { state: S; unhandled: Unhandled[] },
     reduce: Reducer<S>,
     options: ProjectionOptions,
+    initial: S,
   ) {
     this.#log = log;
     this.#state = fold.state;
-    this.#initial = fold.state;
+    // What the fold *started* from, not what it arrived at. `fold.state` has
+    // the entire log in it by the time this runs, and a refold onto that is
+    // how every event already on disk at open gets folded a second time — for
+    // a reducer that appends (every block in a page), a doubled view.
+    this.#initial = initial;
     this.#unhandled = fold.unhandled;
     this.#reduce = reduce;
     this.#options = options;
@@ -82,7 +87,7 @@ export class Projection<S> {
     // `seq` *per device* it is valid through, if this ever shows up as a slow
     // launch. That cache belongs in `userData`, never in the shared folder.
     const log = await EventLog.open(directory, fold.apply, options);
-    return new Projection(log, fold, reduce, options);
+    return new Projection(log, fold, reduce, options, initial);
   }
 
   /**
