@@ -241,11 +241,40 @@ export default function ProjectView({ project, availability, act }: Props) {
     });
   };
 
+  /**
+   * Backspace in an empty box for a block that does not exist yet. Nothing
+   * was written, so nothing is deleted and nothing is appended: the box
+   * closes and the caret goes to the end of the block directly above it,
+   * which is where the user was before they opened it.
+   *
+   * Which block that is takes the same walk the delete path takes: the box
+   * renders below a whole subtree, so the block above it on screen is the
+   * deepest last child of what it sits under — rarely the block `after`
+   * names — or of the page's last block, for the box at the end of the day.
+   *
+   * A page with nothing on it has no block above, and the box stays open: it
+   * is the only way in, and backing out of it would leave the user looking at
+   * a page they cannot type on. So does a box whose `after` the page has no
+   * record of, which is the same nothing-to-go-back-to.
+   */
+  const cancelNew = () => {
+    const blocks = page?.blocks ?? [];
+    const after = writing?.after;
+    const found = after ? locate(blocks, after) : undefined;
+    const under = after ? found?.siblings[found.at] : blocks.at(-1);
+    if (!under) return;
+    const above = lastLeaf(under);
+    setWriting(null);
+    setCaret(above.text.length);
+    setEditingId(above.id);
+  };
+
   /** The box for a block that does not exist yet. */
   const newBlockEditor = (
     <BlockEditor
       placeholder="Write something…"
       onCancel={() => setWriting(null)}
+      onBackspace={cancelNew}
       onCommit={(text) => commitNew(text, { then: 'stop' })}
       onContinue={(text) => commitNew(text, { then: 'again' })}
       onIndent={(text, at, by) =>
@@ -269,7 +298,7 @@ export default function ProjectView({ project, availability, act }: Props) {
             caret={caret}
             onCancel={() => setEditingId(null)}
             onCommit={(text) => commitEdit(block, text)}
-            onDelete={() => commitDelete(block)}
+            onBackspace={() => commitDelete(block)}
             onIndent={(text, at, by) => commitIndent(block, text, at, by)}
             onContinue={(text) => {
               commitEdit(block, text);

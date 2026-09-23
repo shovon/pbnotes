@@ -94,7 +94,9 @@ export function Block({
  * Backspace in an empty box deletes the block. Which makes deleting one the
  * same motion as clearing it — select all, Backspace, Backspace — and that is
  * the point: the first press empties the box and writes nothing, so the user
- * is looking at the consequence before the second press commits to it.
+ * is looking at the consequence before the second press commits to it. In a
+ * box for a block that does not exist yet the same key backs out of it
+ * instead; the page decides which, this box only reports the press.
  */
 export function BlockEditor({
   initial,
@@ -102,7 +104,7 @@ export function BlockEditor({
   placeholder,
   onCommit,
   onContinue,
-  onDelete,
+  onBackspace,
   onIndent,
   onCancel,
 }: {
@@ -118,15 +120,19 @@ export function BlockEditor({
    */
   onContinue?: (text: string) => void;
   /**
-   * Backspace in an empty box. Unmounts the box like `onCancel` does, and for
-   * a sharper reason: letting blur fire on the way out would commit the empty
-   * text first, and the log would keep a block emptied and then deleted —
-   * an edit the user never made, on their way to doing something else.
+   * Backspace in an already-empty box. Unmounts the box like `onCancel` does,
+   * and for a sharper reason: letting blur fire on the way out would commit
+   * the empty text first, and the log would keep a block emptied and then
+   * deleted — an edit the user never made, on their way to doing something
+   * else.
    *
-   * Left off for a block that does not exist yet: there is nothing to delete,
-   * and Backspace in an empty new box should do what Backspace does.
+   * Named for the key rather than for deleting, because deleting is only what
+   * it means over a block that exists. Over one that does not it writes
+   * nothing at all and just moves: Backspace at the start of a line is how
+   * you back out of a block you did not mean to start, and the box that has
+   * nothing to delete still owes the user that.
    */
-  onDelete?: () => void;
+  onBackspace?: () => void;
   /**
    * Tab, and Shift+Tab as `by: -1`. One handler for both because the box does
    * the same thing either way: hand back the text and where the caret was,
@@ -167,13 +173,13 @@ export function BlockEditor({
          * be in `value` yet.
          */
         if (
-          onDelete &&
+          onBackspace &&
           event.key === 'Backspace' &&
           !event.currentTarget.value &&
           !event.nativeEvent.isComposing
         ) {
           event.preventDefault();
-          onDelete();
+          onBackspace();
         }
         /**
          * Tab moves the block a level in rather than moving focus, and
