@@ -2,7 +2,14 @@ import { ipcMain } from 'electron';
 import { DATE_PATTERN, PAGE_CHANNELS } from '../shared/pages';
 import { requireString } from './projects-ipc';
 import { checkAvailability, getProject } from './projects-store';
-import { addBlock, deleteBlock, editBlock, getPage } from './pages-store';
+import {
+  addBlock,
+  deleteBlock,
+  editBlock,
+  getPage,
+  indentBlock,
+  outdentBlock,
+} from './pages-store';
 import type { Project } from '../shared/projects';
 
 /**
@@ -81,6 +88,26 @@ export function registerPageIpc(): void {
     PAGE_CHANNELS.deleteBlock,
     async (_event, id: unknown, date: unknown, blockId: unknown) =>
       deleteBlock(
+        await requireProject(id),
+        requireDate(date),
+        requireString(blockId, 'blockId'),
+      ),
+  );
+
+  ipcMain.handle(
+    PAGE_CHANNELS.indentBlock,
+    async (_event, id: unknown, date: unknown, blockId: unknown) =>
+      indentBlock(
+        await requireProject(id),
+        requireDate(date),
+        requireString(blockId, 'blockId'),
+      ),
+  );
+
+  ipcMain.handle(
+    PAGE_CHANNELS.outdentBlock,
+    async (_event, id: unknown, date: unknown, blockId: unknown) =>
+      outdentBlock(
         await requireProject(id),
         requireDate(date),
         requireString(blockId, 'blockId'),

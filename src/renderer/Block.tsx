@@ -103,6 +103,7 @@ export function BlockEditor({
   onCommit,
   onContinue,
   onDelete,
+  onIndent,
   onCancel,
 }: {
   initial?: string;
@@ -126,6 +127,16 @@ export function BlockEditor({
    * and Backspace in an empty new box should do what Backspace does.
    */
   onDelete?: () => void;
+  /**
+   * Tab, and Shift+Tab as `by: -1`. One handler for both because the box does
+   * the same thing either way: hand back the text and where the caret was,
+   * since moving the block closes and reopens this box and the caret has to
+   * come back to the character it was on.
+   *
+   * Left off where there is nothing to move, which keeps Tab as the focus
+   * key it is everywhere else.
+   */
+  onIndent?: (text: string, caret: number, by: 1 | -1) => void;
   onCancel: () => void;
 }) {
   return (
@@ -163,6 +174,20 @@ export function BlockEditor({
         ) {
           event.preventDefault();
           onDelete();
+        }
+        /**
+         * Tab moves the block a level in rather than moving focus, and
+         * Shift+Tab a level out. Both are swallowed even when the move turns
+         * out to be impossible: a block at the edge of what it can do should
+         * sit still, not throw the user out of the box they are writing in.
+         */
+        if (onIndent && event.key === 'Tab') {
+          event.preventDefault();
+          onIndent(
+            event.currentTarget.value.trim(),
+            event.currentTarget.selectionStart,
+            event.shiftKey ? -1 : 1,
+          );
         }
         /**
          * `isComposing` is not a nicety: an IME takes Enter to choose among

@@ -41,6 +41,17 @@ export const Emptied: Story = {
   args: { initial: '', onDelete: () => undefined },
 };
 
+/** Tab and Shift+Tab move the block a level rather than walking focus out of
+    the box — wired here so the keys can be felt, though only the page can
+    show where the block lands. Both are swallowed even at the edges, so a
+    block with nowhere to go sits still instead of losing focus. */
+export const Indentable: Story = {
+  args: {
+    initial: 'Two weeks, apparently.',
+    onIndent: () => undefined,
+  },
+};
+
 /** The other half of Block's Paragraphs story: same text, same height, or
     the block jumps when it opens. */
 export const Paragraphs: Story = {
