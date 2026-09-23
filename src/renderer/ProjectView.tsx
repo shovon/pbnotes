@@ -18,13 +18,18 @@ type Writing = { after?: string } | null;
 
 /**
  * The block `addBlock` just wrote, found by where it must have landed: the
- * fold splices it directly beneath `after`, or pushes it last. Saves widening
- * the IPC result to carry an id back for the one caller that wants it.
+ * fold splices it directly beneath `after` as its next sibling — wherever in
+ * the tree that is — or pushes it last. Saves widening the IPC result to
+ * carry an id back for the one caller that wants it.
+ *
+ * `locate`, not a scan of the top level: `after` is just as often a child,
+ * and a miss there does not read as a miss — it reads as index 0, which is
+ * the first block on the page.
  */
 function created(page: Page, after?: string): string | undefined {
   if (!after) return page.blocks.at(-1)?.id;
-  const at = page.blocks.findIndex((block) => block.id === after);
-  return page.blocks[at + 1]?.id;
+  const found = locate(page.blocks, after);
+  return found && found.siblings[found.at + 1]?.id;
 }
 
 type Props = {
