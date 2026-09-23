@@ -23,9 +23,11 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A new block: empty, with the prompt the page gives it. */
+/** A new block: empty, with the prompt the page gives it. `onBackspace` is
+    wired here too — in the app it backs out of the box rather than deleting
+    anything, since there is no block behind it yet. */
 export const New: Story = {
-  args: { placeholder: 'Write something…' },
+  args: { placeholder: 'Write something…', onBackspace: () => undefined },
 };
 
 /** An existing block reopened, and the place to feel the keys: Enter ends
@@ -38,7 +40,7 @@ export const Editing: Story = {
     rather than doing nothing. The same box the Editing story lands in after
     select-all and one Backspace. */
 export const Emptied: Story = {
-  args: { initial: '', onDelete: () => undefined },
+  args: { initial: '', onBackspace: () => undefined },
 };
 
 /** Tab and Shift+Tab move the block a level rather than walking focus out of
