@@ -250,6 +250,17 @@ button.danger:hover {
   width: 100%;
 }
 
+/* Children sit in their own column, indented by exactly the parent's left
+   padding so a child's dot lands where the parent's text starts. Its own
+   flex column because it is a flex item of `.page` and the gap between
+   blocks does not inherit through it. */
+.block-children {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-left: 0.95rem;
+}
+
 /* A caret, not a pointer: the block is text you type in, not a control. */
 .block {
   cursor: text;

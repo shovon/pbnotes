@@ -16,6 +16,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Projection } from './projection.ts';
 import type { Reducer } from './projection.ts';
+import { locate } from '../shared/pages.ts';
 import type { Block, Page } from '../shared/pages.ts';
 
 /** Enough of a project to find its log. */
@@ -60,36 +61,90 @@ type Pages = Record<string, Block[]>;
  *
  * Still v1. `after` is optional and its absence has always meant what it means
  * now — at the end — so every event already on disk reads correctly with no
- * upcast.
+ * upcast. Nesting needed no upcast either: `children` is a fact about the
+ * fold, not about the events, and a log written before blocks could nest
+ * folds to a tree of leaves.
  */
+
+/**
+ * `block` spliced in directly after `after`, wherever in the tree that is.
+ * Undefined when `after` is not in this subtree, so the caller can tell
+ * "not here, keep looking" from "here, and this is the result".
+ *
+ * A sibling of `after`, which is what makes `after` alone enough to place a
+ * block at any depth: Enter inside a nested block writes the next one beside
+ * it, not back at the top level.
+ */
+function beside(
+  blocks: Block[],
+  after: string,
+  block: Block,
+): Block[] | undefined {
+  const at = blocks.findIndex((it) => it.id === after);
+  if (at !== -1) {
+    const next = [...blocks];
+    next.splice(at + 1, 0, block);
+    return next;
+  }
+  for (let i = 0; i < blocks.length; i++) {
+    const children = beside(blocks[i].children, after, block);
+    if (!children) continue;
+    const next = [...blocks];
+    next[i] = { ...blocks[i], children };
+    return next;
+  }
+  return undefined;
+}
+
+/** The block and everything under it, gone from wherever it sat. */
+function without(blocks: Block[], id: string): Block[] {
+  return blocks
+    .filter((block) => block.id !== id)
+    .map((block) => ({ ...block, children: without(block.children, id) }));
+}
+
+/** `parent`'s children put through `next`, wherever `parent` is. */
+function mapChildren(
+  blocks: Block[],
+  parent: string,
+  next: (children: Block[]) => Block[],
+): Block[] {
+  return blocks.map((it) =>
+    it.id === parent
+      ? { ...it, children: next(it.children) }
+      : { ...it, children: mapChildren(it.children, parent, next) },
+  );
+}
+
 export const reduce: Reducer<Pages> = (state, event) => {
-  const { page, id, text, after } = event.payload as {
+  const { page, id, text, after, parent } = event.payload as {
     page: string;
     id: string;
     text: string;
     after?: string;
+    parent?: string;
   };
 
   if (event.type === 'block.created') {
     const blocks = state[page] ?? [];
+    const block: Block = { id, text, children: [] };
     // `addBlock` refuses an `after` the page does not have, so missing it here
     // means a log written by something else. Append rather than drop: a block
     // in the wrong place can be moved, one the fold discarded is just gone.
-    const at = after ? blocks.findIndex((block) => block.id === after) : -1;
-    const next = [...blocks];
-    next.splice(at === -1 ? blocks.length : at + 1, 0, { id, text });
+    const next = (after && beside(blocks, after, block)) || [...blocks, block];
     return { ...state, [page]: next };
   }
 
   if (event.type === 'block.edited') {
     const blocks = state[page];
     if (!blocks) return state;
-    return {
-      ...state,
-      [page]: blocks.map((block) =>
-        block.id === id ? { ...block, text } : block,
-      ),
-    };
+    const edit = (it: Block[]): Block[] =>
+      it.map((block) =>
+        block.id === id
+          ? { ...block, text }
+          : { ...block, children: edit(block.children) },
+      );
+    return { ...state, [page]: edit(blocks) };
   }
 
   if (event.type === 'block.deleted') {
@@ -98,8 +153,58 @@ export const reduce: Reducer<Pages> = (state, event) => {
     // A plain filter, no tombstone. Nothing later in the log needs to know
     // this block was here: `after` only ever names a block that was present
     // when it was written, and a stray edit arriving afterwards already folds
-    // to nothing through the `map` above.
-    return { ...state, [page]: blocks.filter((block) => block.id !== id) };
+    // to nothing through the `edit` above.
+    //
+    // The subtree goes with it. The events that built those children are all
+    // still on disk — what the fold stops showing is a block the user said
+    // they were done with, and everything they had filed underneath it.
+    return { ...state, [page]: without(blocks, id) };
+  }
+
+  if (event.type === 'block.indented') {
+    const blocks = state[page];
+    if (!blocks || !parent) return state;
+    const found = locate(blocks, id);
+    const moving = found?.siblings[found.at];
+    // Detach before attaching, and read `moving` before either: it carries
+    // its own children across, so the block that lands under `parent` is the
+    // whole subtree, not a stripped copy of its root.
+    if (!moving || !locate(blocks, parent)) return state;
+    return {
+      ...state,
+      [page]: mapChildren(without(blocks, id), parent, (children) => [
+        ...children,
+        moving,
+      ]),
+    };
+  }
+
+  if (event.type === 'block.outdented') {
+    const blocks = state[page];
+    if (!blocks || !after) return state;
+    const found = locate(blocks, id);
+    if (!found?.parent) return state;
+
+    // The siblings below it come along as its own children. Leaving them
+    // behind would strand them inside the old parent, which renders *above*
+    // where this block is going — so the page would come back reading in a
+    // different order than the user left it, off one keystroke that only
+    // asked about depth.
+    const moving = found.siblings[found.at];
+    const trailing = found.siblings.slice(found.at + 1);
+    const outdented = {
+      ...moving,
+      children: [...moving.children, ...trailing],
+    };
+    const trimmed = mapChildren(blocks, found.parent.id, (children) =>
+      children.slice(0, found.at),
+    );
+    // `after` is the block it used to hang under, so this lands it directly
+    // beneath, at that block's own level.
+    return {
+      ...state,
+      [page]: beside(trimmed, after, outdented) ?? [...trimmed, outdented],
+    };
   }
 
   return state;
@@ -173,7 +278,7 @@ export async function addBlock(
 ): Promise<Page> {
   const projection = await projectionFor(project);
   const blocks = projection.state[date] ?? [];
-  if (after && !blocks.some((block) => block.id === after)) {
+  if (after && !locate(blocks, after)) {
     throw new Error('No such block');
   }
 
@@ -204,7 +309,7 @@ export async function editBlock(
 ): Promise<Page> {
   const projection = await projectionFor(project);
   const blocks = projection.state[date] ?? [];
-  if (!blocks.some((block) => block.id === blockId)) {
+  if (!locate(blocks, blockId)) {
     throw new Error('No such block');
   }
 
@@ -232,11 +337,74 @@ export async function deleteBlock(
 ): Promise<Page> {
   const projection = await projectionFor(project);
   const blocks = projection.state[date] ?? [];
-  if (!blocks.some((block) => block.id === blockId)) {
+  if (!locate(blocks, blockId)) {
     throw new Error('No such block');
   }
 
   await projection.dispatch('block.deleted', { page: date, id: blockId });
+  return { date, blocks: projection.state[date] ?? [] };
+}
+
+/**
+ * Moves a block under the sibling above it, children and all.
+ *
+ * The event records the parent it resolved to, not just "the user pressed
+ * Tab". Both would replay identically — the fold is deterministic, so the
+ * sibling above is the same one on replay as it was live — but the resolved
+ * form is the one that still reads correctly if what Tab *means* ever
+ * changes, and it is what `after` already does for a new block.
+ *
+ * A block that is first among its siblings has nothing above it to move
+ * under. Nothing is appended and the page comes back as it was: the outline
+ * did not change, and a log that keeps everything forever has no use for the
+ * record of a keystroke that did nothing.
+ */
+export async function indentBlock(
+  project: ProjectRef,
+  date: string,
+  blockId: string,
+): Promise<Page> {
+  const projection = await projectionFor(project);
+  const blocks = projection.state[date] ?? [];
+  const found = locate(blocks, blockId);
+  if (!found) throw new Error('No such block');
+  if (found.at === 0) return { date, blocks };
+
+  await projection.dispatch('block.indented', {
+    page: date,
+    id: blockId,
+    parent: found.siblings[found.at - 1].id,
+  });
+  return { date, blocks: projection.state[date] ?? [] };
+}
+
+/**
+ * Brings a block out a level, to sit directly beneath what it used to hang
+ * under, taking the siblings that were below it along as its children.
+ *
+ * The event names the block it lands beneath rather than the level it landed
+ * at, which is the same thing `after` means everywhere else in this log.
+ *
+ * A block already at the top level has nothing to come out of. Nothing is
+ * appended and the page comes back as it was, like an indent with no sibling
+ * above it.
+ */
+export async function outdentBlock(
+  project: ProjectRef,
+  date: string,
+  blockId: string,
+): Promise<Page> {
+  const projection = await projectionFor(project);
+  const blocks = projection.state[date] ?? [];
+  const found = locate(blocks, blockId);
+  if (!found) throw new Error('No such block');
+  if (!found.parent) return { date, blocks };
+
+  await projection.dispatch('block.outdented', {
+    page: date,
+    id: blockId,
+    after: found.parent.id,
+  });
   return { date, blocks: projection.state[date] ?? [] };
 }
 

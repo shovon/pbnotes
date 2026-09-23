@@ -29,6 +29,10 @@ const pages: PagesApi = {
     ipcRenderer.invoke(PAGE_CHANNELS.editBlock, projectId, date, blockId, text),
   deleteBlock: (projectId, date, blockId) =>
     ipcRenderer.invoke(PAGE_CHANNELS.deleteBlock, projectId, date, blockId),
+  indentBlock: (projectId, date, blockId) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.indentBlock, projectId, date, blockId),
+  outdentBlock: (projectId, date, blockId) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.outdentBlock, projectId, date, blockId),
 };
 
 // Only this explicit surface crosses the context bridge; the renderer never
