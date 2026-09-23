@@ -6,6 +6,7 @@ import {
   addBlock,
   deleteBlock,
   editBlock,
+  getLogStatus,
   getPage,
   indentBlock,
   outdentBlock,
@@ -46,6 +47,10 @@ export function registerPageIpc(): void {
     PAGE_CHANNELS.open,
     async (_event, id: unknown, date: unknown) =>
       getPage(await requireProject(id), requireDate(date)),
+  );
+
+  ipcMain.handle(PAGE_CHANNELS.status, async (_event, id: unknown) =>
+    getLogStatus(await requireProject(id)),
   );
 
   ipcMain.handle(

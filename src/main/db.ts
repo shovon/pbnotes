@@ -23,6 +23,30 @@ const MIGRATIONS: string[] = [
      pinned         INTEGER NOT NULL DEFAULT 0
    );
    CREATE INDEX idx_projects_last_opened ON projects (last_opened_at DESC);`,
+
+  // This machine's identity in a shared folder, and what it remembers between
+  // sessions about the log in each project.
+  //
+  // The id is here rather than in the project folder precisely because the
+  // project folder is the thing that gets copied: restore a backup or clone a
+  // VM and anything inside it comes along, including the claim to a log path.
+  // `userData` does not travel, which is the property the id needs. Losing
+  // this table costs a machine its identity and nothing else — it mints a new
+  // one, writes in a new directory, and still reads every log already there.
+  `CREATE TABLE device (
+     only_row INTEGER PRIMARY KEY CHECK (only_row = 1),
+     id       TEXT NOT NULL
+   );
+   CREATE TABLE log_state (
+     project_id  TEXT PRIMARY KEY REFERENCES projects (id) ON DELETE CASCADE,
+     -- Highest hybrid logical clock observed, so a folder that loses files to
+     -- selective sync cannot walk our clock backwards.
+     clock_l     INTEGER NOT NULL,
+     clock_c     INTEGER NOT NULL,
+     -- The last record we appended. A log running past it has another writer.
+     tip_segment INTEGER,
+     tip_seq     INTEGER
+   );`,
 ];
 
 let db: DatabaseSync | null = null;

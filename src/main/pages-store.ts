@@ -16,8 +16,10 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { Projection } from './projection.ts';
 import type { Reducer } from './projection.ts';
+import type { DeviceMemory } from './event-log.ts';
 import { locate } from '../shared/pages.ts';
 import type { Block, Page } from '../shared/pages.ts';
+import type { ViewStatus } from '../shared/log.ts';
 
 /** Enough of a project to find its log. */
 export type ProjectRef = {
@@ -40,6 +42,45 @@ export function logDirectory(projectPath: string): string {
 
 /** Date → the blocks written on it. */
 type Pages = Record<string, Block[]>;
+
+/**
+ * Event type → the highest payload `v` this build can fold.
+ *
+ * Kept beside `reduce` because it has to change whenever `reduce` does. Its
+ * job is the case a single-writer log could never produce: a newer build on
+ * another machine writing something this one does not understand. Those events
+ * are skipped, as they always were, but now they are counted and reported
+ * rather than silently leaving holes in the page.
+ */
+export const HANDLES: Record<string, number> = {
+  'block.created': 1,
+  'block.edited': 1,
+  'block.deleted': 1,
+  'block.indented': 1,
+  'block.outdented': 1,
+};
+
+/**
+ * How this machine identifies itself in a shared folder, and where it keeps
+ * what it remembers between sessions.
+ *
+ * Injected rather than imported so the store stays runnable under
+ * `node --test`, which has no `userData` and no database. Left unset, every
+ * session writes in a directory of its own: visible litter, never a lost
+ * event, and exactly what a test wants.
+ */
+export type DeviceBinding = {
+  device: string;
+  recall(projectId: string): DeviceMemory;
+  remember(projectId: string, memory: DeviceMemory): void;
+  rotate(): string;
+};
+
+let binding: DeviceBinding | undefined;
+
+export function bindDevice(next: DeviceBinding): void {
+  binding = next;
+}
 
 /**
  * Pure, and over state that survives a structured clone: the view crosses to
@@ -240,11 +281,25 @@ function projectionFor(project: ProjectRef): Promise<Projection<Pages>> {
 
   const entry: Entry = {
     path: project.path,
-    projection: Projection.open<Pages>(
-      logDirectory(project.path),
-      reduce,
-      {},
-    ),
+    projection: Projection.open<Pages>(logDirectory(project.path), reduce, {}, {
+      handles: HANDLES,
+      device: binding?.device,
+      memory: binding?.recall(project.id),
+      remember: (memory) => binding?.remember(project.id, memory),
+      // A new identity is this machine's, not this project's: every project's
+      // log has to start writing under it from here on.
+      rotate: () => {
+        if (!binding) throw new Error('No device binding to rotate');
+        const device = binding.rotate();
+        binding = { ...binding, device };
+        return device;
+      },
+    }).then((projection) => {
+      // The folder is shared, so another machine's notes can land at any
+      // moment. Without this they would not appear until the app restarts.
+      projection.watch();
+      return projection;
+    }),
   };
   // A log that failed to open — a damaged tail, a directory that went away
   // mid-write — must not stay cached as this project's log for the session.
@@ -261,6 +316,16 @@ export async function getPage(
 ): Promise<Page> {
   const projection = await projectionFor(project);
   return { date, blocks: projection.state[date] ?? [] };
+}
+
+/**
+ * How much of the folder this project's log could be read, and what the fold
+ * could not use. Nothing here is an error to clear — a device that is still
+ * syncing is a normal state that usually heals itself — but none of it may be
+ * skipped without the user being able to find out.
+ */
+export async function getLogStatus(project: ProjectRef): Promise<ViewStatus> {
+  return (await projectionFor(project)).status;
 }
 
 /**
