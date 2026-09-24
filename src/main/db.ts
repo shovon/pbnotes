@@ -47,6 +47,18 @@ const MIGRATIONS: string[] = [
      tip_segment INTEGER,
      tip_seq     INTEGER
    );`,
+
+  // Where the main window was when it was last closed. Pure convenience: the
+  // only cost of losing this row is a default-sized window, which is why it
+  // sits here rather than anywhere it would have to be kept in step.
+  `CREATE TABLE window_state (
+     only_row  INTEGER PRIMARY KEY CHECK (only_row = 1),
+     x         INTEGER NOT NULL,
+     y         INTEGER NOT NULL,
+     width     INTEGER NOT NULL,
+     height    INTEGER NOT NULL,
+     maximized INTEGER NOT NULL DEFAULT 0
+   );`,
 ];
 
 let db: DatabaseSync | null = null;

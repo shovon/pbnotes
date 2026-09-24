@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, nativeTheme, shell } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { closeDatabase, openDatabase } from './db';
@@ -6,6 +6,11 @@ import { registerProjectIpc } from './projects-ipc';
 import { bindDevice, closePages } from './pages-store';
 import { deviceId, recall, remember, rotateDeviceId } from './device-store';
 import { registerPageIpc } from './pages-ipc';
+import {
+  MIN_SIZE,
+  restoreWindowBounds,
+  trackWindowState,
+} from './window-state';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -13,14 +18,26 @@ if (started) {
 }
 
 const createWindow = () => {
-  // Create the browser window.
+  const { maximized, ...bounds } = restoreWindowBounds();
+
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    ...bounds,
+    minWidth: MIN_SIZE.width,
+    minHeight: MIN_SIZE.height,
+    // An empty window painted before the renderer has anything to show reads
+    // as a flash of the wrong colour, so it is not shown until it has content,
+    // and what it paints underneath matches the app's own background rather
+    // than Electron's white.
+    show: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1b1b1d' : '#ffffff',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
+
+  if (maximized) mainWindow.maximize();
+  mainWindow.once('ready-to-show', () => mainWindow.show());
+  trackWindowState(mainWindow);
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -53,8 +70,9 @@ const createWindow = () => {
     openExternally(url);
   });
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // Only while developing. A packaged app that opens with the inspector
+  // showing has given away half its window to something the user cannot use.
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) mainWindow.webContents.openDevTools();
 };
 
 // This method will be called when Electron has finished
