@@ -1,4 +1,4 @@
-import type { Project } from '../shared/projects';
+import type { Project } from '../../shared/projects';
 
 /**
  * The option that opens the directory picker instead of switching project.

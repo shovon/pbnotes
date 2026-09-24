@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import type { Project } from '../shared/projects';
+import type { Project } from '../../shared/projects';
 import ProjectPicker from './ProjectPicker';
 
 const project = (id: string, name: string, path: string): Project => ({
