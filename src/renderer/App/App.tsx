@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Availability, Project } from '../shared/projects';
-import ProjectPicker from './ProjectPicker';
-import ProjectView from './ProjectView';
-import Welcome from './Welcome';
-import type { Act } from './ui';
+import type { Availability, Project } from '../../shared/projects';
+import ProjectPicker from '../ProjectPicker/ProjectPicker';
+import ProjectView from '../project/ProjectView';
+import Welcome from '../Welcome/Welcome';
+import type { Act } from '../ui';
 
 const { projects: api } = window.gnotes;
 

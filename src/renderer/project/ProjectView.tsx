@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useState } from 'react';
-import type { Availability, Project } from '../shared/projects';
-import { lastLeaf, locate } from '../shared/pages';
-import type { Block as BlockType, Page } from '../shared/pages';
-import { AVAILABILITY_LABEL, formatLastOpened, today } from './ui';
-import type { Act } from './ui';
-import { Block, BlockEditor } from './Block';
+import type { Availability, Project } from '../../shared/projects';
+import { lastLeaf, locate } from '../../shared/pages';
+import type { Block as BlockType, Page } from '../../shared/pages';
+import { AVAILABILITY_LABEL, formatLastOpened, today } from '../ui';
+import type { Act } from '../ui';
+import { Block, BlockEditor } from './Block/Block';
 
 const { projects: api, pages } = window.gnotes;
 
