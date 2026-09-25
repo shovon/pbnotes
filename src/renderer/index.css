@@ -201,9 +201,15 @@ button.danger:hover {
    all that separates them, and a wide one reads as a list of things rather
    than a page of writing. */
 .page {
+  /* The tail of a day is click-to-write, so it needs somewhere to click and
+     a caret to say so. Doubles as the air between one day and the next.
+     ponytail: the space below the *whole* stack belongs to no day and stays
+     dead; give it to a day only once it is clear which day that should be. */
+  cursor: text;
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+  padding-bottom: 3rem;
 }
 
 /* Logseq's model, and the reason the two states share every metric below:
