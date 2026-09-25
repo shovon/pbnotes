@@ -1,6 +1,7 @@
 import Markdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { remarkWikilink } from './wikilink.ts';
 
 /**
  * One block in its two states. Neither reaches main: the page decides what a
@@ -64,7 +65,7 @@ export function Block({
       }}
     >
       <Markdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[remarkMath, remarkWikilink]}
         /**
          * KaTeX throws on malformed TeX by default, which would take the
          * whole page down over a half-typed formula. Bad math renders as

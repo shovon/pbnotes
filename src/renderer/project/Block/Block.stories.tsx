@@ -83,3 +83,11 @@ export const Overflow: Story = {
     text: 'supercalifragilisticexpialidociousandthensomemoreforgoodmeasure\n\n```\necho "a line long enough that it has to scroll rather than widen the page it sits on"\n```',
   },
 };
+
+/** `#[[…]]` reads as a link and goes nowhere — there is no page behind it
+    yet. Inside code it stays the characters that were typed. */
+export const Wikilinks: Story = {
+  args: {
+    text: 'Ask #[[Mira]] whether #[[the good coffee]] is still in the budget.\n\n- `grep #[[foo]]` is not a link',
+  },
+};
