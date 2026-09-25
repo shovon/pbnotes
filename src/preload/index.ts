@@ -23,6 +23,7 @@ const projects: ProjectsApi = {
 const pages: PagesApi = {
   open: (projectId, date) =>
     ipcRenderer.invoke(PAGE_CHANNELS.open, projectId, date),
+  openAll: (projectId) => ipcRenderer.invoke(PAGE_CHANNELS.openAll, projectId),
   status: (projectId) => ipcRenderer.invoke(PAGE_CHANNELS.status, projectId),
   addBlock: (projectId, date, text, after) =>
     ipcRenderer.invoke(PAGE_CHANNELS.addBlock, projectId, date, text, after),

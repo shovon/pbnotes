@@ -319,6 +319,29 @@ export async function getPage(
 }
 
 /**
+ * Every day that has something on it, newest first: the whole project out of
+ * one fold, which is what the default view stacks.
+ *
+ * A day that folds to nothing is left out. A date whose only block was
+ * deleted is not a page the user wrote on any more, and a heading with
+ * nothing under it reads like something went missing.
+ *
+ * Today is not added here. Which day that is depends on the user's timezone,
+ * and main holds no opinion about that — the renderer puts today at the top
+ * of the stack whether or not it is in this list.
+ *
+ * Sorted on the date string, which for `YYYY-MM-DD` is the same order as the
+ * dates themselves. That is the reason for the format.
+ */
+export async function getPages(project: ProjectRef): Promise<Page[]> {
+  const projection = await projectionFor(project);
+  return Object.entries(projection.state)
+    .filter(([, blocks]) => blocks.length > 0)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, blocks]) => ({ date, blocks }));
+}
+
+/**
  * How much of the folder this project's log could be read, and what the fold
  * could not use. Nothing here is an error to clear — a device that is still
  * syncing is a normal state that usually heals itself — but none of it may be

@@ -72,6 +72,7 @@ export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export const PAGE_CHANNELS = {
   open: 'pages:open',
+  openAll: 'pages:open-all',
   addBlock: 'pages:add-block',
   editBlock: 'pages:edit-block',
   deleteBlock: 'pages:delete-block',
@@ -84,6 +85,15 @@ export const PAGE_CHANNELS = {
 export type PagesApi = {
   /** The day's page, empty if nothing has been written to it yet. */
   open(projectId: string, date: string): Promise<Page>;
+  /**
+   * Every day that has blocks on it, newest first — the default view of a
+   * project, which is all of its days stacked rather than one of them.
+   *
+   * Days that fold to nothing are not in it, and neither is today unless
+   * something has been written there: main does not know which day today is,
+   * so the view puts it at the top itself.
+   */
+  openAll(projectId: string): Promise<Page[]>;
   /**
    * How much of the project's log folder could be read, and what the fold
    * could not use.
