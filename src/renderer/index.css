@@ -350,6 +350,14 @@ button.danger:hover {
   color: var(--accent);
 }
 
+/* A little air after a wikilink, so the sigil that starts the next one does
+   not crowd the last word of this one when two sit side by side. Margin, not
+   padding: nothing is painted behind the link, so the two would look the
+   same, and margin collapses out of the way at the end of a line. */
+.block .wikilink {
+  margin-right: 0.15rem;
+}
+
 /* Display math ($$…$$) is a block of its own: KaTeX gives it a full em of
    margin, which is more air than a note block has to spare, and a long
    formula scrolls rather than pushing the box wide. */
