@@ -84,10 +84,13 @@ export const Overflow: Story = {
   },
 };
 
-/** `#[[…]]` reads as a link and goes nowhere — there is no page behind it
-    yet. Inside code it stays the characters that were typed. */
+/** Three ways of writing one link, all of which go nowhere — there is no page
+    behind them yet. `#money` needs no brackets; brackets are for a name with a
+    space in it, and with a `#` they are replaced in what is shown; without one
+    they stay. Inside code, and in a URL, the characters that were typed stay
+    the characters that were typed. */
 export const Wikilinks: Story = {
   args: {
-    text: 'Ask #[[Mira]] whether #[[the good coffee]] is still in the budget.\n\n- `grep #[[foo]]` is not a link',
+    text: 'Ask [[Mira]] whether #[[the good coffee]] is still in the #money budget.\n\n- `grep #foo` is not a link, and neither is https://example.com/#top',
   },
 };

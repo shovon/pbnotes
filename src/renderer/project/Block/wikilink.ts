@@ -1,31 +1,50 @@
 import type { Root, RootContent, Text } from 'mdast';
 
 /**
- * `#[[the good coffee]]` is a link, rendered as `#the good coffee` to a page of that name. It renders as one
- * and goes nowhere: an anchor with no `href`, which is what the platform
- * already means by a link whose target is not settled yet — it takes the link
- * colour, it is not focusable, and clicking it falls through to the block and
- * opens the editor, the same as clicking the words around it.
+ * A hashtag and a link are the same idea here, so there is one plugin and
+ * three ways of writing what it makes. `#Mira` is the short way and wants no
+ * ceremony; brackets are for a name with a space in it, `#[[the good
+ * coffee]]`, which renders as `#the good coffee`; and `[[Mira]]` without the
+ * sigil keeps its brackets, because with nothing in front of the words they
+ * are all that marks them as a link and dropping them would leave coloured
+ * prose. All three go nowhere: an anchor with no `href`, which is what the
+ * platform already means by a link whose target is not settled yet — it takes
+ * the link colour, it is not focusable, and clicking it falls through to the
+ * block and opens the editor, the same as clicking the words around it.
  *
  * A remark plugin rather than a string replace on the source, because the
- * source is a note and a note is full of code: `#[[...]]` inside a fenced
- * block or a backtick span is text the user typed and has to stay text.
- * Working on the tree gets that for free — `code` and `inlineCode` carry a
- * `value`, not children, so the walk never reaches inside them.
+ * source is a note and a note is full of code: `#foo` inside a fenced block
+ * or a backtick span is text the user typed and has to stay text. Working on
+ * the tree gets that for free — `code` and `inlineCode` carry a `value`, not
+ * children, so the walk never reaches inside them.
+ *
+ * The bracketed forms come first in the alternation, so `#[[a b]]` is never
+ * read as a bare `#` with nothing after it. A bare tag starts and ends with a
+ * letter, digit or underscore and may run through `-` and `/` in between, so
+ * `Ask #Mira.` leaves the full stop behind and `#work/` leaves the slash.
+ * `\p{L}` over `\w` for the same keystrokes, so `#café` and `#日本語` work.
+ *
+ * The lookbehind is what keeps a pasted URL from sprouting a link: nothing is
+ * autolinking bare URLs, so `https://example.com/#top` arrives as a text node
+ * the walk does descend into, and `#top` would be coloured. It blocks `a#b`
+ * mid-word and `####Foo` on the same rule.
  */
-const PATTERN = /#\[\[(.*?)\]\]/g;
+const PATTERN =
+  /(#?)\[\[(.*?)\]\]|(?<![\p{L}\p{N}/#])#[\p{L}\p{N}_](?:[\p{L}\p{N}_/-]*[\p{L}\p{N}_])?/gu;
 
 /**
  * The custom node renders through `data.hName`; no handler to register. The
- * `#` stays in the label and the brackets do not: the sigil is what marks
- * the words as a link at a glance, and it reads the way it is written
- * everywhere else a tag is written.
+ * label is what the user typed, minus the brackets when a `#` stands in for
+ * them: a tag reads the way a tag reads everywhere else, and a link written
+ * without one keeps the only mark it has. The bare form has nothing to strip,
+ * so it is carried through whole — which is also why the caller can hand the
+ * raw match straight over.
  */
 function wikilink(label: string): RootContent {
   return {
     type: 'wikilink',
     data: { hName: 'a', hProperties: { className: 'wikilink' } },
-    children: [{ type: 'text', value: `#${label}` }],
+    children: [{ type: 'text', value: label }],
   } as unknown as RootContent;
 }
 
@@ -38,7 +57,10 @@ function split(node: Text): RootContent[] {
     if (match.index > at) {
       out.push({ type: 'text', value: node.value.slice(at, match.index) });
     }
-    out.push(wikilink(match[1]));
+    // The bare branch captures nothing, so `match[1]` is undefined there and
+    // the whole match is already the label. Give that branch a group and the
+    // two bracketed forms break.
+    out.push(wikilink(match[1] ? `${match[1]}${match[2]}` : match[0]));
     at = match.index + match[0].length;
   }
   if (out.length === 0) return [node];
