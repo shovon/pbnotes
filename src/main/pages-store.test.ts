@@ -18,6 +18,7 @@ import {
   deleteBlock,
   editBlock,
   getPage,
+  getPages,
   indentBlock,
   logDirectory,
   outdentBlock,
@@ -538,6 +539,25 @@ test('outdenting a top-level block appends nothing', async () => {
     () => outdentBlock(it, TODAY, 'not-a-real-id'),
     /No such block/,
   );
+
+  await closePages();
+});
+
+test('every written day comes back newest first, emptied days left out', async () => {
+  const it = await project();
+  await addBlock(it, '2026-09-20', 'the oldest thing');
+  await addBlock(it, TOMORROW, 'the newest thing');
+  const gone = await addBlock(it, TODAY, 'written then deleted');
+  await deleteBlock(it, TODAY, gone.blocks[0].id);
+
+  assert.deepEqual(
+    (await getPages(it)).map((page) => page.date),
+    [TOMORROW, '2026-09-20'],
+    'newest first, and a day that folds to nothing is not a page',
+  );
+  // Today is not invented here either: which day that is belongs to the
+  // renderer, which puts it at the top of the stack itself.
+  assert.deepEqual((await getPages(it))[0].blocks[0].text, 'the newest thing');
 
   await closePages();
 });

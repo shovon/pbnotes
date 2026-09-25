@@ -1,36 +1,11 @@
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Availability, Project } from '../../shared/projects';
-import { lastLeaf, locate } from '../../shared/pages';
-import type { Block as BlockType, Page } from '../../shared/pages';
-import { AVAILABILITY_LABEL, formatLastOpened, today } from '../ui';
+import type { Page } from '../../shared/pages';
+import { today } from '../ui';
 import type { Act } from '../ui';
-import { Block, BlockEditor } from './Block/Block';
+import DayPage from './DayPage/DayPage';
 
-const { projects: api, pages } = window.gnotes;
-
-/**
- * Where an unwritten block is waiting to be typed. `after` is the block it
- * goes beneath; without one it goes at the end of the day. Null is no box
- * open at all — three states, because "writing" and "writing *here*" are
- * different questions and a boolean can only answer the first.
- */
-type Writing = { after?: string } | null;
-
-/**
- * The block `addBlock` just wrote, found by where it must have landed: the
- * fold splices it directly beneath `after` as its next sibling — wherever in
- * the tree that is — or pushes it last. Saves widening the IPC result to
- * carry an id back for the one caller that wants it.
- *
- * `locate`, not a scan of the top level: `after` is just as often a child,
- * and a miss there does not read as a miss — it reads as index 0, which is
- * the first block on the page.
- */
-function created(page: Page, after?: string): string | undefined {
-  if (!after) return page.blocks.at(-1)?.id;
-  const found = locate(page.blocks, after);
-  return found && found.siblings[found.at + 1]?.id;
-}
+const { pages } = window.gnotes;
 
 type Props = {
   project: Project;
@@ -38,315 +13,70 @@ type Props = {
   act: Act;
 };
 
-export default function ProjectView({ project, availability, act }: Props) {
+/**
+ * The default view of a project: every day that has anything on it, newest
+ * first, with today at the top.
+ *
+ * All of them, in one read. A project's days are folded out of a single log
+ * whether the view asks for one of them or all of them, so there is nothing
+ * to save by asking for less — and a day is only ever a heading and a handful
+ * of lines. Each `DayPage` owns its day from there on; writes hand the folded
+ * page straight back, so nothing re-reads the whole stack to add a block.
+ *
+ * ponytail: the whole history renders at once. Add windowing when someone has
+ * enough years in one project for that to show.
+ */
+export default function ProjectView({ project, act }: Props) {
   // ponytail: read once per render, so a window left open across midnight
-  // keeps yesterday's page until something re-renders it. Add a timer to the
-  // next local midnight if that ever bites.
+  // keeps yesterday at the top until something re-renders it. Add a timer to
+  // the next local midnight if that ever bites.
   const date = today();
-  const [page, setPage] = useState<Page | null>(null);
-  const [writing, setWriting] = useState<Writing>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  // Where the click that opened the block landed. Undefined when there was no
-  // click to read a position from — keyboard activation, or a new block.
-  const [caret, setCaret] = useState<number | undefined>(undefined);
-  const [renaming, setRenaming] = useState(false);
+  const [days, setDays] = useState<Page[] | null>(null);
 
-  /**
-   * Today's page exists the moment it is asked for: main folds the log and
-   * hands back whatever blocks carry this date, which for a fresh day is
-   * none. Nothing is written until the user writes something.
-   */
   useEffect(() => {
     let current = true;
-    void pages.open(project.id, date).then((next) => {
-      if (current) setPage(next);
+    void pages.openAll(project.id).then((next) => {
+      if (current) setDays(next);
     });
     // Dropped if the view moves to another project or the day rolls over
-    // mid-session, so a slow read cannot paint the wrong page.
+    // mid-session, so a slow read cannot paint the wrong project's days.
     return () => {
       current = false;
     };
   }, [project.id, date]);
 
   /**
-   * Text that came out of the box the way it went in is not an edit, and
-   * appends nothing — the log takes facts, and it takes them forever.
+   * Today is in the stack whether or not it has been written on: it is the
+   * day the user is about to type in, and main leaves it out until it has
+   * blocks because it has no opinion about which day today is.
    *
-   * Emptying a block *is* an edit. A blank block is a legitimate thing to
-   * want: a gap between two thoughts, or somewhere to come back to — which is
-   * why clearing one and leaving commits the blank, and only a further
-   * Backspace in the empty box means delete.
+   * Sorted again only in that case, and only because a day dated later than
+   * today can exist — another machine with a fast clock, or a folder that
+   * travelled backwards across a date line. Rare, and not worth rendering out
+   * of order over.
    */
-  const commitEdit = (block: BlockType, text: string) => {
-    setEditingId(null);
-    if (text === block.text) return;
-    act(async () => {
-      setPage(await pages.editBlock(project.id, date, block.id, text));
-    });
-  };
+  const stack =
+    days === null || days.some((page) => page.date === date)
+      ? days
+      : [{ date, blocks: [] }, ...days].sort((a, b) =>
+          b.date.localeCompare(a.date),
+        );
 
-  /**
-   * Backspace in an already-empty box. Unmounts the editor first, so blur
-   * cannot slip a `block.edited` to empty into the log ahead of the delete:
-   * the user cleared the box on the way to removing the block, and an empty
-   * block is not a thing they ever asked to keep.
-   *
-   * Then the box reopens on the block above, caret at its end. Backspace at
-   * the start of a line is a movement as much as a deletion — it is how you
-   * back out of a block you did not mean to start — so the keystroke never
-   * leaves the user staring at a page with the focus dropped. Every case
-   * below keeps them writing; they differ only in where.
-   *
-   * Above the first block there is nothing, so the edit continues *below* it
-   * instead: caret at the start of the block that is about to become first,
-   * which is the position the user's caret was already in. Not its end — the
-   * text under the deleted block moves up to where the user is, rather than
-   * the user moving down to it.
-   *
-   * Deleting the *only* block has no block on either side, and falls back to
-   * the page itself: the same box a blank page already offers, opened rather
-   * than waiting to be clicked.
-   */
-  const commitDelete = (block: BlockType) => {
-    // A block with children is not deleted by this key. It is an empty line
-    // with things filed under it, and handing a whole subtree to one
-    // keystroke is not what emptying a box means. So: nothing at all — no
-    // delete, no move, the box stays open where it is. Clear the last child
-    // out and this same press removes the parent, which is the way back.
-    if (block.children.length > 0) return;
-
-    // Read before the delete lands, off the page still on screen.
-    const blocks = page?.blocks ?? [];
-    const found = locate(blocks, block.id);
-    // The block above in the order the page reads: the sibling above,
-    // descended to its deepest last child, or — for a first child — the
-    // block it is filed under. Only the page's very first block has neither,
-    // which is why this is not simply the previous sibling.
-    const above =
-      found && found.at > 0
-        ? lastLeaf(found.siblings[found.at - 1])
-        : found?.parent;
-    // Only for that first block. Guarded on the position rather than on
-    // `above` so a block the page does not have falls through to neither.
-    const below =
-      found && found.at === 0 && !found.parent ? blocks[1] : undefined;
-    setCaret(above ? above.text.length : 0);
-    setEditingId(above?.id ?? below?.id ?? null);
-    // Nothing either side: the page is about to be empty.
-    if (!above && !below) setWriting({});
-    act(async () => {
-      setPage(await pages.deleteBlock(project.id, date, block.id));
-    });
-  };
-
-  /**
-   * Tab and Shift+Tab. Files the block under the sibling above it, or brings
-   * it back out beneath what it was filed under — children and all, either
-   * way — and leaves the user still writing in it.
-   *
-   * The box is closed before the move and reopened after rather than left
-   * mounted: the block lands somewhere else in the rendered tree, which
-   * unmounts the editor regardless, and letting that happen on its own would
-   * fire blur on the way out and commit the same text a second time. Closing
-   * first is the escape the delete and continue paths already take.
-   *
-   * At either edge — first among its siblings going in, already at the top
-   * level coming out — there is nowhere to go, so the keystroke does nothing
-   * and nothing is sent. Main refuses both too; the check is here only to
-   * save a close-and-reopen for a move that will not happen.
-   */
-  const commitIndent = (
-    block: BlockType,
-    text: string,
-    at: number,
-    by: 1 | -1,
-  ) => {
-    const found = locate(page?.blocks ?? [], block.id);
-    if (!found) return;
-    if (by === 1 ? found.at === 0 : !found.parent) return;
-    const move = by === 1 ? pages.indentBlock : pages.outdentBlock;
-    setEditingId(null);
-    setCaret(at);
-    act(async () => {
-      // Tab is not a commit, but the box has to close to move and the text in
-      // it would go with it. Unchanged text appends nothing, as ever.
-      if (text !== block.text) {
-        await pages.editBlock(project.id, date, block.id, text);
-      }
-      setPage(await move(project.id, date, block.id));
-      setEditingId(block.id);
-    });
-  };
-
-  /**
-   * Writes the box that is open, and then either stops, opens another beneath
-   * what it just wrote — which is what makes a run of blocks typeable without
-   * reaching for the mouse between them — or indents what it wrote. Any of
-   * those can only be placed once the append has come back, because until
-   * then the block has no id.
-   *
-   * `indent` is Tab in a box for a block that does not exist yet, which is
-   * the ordinary way an outline gets built: type, Enter, Tab. It takes two
-   * events, because nothing can be filed under a block that was never
-   * written. The user pressed one key, so the box reopens on what they were
-   * typing in rather than closing.
-   */
-  const commitNew = (
-    text: string,
-    {
-      then,
-      caret,
-    }: { then: 'stop' | 'again' | 'indent' | 'outdent'; caret?: number },
-  ) => {
-    const after = writing?.after;
-    setWriting(null);
-
-    /**
-     * Enter on an empty box that is sitting among a block's children pops the
-     * box out a level rather than writing anything. It looks like an outdent
-     * and it is not one: nothing has been written, so there is no block to
-     * move — the box just re-places itself beside the parent, which is where
-     * a block typed there would have gone anyway.
-     *
-     * Repeats all the way out, a level per press, because each one leaves the
-     * box beside its new parent and asks the same question again. At the top
-     * level there is no parent left and Enter goes back to making a gap.
-     */
-    const parent = after
-      ? locate(page?.blocks ?? [], after)?.parent
-      : undefined;
-    if (!text && (then === 'again' || then === 'outdent') && parent) {
-      setWriting({ after: parent.id });
-      return;
-    }
-
-    // An empty block is written when it is *asked* for — Enter on an empty
-    // box is how a gap gets made, and so is Tab. Blurring a box nothing was
-    // ever typed into is a click that landed elsewhere, and writes nothing.
-    if (!text && then === 'stop') return;
-    act(async () => {
-      const next = await pages.addBlock(project.id, date, text, after);
-      setPage(next);
-      const id = created(next, after);
-      if (then === 'again') setWriting({ after: id });
-      if ((then === 'indent' || then === 'outdent') && id) {
-        setCaret(caret);
-        // Nowhere to go — the first block of an empty page going in, a
-        // top-level one coming out — comes back unchanged, and the box simply
-        // reopens where it was.
-        const move = then === 'indent' ? pages.indentBlock : pages.outdentBlock;
-        setPage(await move(project.id, date, id));
-        setEditingId(id);
-      }
-    });
-  };
-
-  /**
-   * Backspace in an empty box for a block that does not exist yet. Nothing
-   * was written, so nothing is deleted and nothing is appended: the box
-   * closes and the caret goes to the end of the block directly above it,
-   * which is where the user was before they opened it.
-   *
-   * Which block that is takes the same walk the delete path takes: the box
-   * renders below a whole subtree, so the block above it on screen is the
-   * deepest last child of what it sits under — rarely the block `after`
-   * names — or of the page's last block, for the box at the end of the day.
-   *
-   * A page with nothing on it has no block above, and the box stays open: it
-   * is the only way in, and backing out of it would leave the user looking at
-   * a page they cannot type on. So does a box whose `after` the page has no
-   * record of, which is the same nothing-to-go-back-to.
-   */
-  const cancelNew = () => {
-    const blocks = page?.blocks ?? [];
-    const after = writing?.after;
-    const found = after ? locate(blocks, after) : undefined;
-    const under = after ? found?.siblings[found.at] : blocks.at(-1);
-    if (!under) return;
-    const above = lastLeaf(under);
-    setWriting(null);
-    setCaret(above.text.length);
-    setEditingId(above.id);
-  };
-
-  /** The box for a block that does not exist yet. */
-  const newBlockEditor = (
-    <BlockEditor
-      placeholder="Write something…"
-      onCancel={() => setWriting(null)}
-      onBackspace={cancelNew}
-      onCommit={(text) => commitNew(text, { then: 'stop' })}
-      onContinue={(text) => commitNew(text, { then: 'again' })}
-      onIndent={(text, at, by) =>
-        commitNew(text, { then: by === 1 ? 'indent' : 'outdent', caret: at })
-      }
-    />
-  );
-
-  /**
-   * The page, depth first. Children render in their own indented column
-   * under their parent, and the box for a new block sits below that whole
-   * subtree — `after` makes the new block the next *sibling*, which is where
-   * the fold puts it too.
-   */
-  const renderBlocks = (blocks: BlockType[]) =>
-    blocks.map((block) => (
-      <Fragment key={block.id}>
-        {editingId === block.id ? (
-          <BlockEditor
-            initial={block.text}
-            caret={caret}
-            onCancel={() => setEditingId(null)}
-            onCommit={(text) => commitEdit(block, text)}
-            onBackspace={() => commitDelete(block)}
-            onIndent={(text, at, by) => commitIndent(block, text, at, by)}
-            onContinue={(text) => {
-              commitEdit(block, text);
-              setWriting({ after: block.id });
-            }}
-          />
-        ) : (
-          <Block
-            text={block.text}
-            onActivate={(at) => {
-              setCaret(at);
-              setEditingId(block.id);
-            }}
-          />
-        )}
-        {block.children.length > 0 && (
-          <div className="block-children">{renderBlocks(block.children)}</div>
-        )}
-        {writing?.after === block.id && newBlockEditor}
-      </Fragment>
-    ));
+  if (stack === null) return <p className="subtitle">Loading…</p>;
 
   return (
     <>
-      <h2 className="page-date">{date}</h2>
-
-      {page === null ? (
-        <p className="subtitle">Loading…</p>
-      ) : (
-        <div className="page">
-          {renderBlocks(page.blocks)}
-
-          {/* The tail: a box when one is waiting at the end of the day, and
-              nothing at all otherwise — a written page ends on its last
-              block, and Enter out of that block is how the next one starts.
-              The exception is a page with no blocks yet, which needs
-              somewhere to click or there is no way in. */}
-          {writing === null ? (
-            page.blocks.length === 0 && (
-              <button className="block empty" onClick={() => setWriting({})}>
-                Click to write the first block
-              </button>
-            )
-          ) : writing.after === undefined ? (
-            newBlockEditor
-          ) : null}
-        </div>
-      )}
+      {stack.map((page) => (
+        // Keyed by the day, so a day is never handed another day's editor
+        // state — the open box and the block id in it belong to the page they
+        // were opened on.
+        <DayPage
+          key={page.date}
+          project={project}
+          initial={page}
+          act={act}
+        />
+      ))}
     </>
   );
 }
