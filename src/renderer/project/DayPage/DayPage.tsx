@@ -313,7 +313,16 @@ export default function DayPage({ project, initial, act }: Props) {
     <>
       <h2 className="page-date">{date}</h2>
 
-      <div className="page">
+      {/* The blank space under the day is part of the day: clicking it opens
+          the box at the end, the way clicking below the last line of any
+          editor puts the caret there. Only when the click landed on the page
+          itself — a click on a block is that block's, and it bubbles here. */}
+      <div
+        className="page"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) setWriting({});
+        }}
+      >
         {renderBlocks(page.blocks)}
 
         {/* The tail: a box when one is waiting at the end of the day, and
