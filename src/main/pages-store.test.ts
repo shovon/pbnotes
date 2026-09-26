@@ -72,7 +72,7 @@ test('the log is written into the project\'s own gnotes folder', async () => {
 test('opening a day that was never written to appends nothing', async () => {
   const it = await project();
 
-  assert.deepEqual(await getPage(it, TODAY), { date: TODAY, blocks: [] });
+  assert.deepEqual(await getPage(it, TODAY), { title: TODAY, blocks: [] });
   assert.equal(await logSize(await segment(it.path)), 0);
 
   await closePages();
@@ -543,6 +543,33 @@ test('outdenting a top-level block appends nothing', async () => {
   await closePages();
 });
 
+test('a page a link named holds blocks and stays out of the journal', async () => {
+  const it = await project();
+  await addBlock(it, TODAY, 'Ask #Mira about the hinge');
+  const written = await addBlock(it, 'Mira', 'Prefers the good coffee');
+
+  // Nothing created it: writing to the title is all it took, exactly as it
+  // is for a day. Same log, same events, same fold.
+  assert.equal(written.title, 'Mira');
+  assert.deepEqual(
+    (await getPage(it, 'Mira')).blocks.map((block) => block.text),
+    ['Prefers the good coffee'],
+  );
+  await closePages();
+  assert.deepEqual(
+    (await getPage(it, 'Mira')).blocks.map((block) => block.text),
+    ['Prefers the good coffee'],
+  );
+
+  // The journal is the days. A named page in it would sort between years.
+  assert.deepEqual(
+    (await getPages(it)).map((page) => page.title),
+    [TODAY],
+  );
+
+  await closePages();
+});
+
 test('every written day comes back newest first, emptied days left out', async () => {
   const it = await project();
   await addBlock(it, '2026-09-20', 'the oldest thing');
@@ -551,7 +578,7 @@ test('every written day comes back newest first, emptied days left out', async (
   await deleteBlock(it, TODAY, gone.blocks[0].id);
 
   assert.deepEqual(
-    (await getPages(it)).map((page) => page.date),
+    (await getPages(it)).map((page) => page.title),
     [TOMORROW, '2026-09-20'],
     'newest first, and a day that folds to nothing is not a page',
   );

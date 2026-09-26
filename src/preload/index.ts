@@ -21,20 +21,20 @@ const projects: ProjectsApi = {
 };
 
 const pages: PagesApi = {
-  open: (projectId, date) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.open, projectId, date),
+  open: (projectId, title) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.open, projectId, title),
   openAll: (projectId) => ipcRenderer.invoke(PAGE_CHANNELS.openAll, projectId),
   status: (projectId) => ipcRenderer.invoke(PAGE_CHANNELS.status, projectId),
-  addBlock: (projectId, date, text, after) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.addBlock, projectId, date, text, after),
-  editBlock: (projectId, date, blockId, text) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.editBlock, projectId, date, blockId, text),
-  deleteBlock: (projectId, date, blockId) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.deleteBlock, projectId, date, blockId),
-  indentBlock: (projectId, date, blockId) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.indentBlock, projectId, date, blockId),
-  outdentBlock: (projectId, date, blockId) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.outdentBlock, projectId, date, blockId),
+  addBlock: (projectId, title, text, after) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.addBlock, projectId, title, text, after),
+  editBlock: (projectId, title, blockId, text) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.editBlock, projectId, title, blockId, text),
+  deleteBlock: (projectId, title, blockId) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.deleteBlock, projectId, title, blockId),
+  indentBlock: (projectId, title, blockId) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.indentBlock, projectId, title, blockId),
+  outdentBlock: (projectId, title, blockId) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.outdentBlock, projectId, title, blockId),
 };
 
 // Only this explicit surface crosses the context bridge; the renderer never

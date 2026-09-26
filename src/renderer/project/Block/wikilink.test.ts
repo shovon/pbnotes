@@ -25,6 +25,31 @@ function labels(node: Node): string[] {
   return (node.children ?? []).flatMap(labels);
 }
 
+/** Every page the plugin linked to, in document order — the `href` minus its
+    `#`, or `undefined` for a link that names nothing. */
+function pages(node: Node): (string | undefined)[] {
+  if (node.type === 'wikilink') {
+    const href = (node as { data?: { hProperties?: { href?: string } } }).data
+      ?.hProperties?.href;
+    return [href?.slice(1)];
+  }
+  return (node.children ?? []).flatMap(pages);
+}
+
+/** Three spellings, one page. The label keeps what was typed; the page it
+    names does not: brackets and sigil are syntax, and the spaces just inside
+    the brackets are not part of the name. */
+test('every spelling of a link names the same page', () => {
+  assert.deepEqual(
+    pages(parse('[[Mira]] #Mira #[[Mira]] [[ the good coffee ]] #[[ Mira ]]')),
+    ['Mira', 'Mira', 'Mira', 'the good coffee', 'Mira'],
+  );
+});
+
+test('empty brackets name no page', () => {
+  assert.deepEqual(pages(parse('[[]] and #[[ ]]')), [undefined, undefined]);
+});
+
 test('links prose, and keeps the text around it', () => {
   const [paragraph] = parse('Ask #[[Mira]] about #[[the good coffee]].')
     .children ?? [];

@@ -58,6 +58,13 @@ export function Block({
       tabIndex={0}
       onClick={(event) => onActivate(sourceOffset(event, text))}
       onKeyDown={(event) => {
+        // A wikilink inside the block is focusable in its own right, and
+        // Enter on it is the browser's own click — synthesised from this very
+        // keydown's default action, which the preventDefault below would
+        // cancel. Only a key on the block itself opens the editor. (The div
+        // is a button role, so assistive tech folds the link into the
+        // button's name; DOM focus still reaches it by Tab.)
+        if (event.target !== event.currentTarget) return;
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           onActivate();

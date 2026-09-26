@@ -17,7 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { Projection } from './projection.ts';
 import type { Reducer } from './projection.ts';
 import type { DeviceMemory } from './event-log.ts';
-import { locate } from '../shared/pages.ts';
+import { DATE_PATTERN, locate } from '../shared/pages.ts';
 import type { Block, Page } from '../shared/pages.ts';
 import type { ViewStatus } from '../shared/log.ts';
 
@@ -40,7 +40,7 @@ export function logDirectory(projectPath: string): string {
   return path.join(projectPath, 'gnotes');
 }
 
-/** Date → the blocks written on it. */
+/** Title → the blocks on it: a journal day or a page a link named. */
 type Pages = Record<string, Block[]>;
 
 /**
@@ -312,15 +312,17 @@ function projectionFor(project: ProjectRef): Promise<Projection<Pages>> {
 
 export async function getPage(
   project: ProjectRef,
-  date: string,
+  title: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
-  return { date, blocks: projection.state[date] ?? [] };
+  return { title, blocks: projection.state[title] ?? [] };
 }
 
 /**
- * Every day that has something on it, newest first: the whole project out of
- * one fold, which is what the default view stacks.
+ * The journal: every day that has something on it, newest first, out of the
+ * same fold that holds every other page. Only the days — a page a link named
+ * shares the fold and the events but is not a day, and stacking it among them
+ * would sort `Mira` somewhere between two years.
  *
  * A day that folds to nothing is left out. A date whose only block was
  * deleted is not a page the user wrote on any more, and a heading with
@@ -336,9 +338,9 @@ export async function getPage(
 export async function getPages(project: ProjectRef): Promise<Page[]> {
   const projection = await projectionFor(project);
   return Object.entries(projection.state)
-    .filter(([, blocks]) => blocks.length > 0)
+    .filter(([title, blocks]) => DATE_PATTERN.test(title) && blocks.length > 0)
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([date, blocks]) => ({ date, blocks }));
+    .map(([title, blocks]) => ({ title, blocks }));
 }
 
 /**
@@ -352,7 +354,7 @@ export async function getLogStatus(project: ProjectRef): Promise<ViewStatus> {
 }
 
 /**
- * Writes a new block, at the end of the day or directly beneath `after`.
+ * Writes a new block, at the end of the page or directly beneath `after`.
  *
  * Refuses an `after` that is not on this page, for the same reason `editBlock`
  * refuses an unknown block: the fold would have to guess, and a log that keeps
@@ -360,12 +362,12 @@ export async function getLogStatus(project: ProjectRef): Promise<ViewStatus> {
  */
 export async function addBlock(
   project: ProjectRef,
-  date: string,
+  title: string,
   text: string,
   after?: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
-  const blocks = projection.state[date] ?? [];
+  const blocks = projection.state[title] ?? [];
   if (after && !locate(blocks, after)) {
     throw new Error('No such block');
   }
@@ -373,14 +375,14 @@ export async function addBlock(
   // dispatch appends before it folds, so this resolves only once the event is
   // durable — the page handed back can never show something a crash takes.
   await projection.dispatch('block.created', {
-    page: date,
+    page: title,
     id: randomUUID(),
     text,
     // Left off entirely when absent, so an appended block writes the same
     // bytes it always did.
     ...(after ? { after } : {}),
   });
-  return { date, blocks: projection.state[date] ?? [] };
+  return { title, blocks: projection.state[title] ?? [] };
 }
 
 /**
@@ -391,22 +393,22 @@ export async function addBlock(
  */
 export async function editBlock(
   project: ProjectRef,
-  date: string,
+  title: string,
   blockId: string,
   text: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
-  const blocks = projection.state[date] ?? [];
+  const blocks = projection.state[title] ?? [];
   if (!locate(blocks, blockId)) {
     throw new Error('No such block');
   }
 
   await projection.dispatch('block.edited', {
-    page: date,
+    page: title,
     id: blockId,
     text,
   });
-  return { date, blocks: projection.state[date] ?? [] };
+  return { title, blocks: projection.state[title] ?? [] };
 }
 
 /**
@@ -420,17 +422,17 @@ export async function editBlock(
  */
 export async function deleteBlock(
   project: ProjectRef,
-  date: string,
+  title: string,
   blockId: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
-  const blocks = projection.state[date] ?? [];
+  const blocks = projection.state[title] ?? [];
   if (!locate(blocks, blockId)) {
     throw new Error('No such block');
   }
 
-  await projection.dispatch('block.deleted', { page: date, id: blockId });
-  return { date, blocks: projection.state[date] ?? [] };
+  await projection.dispatch('block.deleted', { page: title, id: blockId });
+  return { title, blocks: projection.state[title] ?? [] };
 }
 
 /**
@@ -449,21 +451,21 @@ export async function deleteBlock(
  */
 export async function indentBlock(
   project: ProjectRef,
-  date: string,
+  title: string,
   blockId: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
-  const blocks = projection.state[date] ?? [];
+  const blocks = projection.state[title] ?? [];
   const found = locate(blocks, blockId);
   if (!found) throw new Error('No such block');
-  if (found.at === 0) return { date, blocks };
+  if (found.at === 0) return { title, blocks };
 
   await projection.dispatch('block.indented', {
-    page: date,
+    page: title,
     id: blockId,
     parent: found.siblings[found.at - 1].id,
   });
-  return { date, blocks: projection.state[date] ?? [] };
+  return { title, blocks: projection.state[title] ?? [] };
 }
 
 /**
@@ -479,21 +481,21 @@ export async function indentBlock(
  */
 export async function outdentBlock(
   project: ProjectRef,
-  date: string,
+  title: string,
   blockId: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
-  const blocks = projection.state[date] ?? [];
+  const blocks = projection.state[title] ?? [];
   const found = locate(blocks, blockId);
   if (!found) throw new Error('No such block');
-  if (!found.parent) return { date, blocks };
+  if (!found.parent) return { title, blocks };
 
   await projection.dispatch('block.outdented', {
-    page: date,
+    page: title,
     id: blockId,
     after: found.parent.id,
   });
-  return { date, blocks: projection.state[date] ?? [] };
+  return { title, blocks: projection.state[title] ?? [] };
 }
 
 export async function closePages(): Promise<void> {

@@ -3,11 +3,13 @@
  * renderer. Like `projects.ts`, this file is bundled into the renderer too, so
  * it stays free of `node:` imports.
  *
- * A page *is* a day. Its id is a local calendar date in `YYYY-MM-DD`, and its
- * contents are whatever blocks carry that date — there is no page record
- * anywhere. Opening a day that has never been written to yields an empty page
- * in memory and appends nothing: the log records what the user did, and
- * looking at today is not something they did.
+ * A page *is* its title. Its contents are whatever blocks carry that title —
+ * there is no page record anywhere, so a page is never created: naming one,
+ * in a link or by the calendar, is all it takes for it to exist. A journal day
+ * is the page titled with its local date in `YYYY-MM-DD`; `[[Mira]]`, `#Mira`
+ * and `#[[Mira]]` all name the page `Mira`. Opening a page that has never been
+ * written to yields an empty page in memory and appends nothing: the log
+ * records what the user did, and looking at a page is not something they did.
  */
 
 import type { ViewStatus } from './log';
@@ -57,16 +59,22 @@ export function lastLeaf(block: Block): Block {
 }
 
 export type Page = {
-  /** `YYYY-MM-DD`, in the user's local time. */
-  date: string;
+  /**
+   * What names the page: a local `YYYY-MM-DD` for a journal day, otherwise
+   * whatever a link called it, exactly as typed. Case matters — `#Mira` and
+   * `#mira` are two pages — because the title is a key in a log that keeps
+   * everything forever, and folding case together later is a choice the fold
+   * can make; lowercasing now would lose the casing for good.
+   */
+  title: string;
   /** In the order they belong on the page, which is the order they fold. */
   blocks: Block[];
 };
 
 /**
- * The renderer picks the day, so main never has to hold an opinion about the
- * user's timezone. Checked on arrival all the same: the date is a key in an
- * append-only log, and a malformed one is there forever.
+ * What makes a title a journal day. The renderer picks the day, so main never
+ * has to hold an opinion about the user's timezone; main uses this only to
+ * tell the journal apart from the pages that links name.
  */
 export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -83,11 +91,13 @@ export const PAGE_CHANNELS = {
 
 /** The surface exposed on `window.gnotes.pages` by the preload bridge. */
 export type PagesApi = {
-  /** The day's page, empty if nothing has been written to it yet. */
-  open(projectId: string, date: string): Promise<Page>;
+  /** The page with that title, empty if nothing has been written to it yet. */
+  open(projectId: string, title: string): Promise<Page>;
   /**
-   * Every day that has blocks on it, newest first — the default view of a
-   * project, which is all of its days stacked rather than one of them.
+   * The journal: every day that has blocks on it, newest first — the default
+   * view of a project, which is all of its days stacked rather than one of
+   * them. Pages that links name are not days and are not in it; they are
+   * reached through `open`.
    *
    * Days that fold to nothing are not in it, and neither is today unless
    * something has been written there: main does not know which day today is,
@@ -108,11 +118,11 @@ export type PagesApi = {
   /**
    * Appends a `block.created` event and returns the page it folded into.
    * `after` puts the new block directly beneath that one; without it the block
-   * goes at the end of the day.
+   * goes at the end of the page.
    */
   addBlock(
     projectId: string,
-    date: string,
+    title: string,
     text: string,
     after?: string,
   ): Promise<Page>;
@@ -122,7 +132,7 @@ export type PagesApi = {
    */
   editBlock(
     projectId: string,
-    date: string,
+    title: string,
     blockId: string,
     text: string,
   ): Promise<Page>;
@@ -133,7 +143,7 @@ export type PagesApi = {
    */
   deleteBlock(
     projectId: string,
-    date: string,
+    title: string,
     blockId: string,
   ): Promise<Page>;
   /**
@@ -147,7 +157,7 @@ export type PagesApi = {
    */
   indentBlock(
     projectId: string,
-    date: string,
+    title: string,
     blockId: string,
   ): Promise<Page>;
   /**
@@ -164,7 +174,7 @@ export type PagesApi = {
    */
   outdentBlock(
     projectId: string,
-    date: string,
+    title: string,
     blockId: string,
   ): Promise<Page>;
 };

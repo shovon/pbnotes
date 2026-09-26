@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { DATE_PATTERN, PAGE_CHANNELS } from '../shared/pages';
+import { PAGE_CHANNELS } from '../shared/pages';
 import { requireString } from './projects-ipc';
 import { checkAvailability, getProject } from './projects-store';
 import {
@@ -35,19 +35,25 @@ async function requireProject(value: unknown): Promise<Project> {
   return project;
 }
 
-function requireDate(value: unknown): string {
-  const date = requireString(value, 'date');
-  if (!DATE_PATTERN.test(date)) {
-    throw new TypeError('Expected date as YYYY-MM-DD');
+/**
+ * A title is a key in a log that keeps everything forever, so it is checked
+ * on arrival: something, and nothing loose around it. Not a date pattern any
+ * more — a link can name a page anything — but the link plugin trims what it
+ * names, and a title that arrives untrimmed came from somewhere else.
+ */
+function requireTitle(value: unknown): string {
+  const title = requireString(value, 'title');
+  if (title === '' || title !== title.trim()) {
+    throw new TypeError('Expected a page title');
   }
-  return date;
+  return title;
 }
 
 export function registerPageIpc(): void {
   ipcMain.handle(
     PAGE_CHANNELS.open,
-    async (_event, id: unknown, date: unknown) =>
-      getPage(await requireProject(id), requireDate(date)),
+    async (_event, id: unknown, title: unknown) =>
+      getPage(await requireProject(id), requireTitle(title)),
   );
 
   ipcMain.handle(PAGE_CHANNELS.openAll, async (_event, id: unknown) =>
@@ -63,13 +69,13 @@ export function registerPageIpc(): void {
     async (
       _event,
       id: unknown,
-      date: unknown,
+      title: unknown,
       text: unknown,
       after: unknown,
     ) =>
       addBlock(
         await requireProject(id),
-        requireDate(date),
+        requireTitle(title),
         requireString(text, 'text'),
         // Absent means the end of the page; anything else has to be a block id
         // before it reaches a log that keeps it forever.
@@ -82,13 +88,13 @@ export function registerPageIpc(): void {
     async (
       _event,
       id: unknown,
-      date: unknown,
+      title: unknown,
       blockId: unknown,
       text: unknown,
     ) =>
       editBlock(
         await requireProject(id),
-        requireDate(date),
+        requireTitle(title),
         requireString(blockId, 'blockId'),
         requireString(text, 'text'),
       ),
@@ -96,30 +102,30 @@ export function registerPageIpc(): void {
 
   ipcMain.handle(
     PAGE_CHANNELS.deleteBlock,
-    async (_event, id: unknown, date: unknown, blockId: unknown) =>
+    async (_event, id: unknown, title: unknown, blockId: unknown) =>
       deleteBlock(
         await requireProject(id),
-        requireDate(date),
+        requireTitle(title),
         requireString(blockId, 'blockId'),
       ),
   );
 
   ipcMain.handle(
     PAGE_CHANNELS.indentBlock,
-    async (_event, id: unknown, date: unknown, blockId: unknown) =>
+    async (_event, id: unknown, title: unknown, blockId: unknown) =>
       indentBlock(
         await requireProject(id),
-        requireDate(date),
+        requireTitle(title),
         requireString(blockId, 'blockId'),
       ),
   );
 
   ipcMain.handle(
     PAGE_CHANNELS.outdentBlock,
-    async (_event, id: unknown, date: unknown, blockId: unknown) =>
+    async (_event, id: unknown, title: unknown, blockId: unknown) =>
       outdentBlock(
         await requireProject(id),
-        requireDate(date),
+        requireTitle(title),
         requireString(blockId, 'blockId'),
       ),
   );

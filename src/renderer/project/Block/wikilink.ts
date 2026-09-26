@@ -7,10 +7,12 @@ import type { Root, RootContent, Text } from 'mdast';
  * coffee]]`, which renders as `#the good coffee`; and `[[Mira]]` without the
  * sigil keeps its brackets, because with nothing in front of the words they
  * are all that marks them as a link and dropping them would leave coloured
- * prose. All three go nowhere: an anchor with no `href`, which is what the
- * platform already means by a link whose target is not settled yet — it takes
- * the link colour, it is not focusable, and clicking it falls through to the
- * block and opens the editor, the same as clicking the words around it.
+ * prose. All three name the same page, `Mira`, and carry it as `href="#Mira"`:
+ * a real link, so it is focusable, takes the pointer, and Enter follows it.
+ * The fragment form never leaves the window on its own — the project view
+ * catches the click before the block does and opens the page instead. Empty
+ * brackets name nothing and get no `href`, so they stay an inert anchor
+ * rather than a link to a page called nothing.
  *
  * A remark plugin rather than a string replace on the source, because the
  * source is a note and a note is full of code: `#foo` inside a fenced block
@@ -39,11 +41,20 @@ const PATTERN =
  * without one keeps the only mark it has. The bare form has nothing to strip,
  * so it is carried through whole — which is also why the caller can hand the
  * raw match straight over.
+ *
+ * `title` is the page it names, trimmed: `[[ Mira ]]` and `[[Mira]]` are one
+ * page, and a title is a key in a log that keeps everything forever.
  */
-function wikilink(label: string): RootContent {
+function wikilink(label: string, title: string): RootContent {
   return {
     type: 'wikilink',
-    data: { hName: 'a', hProperties: { className: 'wikilink' } },
+    data: {
+      hName: 'a',
+      hProperties: {
+        className: 'wikilink',
+        ...(title ? { href: `#${title}` } : {}),
+      },
+    },
     children: [{ type: 'text', value: label }],
   } as unknown as RootContent;
 }
@@ -57,10 +68,15 @@ function split(node: Text): RootContent[] {
     if (match.index > at) {
       out.push({ type: 'text', value: node.value.slice(at, match.index) });
     }
-    // The bare branch captures nothing, so `match[1]` is undefined there and
-    // the whole match is already the label. Give that branch a group and the
-    // two bracketed forms break.
-    out.push(wikilink(match[1] ? `${match[1]}${match[2]}` : match[0]));
+    // The bare branch captures nothing, so `match[2]` is undefined there: the
+    // whole match is the label, and the page is the match minus its `#`. Give
+    // that branch a group and the two bracketed forms break.
+    const bracketed = match[2] !== undefined;
+    out.push(
+      bracketed
+        ? wikilink(match[1] ? `#${match[2]}` : match[0], match[2].trim())
+        : wikilink(match[0], match[0].slice(1)),
+    );
     at = match.index + match[0].length;
   }
   if (out.length === 0) return [node];
