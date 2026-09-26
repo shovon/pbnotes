@@ -4,6 +4,7 @@ import { lastLeaf, locate } from '../../../shared/pages';
 import type { Block as BlockType, Page } from '../../../shared/pages';
 import type { Act } from '../../ui';
 import { Block, BlockEditor } from '../Block/Block';
+import LinkedReferences from './LinkedReferences/LinkedReferences';
 
 const { pages } = window.gnotes;
 
@@ -33,8 +34,22 @@ function created(page: Page, after?: string): string | undefined {
 
 type Props = {
   project: Project;
-  /** The page as it folded when it was read. */
-  initial: Page;
+  /** The page as the project view holds it: as read, or as the last write
+      to it handed it back. */
+  page: Page;
+  /** Every write hands the folded page back up through this. */
+  onPage: (page: Page) => void;
+  /** What links here. Left off for a page that is itself shown as one. */
+  references?: Page[];
+  /**
+   * Shown under another page as what links to it: a cut of this page — the
+   * blocks that link, not all of them — decided outside and handed in again
+   * after every write. The title is a link to the whole page. Nothing can be
+   * added here, and a block cannot be moved: the siblings that would decide
+   * where it goes are not in the cut. Editing and deleting are what they are
+   * anywhere, a write to the page the block is on.
+   */
+  reference?: boolean;
   act: Act;
 };
 
@@ -43,15 +58,25 @@ type Props = {
  * here can tell the two apart — its blocks, and the editing that appends to
  * them.
  *
- * The page arrives already folded, from the one read that fills the whole
- * stack, and every write hands the page straight back — so this owns its page
- * from then on and never asks main for it again. Nothing here is aware that
- * there are other pages above and below it, which is what keeps a stack of
- * days the same component as a single named page.
+ * The page is the project view's, not this one's: it arrives folded from the
+ * read that fills the stack, and every write hands the folded page back up
+ * through `onPage` rather than keeping it here. A block is on screen in more
+ * than one place — on its day, and under every page it links to — and only
+ * the view above all of them can show a write everywhere it shows the block.
+ * What is held here is the editing: which box is open, and where the caret
+ * is in it. Nothing here is aware that there are other pages above and below
+ * it, which is what keeps a stack of days the same component as a single
+ * named page, and a page the same component as a cut of one.
  */
-export default function PageView({ project, initial, act }: Props) {
-  const title = initial.title;
-  const [page, setPage] = useState<Page>(initial);
+export default function PageView({
+  project,
+  page,
+  onPage,
+  references,
+  reference = false,
+  act,
+}: Props) {
+  const title = page.title;
   const [writing, setWriting] = useState<Writing>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   // Where the click that opened the block landed. Undefined when there was no
@@ -71,7 +96,7 @@ export default function PageView({ project, initial, act }: Props) {
     setEditingId(null);
     if (text === block.text) return;
     act(async () => {
-      setPage(await pages.editBlock(project.id, title, block.id, text));
+      onPage(await pages.editBlock(project.id, title, block.id, text));
     });
   };
 
@@ -122,10 +147,11 @@ export default function PageView({ project, initial, act }: Props) {
       found && found.at === 0 && !found.parent ? blocks[1] : undefined;
     setCaret(above ? above.text.length : 0);
     setEditingId(above?.id ?? below?.id ?? null);
-    // Nothing either side: the page is about to be empty.
-    if (!above && !below) setWriting({});
+    // Nothing either side: the page is about to be empty. A cut has no box
+    // to fall back to; emptied, it is simply not shown any more.
+    if (!above && !below && !reference) setWriting({});
     act(async () => {
-      setPage(await pages.deleteBlock(project.id, title, block.id));
+      onPage(await pages.deleteBlock(project.id, title, block.id));
     });
   };
 
@@ -163,7 +189,7 @@ export default function PageView({ project, initial, act }: Props) {
       if (text !== block.text) {
         await pages.editBlock(project.id, title, block.id, text);
       }
-      setPage(await move(project.id, title, block.id));
+      onPage(await move(project.id, title, block.id));
       setEditingId(block.id);
     });
   };
@@ -216,7 +242,7 @@ export default function PageView({ project, initial, act }: Props) {
     if (!text && then === 'stop') return;
     act(async () => {
       const next = await pages.addBlock(project.id, title, text, after);
-      setPage(next);
+      onPage(next);
       const id = created(next, after);
       if (then === 'again') setWriting({ after: id });
       if ((then === 'indent' || then === 'outdent') && id) {
@@ -225,7 +251,7 @@ export default function PageView({ project, initial, act }: Props) {
         // top-level one coming out — comes back unchanged, and the box simply
         // reopens where it was.
         const move = then === 'indent' ? pages.indentBlock : pages.outdentBlock;
-        setPage(await move(project.id, title, id));
+        onPage(await move(project.id, title, id));
         setEditingId(id);
       }
     });
@@ -278,6 +304,10 @@ export default function PageView({ project, initial, act }: Props) {
    * under their parent, and the box for a new block sits below that whole
    * subtree — `after` makes the new block the next *sibling*, which is where
    * the fold puts it too.
+   *
+   * In a cut, Enter ends the block and opens nothing after it, and Tab is
+   * the focus key it is everywhere else: there is nowhere to add, and
+   * nothing here to move a block under.
    */
   const renderBlocks = (blocks: BlockType[]) =>
     blocks.map((block) => (
@@ -289,10 +319,14 @@ export default function PageView({ project, initial, act }: Props) {
             onCancel={() => setEditingId(null)}
             onCommit={(text) => commitEdit(block, text)}
             onBackspace={() => commitDelete(block)}
-            onIndent={(text, at, by) => commitIndent(block, text, at, by)}
+            onIndent={
+              reference
+                ? undefined
+                : (text, at, by) => commitIndent(block, text, at, by)
+            }
             onContinue={(text) => {
               commitEdit(block, text);
-              setWriting({ after: block.id });
+              if (!reference) setWriting({ after: block.id });
             }}
           />
         ) : (
@@ -313,16 +347,29 @@ export default function PageView({ project, initial, act }: Props) {
 
   return (
     <>
-      <h2 className="page-title">{title}</h2>
+      {/* A cut is headed by the page it is cut from, as a link there — the
+          project view follows it like the ones in the blocks. */}
+      {reference ? (
+        <h4>
+          <a className="wikilink" href={`#${title}`}>
+            {title}
+          </a>
+        </h4>
+      ) : (
+        <h2 className="page-title">{title}</h2>
+      )}
 
       {/* The blank space under the page is part of the page: clicking it opens
           the box at the end, the way clicking below the last line of any
           editor puts the caret there. Only when the click landed on the page
-          itself — a click on a block is that block's, and it bubbles here. */}
+          itself — a click on a block is that block's, and it bubbles here.
+          Not in a cut, which has no end to write at. */}
       <div
         className="page"
         onClick={(event) => {
-          if (event.target === event.currentTarget) setWriting({});
+          if (!reference && event.target === event.currentTarget) {
+            setWriting({});
+          }
         }}
       >
         {renderBlocks(page.blocks)}
@@ -331,8 +378,10 @@ export default function PageView({ project, initial, act }: Props) {
             nothing at all otherwise — a written page ends on its last
             block, and Enter out of that block is how the next one starts.
             The exception is a page with no blocks yet, which needs
-            somewhere to click or there is no way in. */}
-        {writing === null ? (
+            somewhere to click or there is no way in. A cut has no tail: it
+            is never empty, because an empty cut is not shown, and nothing
+            is added to it. */}
+        {reference ? null : writing === null ? (
           page.blocks.length === 0 && (
             <button className="block empty" onClick={() => setWriting({})}>
               Click to write the first block
@@ -342,6 +391,17 @@ export default function PageView({ project, initial, act }: Props) {
           newBlockEditor
         ) : null}
       </div>
+
+      {/* After the page, not in it: the blank space in the page is
+          click-to-write, and these are other pages' blocks. */}
+      {references && (
+        <LinkedReferences
+          project={project}
+          references={references}
+          act={act}
+          onPage={onPage}
+        />
+      )}
     </>
   );
 }

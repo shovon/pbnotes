@@ -1,4 +1,5 @@
 import type { Root, RootContent, Text } from 'mdast';
+import remarkMath from 'remark-math';
 
 /**
  * A hashtag and a link are the same idea here, so there is one plugin and
@@ -85,6 +86,21 @@ function split(node: Text): RootContent[] {
   }
   return out;
 }
+
+/**
+ * The two remark plugins a note is read with, in the order they run. Math
+ * first: `$…$` becomes a node without text children, so a `#` inside a
+ * formula never becomes a link.
+ *
+ * In `shared`, against the rule that this folder holds types and constants,
+ * for the reason `locate` gives in `pages.ts`: both sides genuinely need it.
+ * The renderer renders a block with it; main reads a block with it to find
+ * the pages it links to, which is how a page lists what links to it. Two
+ * parsers that have to agree on what a link is would be one more than
+ * anyone can keep in step — a `#foo` in a code span would render as text
+ * and count as a reference. No `node:` imports, so the rule's reason holds.
+ */
+export const remarkPlugins = [remarkMath, remarkWikilink];
 
 export function remarkWikilink() {
   return function walk(node: Root | RootContent): void {

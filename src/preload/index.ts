@@ -24,6 +24,8 @@ const pages: PagesApi = {
   open: (projectId, title) =>
     ipcRenderer.invoke(PAGE_CHANNELS.open, projectId, title),
   openAll: (projectId) => ipcRenderer.invoke(PAGE_CHANNELS.openAll, projectId),
+  references: (projectId, title) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.references, projectId, title),
   status: (projectId) => ipcRenderer.invoke(PAGE_CHANNELS.status, projectId),
   addBlock: (projectId, title, text, after) =>
     ipcRenderer.invoke(PAGE_CHANNELS.addBlock, projectId, title, text, after),

@@ -1,7 +1,7 @@
+import { useMemo } from 'react';
 import Markdown from 'react-markdown';
-import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
-import { remarkWikilink } from './wikilink.ts';
+import { remarkPlugins } from '../../../shared/wikilink';
 
 /**
  * One block in its two states. Neither reaches main: the page decides what a
@@ -51,6 +51,30 @@ export function Block({
   /** The offset the click landed on, when it could be worked out. */
   onActivate: (caret?: number) => void;
 }) {
+  /**
+   * Parsed once per text, not once per render. `Markdown` parses in render,
+   * and every write re-renders the whole stack more than once — so without
+   * this, a journal of a few thousand blocks pays for every one of them, and
+   * every formula in them, on each keystroke that lands.
+   */
+  const rendered = useMemo(
+    () => (
+      <Markdown
+        remarkPlugins={remarkPlugins}
+        /**
+         * KaTeX throws on malformed TeX by default, which would take the
+         * whole page down over a half-typed formula. Bad math renders as
+         * flagged source instead; the note is still readable and still
+         * editable.
+         */
+        rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
+      >
+        {text}
+      </Markdown>
+    ),
+    [text],
+  );
+
   return (
     <div
       className="block"
@@ -71,18 +95,7 @@ export function Block({
         }
       }}
     >
-      <Markdown
-        remarkPlugins={[remarkMath, remarkWikilink]}
-        /**
-         * KaTeX throws on malformed TeX by default, which would take the
-         * whole page down over a half-typed formula. Bad math renders as
-         * flagged source instead; the note is still readable and still
-         * editable.
-         */
-        rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
-      >
-        {text}
-      </Markdown>
+      {rendered}
     </div>
   );
 }

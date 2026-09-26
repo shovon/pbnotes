@@ -9,6 +9,7 @@ import {
   getLogStatus,
   getPage,
   getPages,
+  getReferences,
   indentBlock,
   outdentBlock,
 } from './pages-store';
@@ -58,6 +59,12 @@ export function registerPageIpc(): void {
 
   ipcMain.handle(PAGE_CHANNELS.openAll, async (_event, id: unknown) =>
     getPages(await requireProject(id)),
+  );
+
+  ipcMain.handle(
+    PAGE_CHANNELS.references,
+    async (_event, id: unknown, title: unknown) =>
+      getReferences(await requireProject(id), requireTitle(title)),
   );
 
   ipcMain.handle(PAGE_CHANNELS.status, async (_event, id: unknown) =>

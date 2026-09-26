@@ -19,6 +19,7 @@ import {
   editBlock,
   getPage,
   getPages,
+  getReferences,
   indentBlock,
   logDirectory,
   outdentBlock,
@@ -585,6 +586,98 @@ test('every written day comes back newest first, emptied days left out', async (
   // Today is not invented here either: which day that is belongs to the
   // renderer, which puts it at the top of the stack itself.
   assert.deepEqual((await getPages(it))[0].blocks[0].text, 'the newest thing');
+
+  await closePages();
+});
+
+/**
+ * What links to a page: every block anywhere that names it, by any of the
+ * three spellings, grouped by the page it is on. Not the page's own blocks,
+ * not a `#Mira` inside code — the renderer would not show that as a link,
+ * and the two have to agree — and not a child of a block already listed.
+ * Days newest first, then the named pages alphabetically — a name made of
+ * digits among them, not among the days.
+ */
+test('what links to a page, grouped by the page it is on', async () => {
+  const it = await project();
+  await addBlock(it, TODAY, 'Ask [[Mira]] about the hinge.');
+  await addBlock(it, TODAY, 'Nothing to do with her.');
+  const shed = (await addBlock(it, TOMORROW, 'Shed')).blocks[0];
+  const child = (await addBlock(it, TOMORROW, '#Mira measured it', shed.id))
+    .blocks[1];
+  await indentBlock(it, TOMORROW, child.id);
+  const about = (await addBlock(it, TOMORROW, 'About #[[Mira]]')).blocks[1];
+  const again = (await addBlock(it, TOMORROW, 'Also [[Mira]]', about.id))
+    .blocks[2];
+  await indentBlock(it, TOMORROW, again.id);
+  await addBlock(it, 'Mira', 'Prefers #[[the good coffee]].');
+  await addBlock(it, 'Mira', 'See [[Mira]] — herself.');
+  await addBlock(it, 'Notes', 'Try `grep #Mira` first.');
+  await addBlock(it, 'Notes', 'Then ask #[[Mira]] again. #mira is someone else.');
+  await addBlock(it, 'Coffee', 'The $#Mira$ in a formula is not a link.');
+  // A name that sorts among the dates by its characters, and is not a day.
+  await addBlock(it, '2026', 'The year #Mira moved.');
+
+  const references = await getReferences(it, 'Mira');
+  assert.deepEqual(
+    references.map((page) => [
+      page.title,
+      page.blocks.map((block) => [
+        block.text,
+        block.children.map((it) => it.text),
+      ]),
+    ]),
+    [
+      [
+        TOMORROW,
+        [
+          ['#Mira measured it', []],
+          ['About #[[Mira]]', ['Also [[Mira]]']],
+        ],
+      ],
+      [TODAY, [['Ask [[Mira]] about the hinge.', []]]],
+      ['2026', [['The year #Mira moved.', []]]],
+      ['Notes', [['Then ask #[[Mira]] again. #mira is someone else.', []]]],
+    ],
+  );
+  assert.deepEqual(
+    (await getReferences(it, 'the good coffee')).map((page) => page.title),
+    ['Mira'],
+  );
+  assert.deepEqual(await getReferences(it, 'Nobody'), []);
+
+  await closePages();
+});
+
+/** The links are read from the block as it is now, not as it was first
+    parsed: an edit that adds or drops a link shows in the next read, a
+    deleted block is gone from it, and a restart reads the same answer. */
+test('references follow edits, deletes and restarts', async () => {
+  const it = await project();
+  const linking = (await addBlock(it, TODAY, 'Ask [[Mira]].')).blocks[0];
+  const plain = (await addBlock(it, TOMORROW, 'Nothing yet.')).blocks[0];
+  assert.deepEqual(
+    (await getReferences(it, 'Mira')).map((page) => page.title),
+    [TODAY],
+  );
+
+  await editBlock(it, TODAY, linking.id, 'Ask nobody.');
+  await editBlock(it, TOMORROW, plain.id, 'Ask #Mira.');
+  assert.deepEqual(
+    (await getReferences(it, 'Mira')).map((page) => page.title),
+    [TOMORROW],
+  );
+
+  await deleteBlock(it, TOMORROW, plain.id);
+  assert.deepEqual(await getReferences(it, 'Mira'), []);
+  await closePages();
+
+  await addBlock(it, TODAY, 'Back to [[Mira]].');
+  await closePages();
+  assert.deepEqual(
+    (await getReferences(it, 'Mira')).map((page) => page.title),
+    [TODAY],
+  );
 
   await closePages();
 });

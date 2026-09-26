@@ -14,11 +14,14 @@
  */
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
 import { Projection } from './projection.ts';
 import type { Reducer } from './projection.ts';
 import type { DeviceMemory } from './event-log.ts';
 import { DATE_PATTERN, locate } from '../shared/pages.ts';
 import type { Block, Page } from '../shared/pages.ts';
+import { remarkPlugins } from '../shared/wikilink.ts';
 import type { ViewStatus } from '../shared/log.ts';
 
 /** Enough of a project to find its log. */
@@ -341,6 +344,93 @@ export async function getPages(project: ProjectRef): Promise<Page[]> {
     .filter(([title, blocks]) => DATE_PATTERN.test(title) && blocks.length > 0)
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([title, blocks]) => ({ title, blocks }));
+}
+
+/**
+ * The pages a text links to, read with the same parser that renders it, so
+ * a `#foo` in a code span is text on both sides.
+ *
+ * Memoised on the text, not the block: identical text links identically,
+ * and the fold hands every block an event did not touch back with the text
+ * it had — so a write parses the one text that changed, and a refold, which
+ * rebuilds every block object from the log every half minute, parses
+ * nothing it has seen. Keyed on the object, the whole project would be
+ * parsed again after each of those.
+ *
+ * ponytail: the map keeps every text ever parsed this session, edits
+ * included. Strings the log already holds, so it is small; bound it if a
+ * long session ever shows it.
+ *
+ * Read from the `href` the plugin sets, which is the contract the renderer
+ * follows a link by; a link to nothing has no `href` and is not a link.
+ */
+const md = unified().use(remarkParse).use(remarkPlugins);
+const linksOf = new Map<string, string[]>();
+
+type Node = {
+  type: string;
+  data?: { hProperties?: { href?: string } };
+  children?: Node[];
+};
+
+function links(text: string): string[] {
+  const memo = linksOf.get(text);
+  if (memo) return memo;
+  const found: string[] = [];
+  const walk = (node: Node): void => {
+    const href = node.data?.hProperties?.href;
+    if (node.type === 'wikilink' && href) found.push(href.slice(1));
+    node.children?.forEach(walk);
+  };
+  walk(md.runSync(md.parse(text)) as Node);
+  linksOf.set(text, found);
+  return found;
+}
+
+/**
+ * The blocks that link to `title`, each with its subtree intact. A block
+ * that links is taken whole and not searched inside: its children are
+ * already on show under it, and listing one of them again for a link of its
+ * own would put the same words on the page twice.
+ */
+function linking(blocks: Block[], title: string): Block[] {
+  return blocks.flatMap((block) =>
+    links(block.text).includes(title)
+      ? [block]
+      : linking(block.children, title),
+  );
+}
+
+/**
+ * What links to a page, grouped by the page it was written on and cut down
+ * to the blocks that do the linking. A page is not a reference to itself.
+ *
+ * Journal days first, newest first, then the named pages A to Z. Days are
+ * told apart before anything is compared: a page called `2026` or `1984`
+ * would otherwise land among them, and a comparator that turns dates around
+ * but leaves everything else forward is not an order at all once a name
+ * sorts between two dates.
+ *
+ * ponytail: one call per page shown, so the journal makes one per day. Fold
+ * this into a single reverse index per call if a project ever has enough
+ * days for that to show.
+ */
+export async function getReferences(
+  project: ProjectRef,
+  title: string,
+): Promise<Page[]> {
+  const projection = await projectionFor(project);
+  return Object.entries(projection.state)
+    .filter(([page]) => page !== title)
+    .map(([page, blocks]) => ({ title: page, blocks: linking(blocks, title) }))
+    .filter((page) => page.blocks.length > 0)
+    .sort((a, b) => {
+      const days = [a, b].map((page) => DATE_PATTERN.test(page.title));
+      if (days[0] !== days[1]) return days[0] ? -1 : 1;
+      return days[0]
+        ? b.title.localeCompare(a.title)
+        : a.title.localeCompare(b.title);
+    });
 }
 
 /**
