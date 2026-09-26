@@ -72,16 +72,16 @@ Content is event-sourced: appended as immutable facts and replayed into in-memor
 | `src/shared/projects.ts` | Types and channel names shared by all three processes — keep it free of `node:` imports |
 | `src/renderer/App.tsx` | Owns the project data and switches between the two views |
 | `src/renderer/ProjectsList.tsx` | The project list UI |
-| `src/renderer/ProjectView.tsx` | One project: today's page and its blocks |
+| `src/renderer/project/ProjectView.tsx` | One project: the journal, or the one page a link led to |
 | `src/main/event-log.ts` | The append-only log: framing, fsync, crash recovery, segment rollover, the merge across devices |
 | `src/main/device-store.ts` | This machine's id and what it remembers per project. In `notes.db`, never in the shared folder |
 | `src/shared/log.ts` | What the log can report about itself: devices read, files skipped, events not understood |
 | `src/main/projection.ts` | Folds the log into the in-memory view. Main process only |
 | `src/main/pages-store.ts` | One pages projection per project, at `<project>/gnotes/` |
 | `src/main/pages-ipc.ts` | The `pages:*` channels. Checks the project against the registry, and its directory for reachability, before opening a log |
-| `src/shared/pages.ts` | The pages contract. A page is a day; its id is a local `YYYY-MM-DD` |
+| `src/shared/pages.ts` | The pages contract. A page is a title; a journal day is the page titled with its local `YYYY-MM-DD` |
 
-A page is not a record anywhere. It is the set of blocks carrying its date, so opening today appends nothing — the log holds what the user did, and reading is not one of the things they did. The first write of the day is the first event.
+A page is not a record anywhere. It is the set of blocks carrying its title, so opening a page appends nothing — the log holds what the user did, and reading is not one of the things they did. The first write to a page is its first event. Pages are never created: naming one is enough. The calendar names the journal days, and a link — `[[Mira]]`, `#Mira` or `#[[Mira]]`, all the same page — names everything else. Following a link opens that page, empty until something is written on it; only the days are in the journal stack.
 
 ## Development
 

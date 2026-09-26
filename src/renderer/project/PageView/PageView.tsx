@@ -9,7 +9,7 @@ const { pages } = window.gnotes;
 
 /**
  * Where an unwritten block is waiting to be typed. `after` is the block it
- * goes beneath; without one it goes at the end of the day. Null is no box
+ * goes beneath; without one it goes at the end of the page. Null is no box
  * open at all — three states, because "writing" and "writing *here*" are
  * different questions and a boolean can only answer the first.
  */
@@ -33,22 +33,24 @@ function created(page: Page, after?: string): string | undefined {
 
 type Props = {
   project: Project;
-  /** The day as it folded when the stack was read. */
+  /** The page as it folded when it was read. */
   initial: Page;
   act: Act;
 };
 
 /**
- * One day of a project: its blocks, and the editing that appends to them.
+ * One page of a project — a journal day, or a page a link named; nothing
+ * here can tell the two apart — its blocks, and the editing that appends to
+ * them.
  *
- * The day arrives already folded, from the one read that fills the whole
- * stack, and every write hands the page straight back — so this owns its day
+ * The page arrives already folded, from the one read that fills the whole
+ * stack, and every write hands the page straight back — so this owns its page
  * from then on and never asks main for it again. Nothing here is aware that
- * there are other days above and below it, which is what keeps a stack of
- * them the same component as a single one.
+ * there are other pages above and below it, which is what keeps a stack of
+ * days the same component as a single named page.
  */
-export default function DayPage({ project, initial, act }: Props) {
-  const date = initial.date;
+export default function PageView({ project, initial, act }: Props) {
+  const title = initial.title;
   const [page, setPage] = useState<Page>(initial);
   const [writing, setWriting] = useState<Writing>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -69,7 +71,7 @@ export default function DayPage({ project, initial, act }: Props) {
     setEditingId(null);
     if (text === block.text) return;
     act(async () => {
-      setPage(await pages.editBlock(project.id, date, block.id, text));
+      setPage(await pages.editBlock(project.id, title, block.id, text));
     });
   };
 
@@ -123,7 +125,7 @@ export default function DayPage({ project, initial, act }: Props) {
     // Nothing either side: the page is about to be empty.
     if (!above && !below) setWriting({});
     act(async () => {
-      setPage(await pages.deleteBlock(project.id, date, block.id));
+      setPage(await pages.deleteBlock(project.id, title, block.id));
     });
   };
 
@@ -159,9 +161,9 @@ export default function DayPage({ project, initial, act }: Props) {
       // Tab is not a commit, but the box has to close to move and the text in
       // it would go with it. Unchanged text appends nothing, as ever.
       if (text !== block.text) {
-        await pages.editBlock(project.id, date, block.id, text);
+        await pages.editBlock(project.id, title, block.id, text);
       }
-      setPage(await move(project.id, date, block.id));
+      setPage(await move(project.id, title, block.id));
       setEditingId(block.id);
     });
   };
@@ -213,7 +215,7 @@ export default function DayPage({ project, initial, act }: Props) {
     // ever typed into is a click that landed elsewhere, and writes nothing.
     if (!text && then === 'stop') return;
     act(async () => {
-      const next = await pages.addBlock(project.id, date, text, after);
+      const next = await pages.addBlock(project.id, title, text, after);
       setPage(next);
       const id = created(next, after);
       if (then === 'again') setWriting({ after: id });
@@ -223,7 +225,7 @@ export default function DayPage({ project, initial, act }: Props) {
         // top-level one coming out — comes back unchanged, and the box simply
         // reopens where it was.
         const move = then === 'indent' ? pages.indentBlock : pages.outdentBlock;
-        setPage(await move(project.id, date, id));
+        setPage(await move(project.id, title, id));
         setEditingId(id);
       }
     });
@@ -238,7 +240,7 @@ export default function DayPage({ project, initial, act }: Props) {
    * Which block that is takes the same walk the delete path takes: the box
    * renders below a whole subtree, so the block above it on screen is the
    * deepest last child of what it sits under — rarely the block `after`
-   * names — or of the page's last block, for the box at the end of the day.
+   * names — or of the page's last block, for the box at the end of the page.
    *
    * A page with nothing on it has no block above, and the box stays open: it
    * is the only way in, and backing out of it would leave the user looking at
@@ -311,9 +313,9 @@ export default function DayPage({ project, initial, act }: Props) {
 
   return (
     <>
-      <h2 className="page-date">{date}</h2>
+      <h2 className="page-title">{title}</h2>
 
-      {/* The blank space under the day is part of the day: clicking it opens
+      {/* The blank space under the page is part of the page: clicking it opens
           the box at the end, the way clicking below the last line of any
           editor puts the caret there. Only when the click landed on the page
           itself — a click on a block is that block's, and it bubbles here. */}
@@ -325,7 +327,7 @@ export default function DayPage({ project, initial, act }: Props) {
       >
         {renderBlocks(page.blocks)}
 
-        {/* The tail: a box when one is waiting at the end of the day, and
+        {/* The tail: a box when one is waiting at the end of the page, and
             nothing at all otherwise — a written page ends on its last
             block, and Enter out of that block is how the next one starts.
             The exception is a page with no blocks yet, which needs

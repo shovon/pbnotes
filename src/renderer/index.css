@@ -188,7 +188,7 @@ button.danger:hover {
   gap: 0.35rem;
 }
 
-.page-date {
+.page-title {
   border-bottom: 1px solid var(--line);
   font-size: 0.85rem;
   font-weight: 600;
@@ -356,6 +356,9 @@ button.danger:hover {
    same, and margin collapses out of the way at the end of a line. */
 .block .wikilink {
   margin-right: 0.15rem;
+  /* A link with an href picks up the UA underline; a tag reads as a tag, the
+     colour alone marks it, as it did before the links went anywhere. */
+  text-decoration: none;
 }
 
 /* Display math ($$…$$) is a block of its own: KaTeX gives it a full em of

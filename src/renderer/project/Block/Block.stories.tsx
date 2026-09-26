@@ -84,11 +84,12 @@ export const Overflow: Story = {
   },
 };
 
-/** Three ways of writing one link, all of which go nowhere — there is no page
-    behind them yet. `#money` needs no brackets; brackets are for a name with a
-    space in it, and with a `#` they are replaced in what is shown; without one
-    they stay. Inside code, and in a URL, the characters that were typed stay
-    the characters that were typed. */
+/** Three ways of writing one link, each naming a page. `#money` needs no
+    brackets; brackets are for a name with a space in it, and with a `#` they
+    are replaced in what is shown; without one they stay. Coloured, no
+    underline, and the pointer on hover: following one is the project view's
+    job, so here they only look the part. Inside code, and in a URL, the
+    characters that were typed stay the characters that were typed. */
 export const Wikilinks: Story = {
   args: {
     text: 'Ask [[Mira]] whether #[[the good coffee]] is still in the #money budget.\n\n- `grep #foo` is not a link, and neither is https://example.com/#top',
