@@ -81,6 +81,7 @@ export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 export const PAGE_CHANNELS = {
   open: 'pages:open',
   openAll: 'pages:open-all',
+  references: 'pages:references',
   addBlock: 'pages:add-block',
   editBlock: 'pages:edit-block',
   deleteBlock: 'pages:delete-block',
@@ -104,6 +105,17 @@ export type PagesApi = {
    * so the view puts it at the top itself.
    */
   openAll(projectId: string): Promise<Page[]>;
+  /**
+   * What links here: every page with a block that names `title` — by any of
+   * `[[Mira]]`, `#Mira` or `#[[Mira]]` — cut down to the blocks that do.
+   * Each of those comes with its own children, for the context they give,
+   * and a block filed under one is not listed again for a link of its own.
+   * The page's own blocks are not references to it.
+   *
+   * Journal days first, newest first, then the named pages in alphabetical
+   * order: the same order the journal reads in, then the rest.
+   */
+  references(projectId: string, title: string): Promise<Page[]>;
   /**
    * How much of the project's log folder could be read, and what the fold
    * could not use.

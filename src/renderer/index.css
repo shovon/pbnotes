@@ -212,6 +212,51 @@ button.danger:hover {
   padding-bottom: 3rem;
 }
 
+/* Room to click under the last block, but less of it when what follows is
+   the page's own references rather than the next day. */
+.page:has(+ .references) {
+  padding-bottom: 1.25rem;
+}
+
+/* What links here, after the page's own blocks: one cut per page that does,
+   each headed by a link to it. Padding, not margin, for the air before the
+   next day: a margin would collapse into the next title's and leave a day
+   with references 1.5rem closer to the one below than a day without. */
+.references {
+  padding-bottom: 3rem;
+}
+
+.references h3 {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.5rem;
+}
+
+.references h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.25rem;
+}
+
+/* The cut's own heading only. Every other link in here is inside a block,
+   and a block renders the same in a cut as it does on its own page — an
+   ordinary Markdown link keeps the underline it has up there. */
+.references h4 a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* A cut's blocks sit in under its heading, indented like children under a
+   parent. Its blank space is not click-to-write, so no caret over it, and no
+   room kept for one. */
+.references .page {
+  cursor: default;
+  margin-left: 0.95rem;
+  padding-bottom: 0;
+}
+
 /* Logseq's model, and the reason the two states share every metric below:
    clicking a block swaps rendered markdown for a textarea in place, and the
    only thing that should visibly change is where the caret is. No borders,
