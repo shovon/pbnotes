@@ -12,7 +12,7 @@ import {
   getReferences,
   indentBlock,
   outdentBlock,
-} from './pages-store';
+} from './pages-store/pages-store';
 import type { Project } from '../shared/projects';
 
 /**

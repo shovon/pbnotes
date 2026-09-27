@@ -3,14 +3,14 @@ import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { closeDatabase, openDatabase } from './db';
 import { registerProjectIpc } from './projects-ipc';
-import { bindDevice, closePages } from './pages-store';
+import { bindDevice, closePages } from './pages-store/pages-store';
 import { deviceId, recall, remember, rotateDeviceId } from './device-store';
 import { registerPageIpc } from './pages-ipc';
 import {
   MIN_SIZE,
   restoreWindowBounds,
   trackWindowState,
-} from './window-state';
+} from './window-state/window-state';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {

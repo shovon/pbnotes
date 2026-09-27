@@ -16,13 +16,13 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
-import { Projection } from './projection.ts';
-import type { Reducer } from './projection.ts';
-import type { DeviceMemory } from './event-log.ts';
-import { DATE_PATTERN, locate } from '../shared/pages.ts';
-import type { Block, Page } from '../shared/pages.ts';
-import { remarkPlugins } from '../shared/wikilink.ts';
-import type { ViewStatus } from '../shared/log.ts';
+import { Projection } from '../projection/projection.ts';
+import type { Reducer } from '../projection/projection.ts';
+import type { DeviceMemory } from '../event-log/event-log.ts';
+import { DATE_PATTERN, locate } from '../../shared/pages.ts';
+import type { Block, Page } from '../../shared/pages.ts';
+import { remarkPlugins } from '../../shared/wikilink/wikilink.ts';
+import type { ViewStatus } from '../../shared/log.ts';
 
 /** Enough of a project to find its log. */
 export type ProjectRef = {

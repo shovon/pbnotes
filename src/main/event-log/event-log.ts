@@ -43,7 +43,7 @@ import { randomUUID } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 import path from 'node:path';
 import type { FileHandle } from 'node:fs/promises';
-import type { DeviceStatus, LogStatus } from '../shared/log.ts';
+import type { DeviceStatus, LogStatus } from '../../shared/log.ts';
 
 export type { DeviceStatus, LogStatus };
 

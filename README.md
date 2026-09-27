@@ -73,14 +73,14 @@ Content is event-sourced: appended as immutable facts and replayed into in-memor
 | `src/renderer/App.tsx` | Owns the project data and switches between the two views |
 | `src/renderer/ProjectsList.tsx` | The project list UI |
 | `src/renderer/project/ProjectView.tsx` | One project: the journal, or the one page a link led to |
-| `src/main/event-log.ts` | The append-only log: framing, fsync, crash recovery, segment rollover, the merge across devices |
+| `src/main/event-log/event-log.ts` | The append-only log: framing, fsync, crash recovery, segment rollover, the merge across devices |
 | `src/main/device-store.ts` | This machine's id and what it remembers per project. In `notes.db`, never in the shared folder |
 | `src/shared/log.ts` | What the log can report about itself: devices read, files skipped, events not understood |
-| `src/main/projection.ts` | Folds the log into the in-memory view. Main process only |
-| `src/main/pages-store.ts` | One pages projection per project, at `<project>/gnotes/` |
+| `src/main/projection/projection.ts` | Folds the log into the in-memory view. Main process only |
+| `src/main/pages-store/pages-store.ts` | One pages projection per project, at `<project>/gnotes/` |
 | `src/main/pages-ipc.ts` | The `pages:*` channels. Checks the project against the registry, and its directory for reachability, before opening a log |
 | `src/shared/pages.ts` | The pages contract. A page is a title; a journal day is the page titled with its local `YYYY-MM-DD` |
-| `src/shared/wikilink.ts` | The remark plugin that makes `[[Mira]]`, `#Mira` and `#[[Mira]]` links. Shared because main reads a block with the same parser to find what it links to |
+| `src/shared/wikilink/wikilink.ts` | The remark plugin that makes `[[Mira]]`, `#Mira` and `#[[Mira]]` links. Shared because main reads a block with the same parser to find what it links to |
 
 A page is not a record anywhere. It is the set of blocks carrying its title, so opening a page appends nothing — the log holds what the user did, and reading is not one of the things they did. The first write to a page is its first event. Pages are never created: naming one is enough. The calendar names the journal days, and a link — `[[Mira]]`, `#Mira` or `#[[Mira]]`, all the same page — names everything else. Following a link opens that page, empty until something is written on it; only the days are in the journal stack. Under its own blocks, every page lists what links to it: each page that names it, cut down to the blocks that do, edited in place like any other block — a write there is a write to the page the block is on. The cuts are read from the fold in main, with the same parser the renderer draws links with, so what counts as a reference is exactly what shows as a link.
 

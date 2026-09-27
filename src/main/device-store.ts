@@ -12,7 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { getDatabase } from './db';
-import type { DeviceMemory } from './event-log';
+import type { DeviceMemory } from './event-log/event-log';
 
 /** Mints one on first call and keeps it thereafter. */
 export function deviceId(): string {

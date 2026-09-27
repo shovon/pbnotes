@@ -26,9 +26,9 @@ import {
   reduce,
 } from './pages-store.ts';
 import type { ProjectRef } from './pages-store.ts';
-import { logSize, segmentName } from './event-log.ts';
-import { lastLeaf, locate } from '../shared/pages.ts';
-import type { Block } from '../shared/pages.ts';
+import { logSize, segmentName } from '../event-log/event-log.ts';
+import { lastLeaf, locate } from '../../shared/pages.ts';
+import type { Block } from '../../shared/pages.ts';
 
 const TODAY = '2026-09-21';
 const TOMORROW = '2026-09-22';

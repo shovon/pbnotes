@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import Markdown from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
-import { remarkPlugins } from '../../../shared/wikilink';
+import { remarkPlugins } from '../../../shared/wikilink/wikilink';
 
 /**
  * One block in its two states. Neither reaches main: the page decides what a

@@ -15,9 +15,9 @@
  * Deliberately free of `electron` imports so it stays runnable under plain
  * `node --test`, and portable to a worker.
  */
-import { EventLog } from './event-log.ts';
-import type { LogEvent, LogOptions } from './event-log.ts';
-import type { Unhandled, ViewStatus } from '../shared/log.ts';
+import { EventLog } from '../event-log/event-log.ts';
+import type { LogEvent, LogOptions } from '../event-log/event-log.ts';
+import type { Unhandled, ViewStatus } from '../../shared/log.ts';
 
 /**
  * Must be pure, and its state must survive a structured clone: the view
