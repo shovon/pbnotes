@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain } from 'electron';
-import { PAGE_CHANNELS } from '../../shared/pages';
-import { requireString } from '../ipc';
-import { checkAvailability, getProject } from '../projects-store';
+import { PAGE_CHANNELS } from '../shared/pages';
+import { requireString } from './ipc';
+import { checkAvailability, getProject } from './projects-store';
 import {
   addBlock,
   deleteBlock,
@@ -13,8 +13,8 @@ import {
   indentBlock,
   onPagesChanged,
   outdentBlock,
-} from './pages-store/pages-store';
-import type { Project } from '../../shared/projects';
+} from './ledger/pages-store/pages-store';
+import type { Project } from '../shared/projects';
 
 /**
  * The log lives in the project's directory, so a write needs both a project we
