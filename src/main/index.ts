@@ -5,7 +5,7 @@ import { closeDatabase, openDatabase } from './db';
 import { registerProjectIpc } from './projects-ipc';
 import { bindDevice, closePages } from './ledger/pages-store/pages-store';
 import { deviceId, recall, remember, rotateDeviceId } from './ledger/device-store';
-import { registerPageIpc } from './ledger/pages-ipc';
+import { registerPageIpc } from './pages-ipc';
 import {
   MIN_SIZE,
   restoreWindowBounds,
