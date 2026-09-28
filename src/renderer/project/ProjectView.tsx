@@ -22,7 +22,7 @@ type Props = {
  *
  * Which page is showing is ordinary state, for the reason `App` gives about
  * which project is showing: there is no address bar, so there is no URL for
- * a router to own. Null is the journal.
+ * a router to own — and no history stack either, so `trail` is it.
  *
  * The journal comes in one read. A project's pages are folded out of a single
  * log whether the view asks for one of them or all of them, so there is
@@ -41,7 +41,14 @@ export default function ProjectView({ project, act: outer }: Props) {
   // keeps yesterday at the top until something re-renders it. Add a timer to
   // the next local midnight if that ever bites.
   const date = today();
-  const [title, setTitle] = useState<string | null>(null);
+  /**
+   * Where you are, kept as the trail that got you there rather than one
+   * title: the journal is an empty trail, and every link followed is one
+   * more on the end. Back takes the last one off, so A → B → C comes back
+   * through B instead of skipping the middle of its own history.
+   */
+  const [trail, setTrail] = useState<string[]>([]);
+  const title = trail.at(-1) ?? null;
   const [stack, setStack] = useState<Page[] | null>(null);
   /**
    * Title → the page as the last write to it handed it back, over the stack
@@ -141,7 +148,13 @@ export default function ProjectView({ project, act: outer }: Props) {
    */
   const go = (next: string | null) => {
     if (next === title) return;
-    setTitle(next);
+    setTrail((was) => (next === null ? [] : [...was, next]));
+    setStack(null);
+  };
+
+  /** One step back along the trail; from the first page that is the journal. */
+  const back = () => {
+    setTrail((was) => was.slice(0, -1));
     setStack(null);
   };
 
@@ -281,8 +294,8 @@ export default function ProjectView({ project, act: outer }: Props) {
       {titlebar !== null &&
         title !== null &&
         createPortal(
-          <button className="back" onClick={() => go(null)}>
-            ← Journal
+          <button className="back" onClick={back}>
+            ← {trail.at(-2) ?? 'Journal'}
           </button>,
           titlebar,
         )}

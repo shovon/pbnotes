@@ -223,7 +223,13 @@ button.danger:hover {
   border-color: transparent;
   font-size: 0.85rem;
   margin-left: 0.25rem;
+  /* It names the page it goes back to, and a page is named whatever a link
+     said — long enough to shove the picker out of the strip. */
+  max-width: 14rem;
+  overflow: hidden;
   padding: 0.15rem 0.4rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-header .actions {
