@@ -144,35 +144,43 @@ export default function App() {
     null;
 
   return (
-    <main className="app">
-      {project && (
-        <ProjectPicker
-          projects={projects}
-          projectId={project.id}
-          onSelect={openProject}
-          onAdd={addProjects}
-        />
-      )}
+    <>
+      {/* The window's own top strip, where the title bar used to be. The
+          picker is the one control that is not about the project currently
+          open, so it belongs above the page rather than on it — beside
+          whichever corner the platform puts its window buttons in. */}
+      <header className="titlebar">
+        {project && (
+          <ProjectPicker
+            projects={projects}
+            projectId={project.id}
+            onSelect={openProject}
+            onAdd={addProjects}
+          />
+        )}
+      </header>
 
-      {notice && (
-        <p className="notice" onClick={() => setNotice(null)}>
-          {notice}
-        </p>
-      )}
+      <main className="app">
+        {notice && (
+          <p className="notice" onClick={() => setNotice(null)}>
+            {notice}
+          </p>
+        )}
 
-      {project ? (
-        <ProjectView
-          // Remounted per project, so nothing survives the switch: the page,
-          // the open editor and the block id it is editing all belong to the
-          // project that was showing a moment ago.
-          key={project.id}
-          project={project}
-          availability={availability[project.id] ?? 'available'}
-          act={act}
-        />
-      ) : (
-        !loading && <Welcome onAdd={addProjects} />
-      )}
-    </main>
+        {project ? (
+          <ProjectView
+            // Remounted per project, so nothing survives the switch: the page,
+            // the open editor and the block id it is editing all belong to the
+            // project that was showing a moment ago.
+            key={project.id}
+            project={project}
+            availability={availability[project.id] ?? 'available'}
+            act={act}
+          />
+        ) : (
+          !loading && <Welcome onAdd={addProjects} />
+        )}
+      </main>
+    </>
   );
 }
