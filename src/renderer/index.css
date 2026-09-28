@@ -199,6 +199,12 @@ button.danger:hover {
   border: 1px solid transparent;
   border-radius: 6px;
   color: inherit;
+  /* A <select> is otherwise as wide as its widest option, which strands the
+     chevron a whole "Open project…" away from a short project name. Sized to
+     what is actually selected instead, so the chevron follows the name.
+     Chromium does this natively; this is Electron, so there is no other
+     browser to fall back for. */
+  field-sizing: content;
   font: inherit;
   font-weight: 600;
   margin-left: 0.4rem;
