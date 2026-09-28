@@ -41,17 +41,24 @@ body {
   padding: calc(var(--titlebar) + 0.75rem) 1.5rem 3rem;
 }
 
-/* With no frame there is nothing left to drag the window by, so the strip
-   the controls float in is the handle. Fixed, and above nothing the user can
-   click: a drag region swallows clicks, and the page starts below it. */
-body::before {
-  content: '';
+/* Where the title bar was: the project picker, and otherwise empty. With no
+   frame there is nothing left to drag the window by, so the strip is also the
+   handle — everything in it has to opt back out, see `.picker`.
+
+   The window buttons are laid over this same strip, and which corner they take
+   is the platform's business: macOS puts them left, Windows and Linux right.
+   `env(titlebar-area-*)` is the box they leave free, which is the whole point
+   of `titleBarOverlay` — the fallbacks are macOS's own inset, for the moment
+   before Chromium has measured the frame. */
+.titlebar {
   -webkit-app-region: drag;
-  height: var(--titlebar);
-  left: 0;
+  align-items: center;
+  display: flex;
+  height: env(titlebar-area-height, var(--titlebar));
+  left: env(titlebar-area-x, 5rem);
   position: fixed;
-  right: 0;
-  top: 0;
+  top: env(titlebar-area-y, 0px);
+  width: env(titlebar-area-width, calc(100% - 5rem));
 }
 
 .app-header {
@@ -182,17 +189,21 @@ button.danger:hover {
   padding: 0.05rem 0.35rem;
 }
 
-/* Top-left, above everything: the one control that is not about the project
-   currently open. Native menu, so it keeps the platform's own look. */
+/* Sits in the title bar strip, so it has to take itself back out of the drag
+   region or it cannot be clicked. Native menu, so it keeps the platform's own
+   look. Borderless until pointed at: at the top of the window it reads as the
+   name of what is open, and a permanent box up there is chrome for chrome. */
 .picker {
+  -webkit-app-region: no-drag;
   background: none;
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: 6px;
   color: inherit;
   font: inherit;
-  margin-bottom: 0.75rem;
+  font-weight: 600;
+  margin-left: 0.4rem;
   max-width: 100%;
-  padding: 0.25rem 0.4rem;
+  padding: 0.15rem 0.3rem;
 }
 
 .picker:hover {
