@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { reduce } from './blocks.ts';
-import type { LogEvent } from '../../event-log/event-log.ts';
+import type { LogEvent } from '../../../ledger/event-log/event-log.ts';
 
 const TODAY = '2026-09-21';
 

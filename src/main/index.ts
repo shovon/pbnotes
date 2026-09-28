@@ -3,9 +3,9 @@ import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { closeDatabase, openDatabase } from './db';
 import { registerProjectIpc } from './projects-ipc';
-import { bindDevice, closePages } from './ledger/pages-store/pages-store';
+import { bindDevice, closePages } from './pages/pages-store/pages-store';
 import { deviceId, recall, remember, rotateDeviceId } from './ledger/device-store';
-import { registerPageIpc } from './pages-ipc';
+import { registerPageIpc } from './pages/pages-ipc';
 import {
   MIN_SIZE,
   restoreWindowBounds,

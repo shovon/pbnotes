@@ -25,7 +25,7 @@ import {
   outdentBlock,
 } from './pages-store.ts';
 import type { ProjectRef } from './pages-store.ts';
-import { logSize, segmentName } from '../event-log/event-log.ts';
+import { logSize, segmentName } from '../../ledger/event-log/event-log.ts';
 import { lastLeaf, locate } from '../../../shared/pages.ts';
 import type { Block } from '../../../shared/pages.ts';
 
