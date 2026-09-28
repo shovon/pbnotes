@@ -11,7 +11,7 @@
  * folder — which is the same promise `README.md` makes about the registry.
  */
 import { randomUUID } from 'node:crypto';
-import { getDatabase } from './db';
+import { getDatabase } from '../db';
 import type { DeviceMemory } from './event-log/event-log';
 
 /** Mints one on first call and keeps it thereafter. */

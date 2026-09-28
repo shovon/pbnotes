@@ -11,18 +11,22 @@
  *
  * Deliberately free of `electron` imports, like `projection.ts`: callers hand
  * in the project, which also keeps the store runnable under `node --test`.
+ *
+ * The plumbing only. What a block *is* — the event schema and the fold over it
+ * — is `blocks/blocks.ts`, which knows nothing about logs, devices or windows.
  */
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import { Projection } from '../projection/projection.ts';
-import type { Reducer } from '../projection/projection.ts';
 import type { DeviceMemory } from '../event-log/event-log.ts';
-import { DATE_PATTERN, locate } from '../../shared/pages.ts';
-import type { Block, Page } from '../../shared/pages.ts';
-import { remarkPlugins } from '../../shared/wikilink/wikilink.ts';
-import type { ViewStatus } from '../../shared/log.ts';
+import { find, HANDLES, reduce } from './blocks/blocks.ts';
+import type { PageEvent, Pages } from './blocks/blocks.ts';
+import { DATE_PATTERN, locate } from '../../../shared/pages.ts';
+import type { Block, Page } from '../../../shared/pages.ts';
+import { remarkPlugins } from '../../../shared/wikilink/wikilink.ts';
+import type { ViewStatus } from '../../../shared/log.ts';
 
 /** Enough of a project to find its log. */
 export type ProjectRef = {
@@ -42,26 +46,6 @@ export type ProjectRef = {
 export function logDirectory(projectPath: string): string {
   return path.join(projectPath, 'gnotes');
 }
-
-/** Title → the blocks on it: a journal day or a page a link named. */
-type Pages = Record<string, Block[]>;
-
-/**
- * Event type → the highest payload `v` this build can fold.
- *
- * Kept beside `reduce` because it has to change whenever `reduce` does. Its
- * job is the case a single-writer log could never produce: a newer build on
- * another machine writing something this one does not understand. Those events
- * are skipped, as they always were, but now they are counted and reported
- * rather than silently leaving holes in the page.
- */
-export const HANDLES: Record<string, number> = {
-  'block.created': 1,
-  'block.edited': 1,
-  'block.deleted': 1,
-  'block.indented': 1,
-  'block.outdented': 1,
-};
 
 /**
  * How this machine identifies itself in a shared folder, and where it keeps
@@ -86,173 +70,19 @@ export function bindDevice(next: DeviceBinding): void {
 }
 
 /**
- * Pure, and over state that survives a structured clone: the view crosses to
- * the renderer as data and the fold may one day run off-thread.
+ * Told which project's fold moved because something arrived in its folder.
  *
- * All three event types are v1 so far. A payload shape that changes gets a new `v`
- * and is upcast by branching here; the file on disk is never rewritten — an
- * edit is a second fact appended after the first, not a correction of it.
- *
- * `page` rides along in the payload so a block can be found without scanning
- * every day the user ever wrote on.
- *
- * A block's position is where the fold puts it, and nowhere else: blocks carry
- * no index, because an index stored on a record has to be rewritten on every
- * neighbour the moment anything lands between them. `after` says which block
- * the new one was written beneath, which is a fact about what the user did and
- * so stays true forever; the array it produces is derived, and derived the
- * same way on replay as it was live.
- *
- * Still v1. `after` is optional and its absence has always meant what it means
- * now — at the end — so every event already on disk reads correctly with no
- * upcast. Nesting needed no upcast either: `children` is a fact about the
- * fold, not about the events, and a log written before blocks could nest
- * folds to a tree of leaves.
+ * Injected for the same reason as `bindDevice`: this file holds no `electron`
+ * import, so it cannot reach a window itself and stays runnable under
+ * `node --test`. Left unset, another device's notes are folded and nobody is
+ * told — which is exactly what a test wants, and what a headless main process
+ * would do anyway.
  */
+let announce: ((projectId: string) => void) | undefined;
 
-/**
- * `block` spliced in directly after `after`, wherever in the tree that is.
- * Undefined when `after` is not in this subtree, so the caller can tell
- * "not here, keep looking" from "here, and this is the result".
- *
- * A sibling of `after`, which is what makes `after` alone enough to place a
- * block at any depth: Enter inside a nested block writes the next one beside
- * it, not back at the top level.
- */
-function beside(
-  blocks: Block[],
-  after: string,
-  block: Block,
-): Block[] | undefined {
-  const at = blocks.findIndex((it) => it.id === after);
-  if (at !== -1) {
-    const next = [...blocks];
-    next.splice(at + 1, 0, block);
-    return next;
-  }
-  for (let i = 0; i < blocks.length; i++) {
-    const children = beside(blocks[i].children, after, block);
-    if (!children) continue;
-    const next = [...blocks];
-    next[i] = { ...blocks[i], children };
-    return next;
-  }
-  return undefined;
+export function onPagesChanged(next: (projectId: string) => void): void {
+  announce = next;
 }
-
-/** The block and everything under it, gone from wherever it sat. */
-function without(blocks: Block[], id: string): Block[] {
-  return blocks
-    .filter((block) => block.id !== id)
-    .map((block) => ({ ...block, children: without(block.children, id) }));
-}
-
-/** `parent`'s children put through `next`, wherever `parent` is. */
-function mapChildren(
-  blocks: Block[],
-  parent: string,
-  next: (children: Block[]) => Block[],
-): Block[] {
-  return blocks.map((it) =>
-    it.id === parent
-      ? { ...it, children: next(it.children) }
-      : { ...it, children: mapChildren(it.children, parent, next) },
-  );
-}
-
-export const reduce: Reducer<Pages> = (state, event) => {
-  const { page, id, text, after, parent } = event.payload as {
-    page: string;
-    id: string;
-    text: string;
-    after?: string;
-    parent?: string;
-  };
-
-  if (event.type === 'block.created') {
-    const blocks = state[page] ?? [];
-    const block: Block = { id, text, children: [] };
-    // `addBlock` refuses an `after` the page does not have, so missing it here
-    // means a log written by something else. Append rather than drop: a block
-    // in the wrong place can be moved, one the fold discarded is just gone.
-    const next = (after && beside(blocks, after, block)) || [...blocks, block];
-    return { ...state, [page]: next };
-  }
-
-  if (event.type === 'block.edited') {
-    const blocks = state[page];
-    if (!blocks) return state;
-    const edit = (it: Block[]): Block[] =>
-      it.map((block) =>
-        block.id === id
-          ? { ...block, text }
-          : { ...block, children: edit(block.children) },
-      );
-    return { ...state, [page]: edit(blocks) };
-  }
-
-  if (event.type === 'block.deleted') {
-    const blocks = state[page];
-    if (!blocks) return state;
-    // A plain filter, no tombstone. Nothing later in the log needs to know
-    // this block was here: `after` only ever names a block that was present
-    // when it was written, and a stray edit arriving afterwards already folds
-    // to nothing through the `edit` above.
-    //
-    // The subtree goes with it. The events that built those children are all
-    // still on disk — what the fold stops showing is a block the user said
-    // they were done with, and everything they had filed underneath it.
-    return { ...state, [page]: without(blocks, id) };
-  }
-
-  if (event.type === 'block.indented') {
-    const blocks = state[page];
-    if (!blocks || !parent) return state;
-    const found = locate(blocks, id);
-    const moving = found?.siblings[found.at];
-    // Detach before attaching, and read `moving` before either: it carries
-    // its own children across, so the block that lands under `parent` is the
-    // whole subtree, not a stripped copy of its root.
-    if (!moving || !locate(blocks, parent)) return state;
-    return {
-      ...state,
-      [page]: mapChildren(without(blocks, id), parent, (children) => [
-        ...children,
-        moving,
-      ]),
-    };
-  }
-
-  if (event.type === 'block.outdented') {
-    const blocks = state[page];
-    if (!blocks || !after) return state;
-    const found = locate(blocks, id);
-    if (!found?.parent) return state;
-
-    // The siblings below it come along as its own children. Leaving them
-    // behind would strand them inside the old parent, which renders *above*
-    // where this block is going — so the page would come back reading in a
-    // different order than the user left it, off one keystroke that only
-    // asked about depth.
-    const moving = found.siblings[found.at];
-    const trailing = found.siblings.slice(found.at + 1);
-    const outdented = {
-      ...moving,
-      children: [...moving.children, ...trailing],
-    };
-    const trimmed = mapChildren(blocks, found.parent.id, (children) =>
-      children.slice(0, found.at),
-    );
-    // `after` is the block it used to hang under, so this lands it directly
-    // beneath, at that block's own level.
-    return {
-      ...state,
-      [page]: beside(trimmed, after, outdented) ?? [...trimmed, outdented],
-    };
-  }
-
-  return state;
-};
 
 /**
  * Cached by project id, but remembering the path it was opened at, and
@@ -301,6 +131,15 @@ function projectionFor(project: ProjectRef): Promise<Projection<Pages>> {
       // The folder is shared, so another machine's notes can land at any
       // moment. Without this they would not appear until the app restarts.
       projection.watch();
+      // And without this the fold would hold them while the window went on
+      // showing what it read before them — a refresh nobody can ask for,
+      // because there is nothing on screen to say the page is behind.
+      //
+      // Only a re-fold. This device's own writes already hand the folded page
+      // back to the caller that asked for them.
+      projection.subscribe((_state, change) => {
+        if (change === 'refold') announce?.(project.id);
+      });
       return projection;
     }),
   };
@@ -313,12 +152,16 @@ function projectionFor(project: ProjectRef): Promise<Projection<Pages>> {
   return entry.projection;
 }
 
+/** The page as it stands right now, empty if nothing has been written to it. */
+function pageOf(projection: Projection<Pages>, title: string): Page {
+  return { title, blocks: projection.state[title] ?? [] };
+}
+
 export async function getPage(
   project: ProjectRef,
   title: string,
 ): Promise<Page> {
-  const projection = await projectionFor(project);
-  return { title, blocks: projection.state[title] ?? [] };
+  return pageOf(await projectionFor(project), title);
 }
 
 /**
@@ -444,6 +287,23 @@ export async function getLogStatus(project: ProjectRef): Promise<ViewStatus> {
 }
 
 /**
+ * Appends one of this fold's events: the payload checked against the schema,
+ * and the version taken from `HANDLES` rather than written out here.
+ *
+ * Both halves of one hazard. A payload literal that drifts from the schema
+ * folds to nothing, and a `v` typed out by hand next to a `HANDLES` that says
+ * something else is a build whose own gate refuses its own writes — either
+ * way the user's keystroke lands on disk and never comes back.
+ */
+function append<T extends PageEvent['type']>(
+  projection: Projection<Pages>,
+  type: T,
+  payload: Extract<PageEvent, { type: T }>['payload'],
+): Promise<unknown> {
+  return projection.dispatch(type, payload, HANDLES[type]);
+}
+
+/**
  * Writes a new block, at the end of the page or directly beneath `after`.
  *
  * Refuses an `after` that is not on this page, for the same reason `editBlock`
@@ -464,7 +324,7 @@ export async function addBlock(
 
   // dispatch appends before it folds, so this resolves only once the event is
   // durable — the page handed back can never show something a crash takes.
-  await projection.dispatch('block.created', {
+  await append(projection, 'block.created', {
     page: title,
     id: randomUUID(),
     text,
@@ -472,33 +332,32 @@ export async function addBlock(
     // bytes it always did.
     ...(after ? { after } : {}),
   });
-  return { title, blocks: projection.state[title] ?? [] };
+  return pageOf(projection, title);
 }
 
 /**
  * Rewrites a block's text by appending the fact that it changed. Refuses a
- * block the page does not have: the fold would ignore the event, and a log
+ * block the project does not have: the fold would ignore the event, and a log
  * that keeps everything forever should not be collecting events that mean
  * nothing.
+ *
+ * No page is asked for, and none is written. The block is looked up by id and
+ * the page it turned out to be on is what comes back — so a caller showing
+ * blocks from several pages at once, which is what a references cut already
+ * is, does not have to carry the right title beside each one to be allowed to
+ * write.
  */
 export async function editBlock(
   project: ProjectRef,
-  title: string,
   blockId: string,
   text: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
-  const blocks = projection.state[title] ?? [];
-  if (!locate(blocks, blockId)) {
-    throw new Error('No such block');
-  }
+  const found = find(projection.state, blockId);
+  if (!found) throw new Error('No such block');
 
-  await projection.dispatch('block.edited', {
-    page: title,
-    id: blockId,
-    text,
-  });
-  return { title, blocks: projection.state[title] ?? [] };
+  await append(projection, 'block.edited', { id: blockId, text });
+  return pageOf(projection, found.page);
 }
 
 /**
@@ -512,17 +371,14 @@ export async function editBlock(
  */
 export async function deleteBlock(
   project: ProjectRef,
-  title: string,
   blockId: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
-  const blocks = projection.state[title] ?? [];
-  if (!locate(blocks, blockId)) {
-    throw new Error('No such block');
-  }
+  const found = find(projection.state, blockId);
+  if (!found) throw new Error('No such block');
 
-  await projection.dispatch('block.deleted', { page: title, id: blockId });
-  return { title, blocks: projection.state[title] ?? [] };
+  await append(projection, 'block.deleted', { id: blockId });
+  return pageOf(projection, found.page);
 }
 
 /**
@@ -541,21 +397,18 @@ export async function deleteBlock(
  */
 export async function indentBlock(
   project: ProjectRef,
-  title: string,
   blockId: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
-  const blocks = projection.state[title] ?? [];
-  const found = locate(blocks, blockId);
+  const found = find(projection.state, blockId);
   if (!found) throw new Error('No such block');
-  if (found.at === 0) return { title, blocks };
+  if (found.at === 0) return pageOf(projection, found.page);
 
-  await projection.dispatch('block.indented', {
-    page: title,
+  await append(projection, 'block.indented', {
     id: blockId,
     parent: found.siblings[found.at - 1].id,
   });
-  return { title, blocks: projection.state[title] ?? [] };
+  return pageOf(projection, found.page);
 }
 
 /**
@@ -571,21 +424,18 @@ export async function indentBlock(
  */
 export async function outdentBlock(
   project: ProjectRef,
-  title: string,
   blockId: string,
 ): Promise<Page> {
   const projection = await projectionFor(project);
-  const blocks = projection.state[title] ?? [];
-  const found = locate(blocks, blockId);
+  const found = find(projection.state, blockId);
   if (!found) throw new Error('No such block');
-  if (!found.parent) return { title, blocks };
+  if (!found.parent) return pageOf(projection, found.page);
 
-  await projection.dispatch('block.outdented', {
-    page: title,
+  await append(projection, 'block.outdented', {
     id: blockId,
     after: found.parent.id,
   });
-  return { title, blocks: projection.state[title] ?? [] };
+  return pageOf(projection, found.page);
 }
 
 export async function closePages(): Promise<void> {

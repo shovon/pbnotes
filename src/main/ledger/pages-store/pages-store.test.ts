@@ -23,12 +23,11 @@ import {
   indentBlock,
   logDirectory,
   outdentBlock,
-  reduce,
 } from './pages-store.ts';
 import type { ProjectRef } from './pages-store.ts';
 import { logSize, segmentName } from '../event-log/event-log.ts';
-import { lastLeaf, locate } from '../../shared/pages.ts';
-import type { Block } from '../../shared/pages.ts';
+import { lastLeaf, locate } from '../../../shared/pages.ts';
+import type { Block } from '../../../shared/pages.ts';
 
 const TODAY = '2026-09-21';
 const TOMORROW = '2026-09-22';
@@ -167,7 +166,7 @@ test('an edited block replays as its latest text', async () => {
   await addBlock(it, TODAY, 'untouched');
   const id = created.blocks[0].id;
 
-  const edited = await editBlock(it, TODAY, id, 'second draft');
+  const edited = await editBlock(it, id, 'second draft');
   assert.deepEqual(
     edited.blocks.map((block) => block.text),
     ['second draft', 'untouched'],
@@ -186,16 +185,12 @@ test('an edited block replays as its latest text', async () => {
   await closePages();
 });
 
-test('editing a block the page does not have is refused', async () => {
+test('editing a block the project does not have is refused', async () => {
   const it = await project();
   await addBlock(it, TODAY, 'the only block');
 
   await assert.rejects(
-    () => editBlock(it, TODAY, 'not-a-real-id', 'nope'),
-    /No such block/,
-  );
-  await assert.rejects(
-    () => editBlock(it, TOMORROW, 'not-a-real-id', 'nope'),
+    () => editBlock(it, 'not-a-real-id', 'nope'),
     /No such block/,
   );
 
@@ -209,7 +204,7 @@ test('a deleted block stays gone across a restart', async () => {
   const id = created.blocks[0].id;
   await addBlock(it, TODAY, 'also kept', id);
 
-  const after = await deleteBlock(it, TODAY, id);
+  const after = await deleteBlock(it, id);
   assert.deepEqual(
     after.blocks.map((block) => block.text),
     ['also kept', 'kept'],
@@ -235,28 +230,14 @@ test('deleting a block the page does not have is refused', async () => {
   const id = created.blocks[0].id;
 
   await assert.rejects(
-    () => deleteBlock(it, TODAY, 'not-a-real-id'),
+    () => deleteBlock(it, 'not-a-real-id'),
     /No such block/,
   );
   // Gone once, gone for good: a second delete has nothing to append about.
-  await deleteBlock(it, TODAY, id);
-  await assert.rejects(() => deleteBlock(it, TODAY, id), /No such block/);
+  await deleteBlock(it, id);
+  await assert.rejects(() => deleteBlock(it, id), /No such block/);
 
   await closePages();
-});
-
-test('the fold ignores events it does not know', async () => {
-  const state = reduce({}, {
-    seq: 1,
-    device: 'd',
-    hlc: { l: 1, c: 0 },
-    id: 'x',
-    type: 'something.else',
-    v: 1,
-    at: '2026-09-21T00:00:00.000Z',
-    payload: {},
-  });
-  assert.deepEqual(state, {});
 });
 
 test('an indented block replays under the sibling above it', async () => {
@@ -265,7 +246,7 @@ test('an indented block replays under the sibling above it', async () => {
   const written = await addBlock(it, TODAY, 'child');
   const child = written.blocks[1].id;
 
-  const indented = await indentBlock(it, TODAY, child);
+  const indented = await indentBlock(it, child);
   assert.deepEqual(
     indented.blocks.map((block) => block.text),
     ['parent'],
@@ -297,8 +278,8 @@ test('indenting carries the whole subtree, and stacks', async () => {
 
   // `third` goes under `second`, then `second` — carrying `third` — under
   // `first`. Two levels out of two keystrokes.
-  await indentBlock(it, TODAY, three);
-  const page = await indentBlock(it, TODAY, two);
+  await indentBlock(it, three);
+  const page = await indentBlock(it, two);
 
   assert.equal(page.blocks.length, 1);
   assert.equal(page.blocks[0].text, 'first');
@@ -318,7 +299,7 @@ test('indenting the first of its siblings appends nothing', async () => {
   await addBlock(it, TODAY, 'second');
   const before = await logSize(await segment(it.path));
 
-  const page = await indentBlock(it, TODAY, first);
+  const page = await indentBlock(it, first);
   assert.deepEqual(
     page.blocks.map((block) => block.text),
     ['first', 'second'],
@@ -330,7 +311,7 @@ test('indenting the first of its siblings appends nothing', async () => {
   );
 
   await assert.rejects(
-    () => indentBlock(it, TODAY, 'not-a-real-id'),
+    () => indentBlock(it, 'not-a-real-id'),
     /No such block/,
   );
 
@@ -341,7 +322,7 @@ test('a new block lands beside a nested one, not back at the top', async () => {
   const it = await project();
   await addBlock(it, TODAY, 'parent');
   const child = (await addBlock(it, TODAY, 'child')).blocks[1].id;
-  await indentBlock(it, TODAY, child);
+  await indentBlock(it, child);
 
   // `after` is the only thing placing this block, so if the fold only looked
   // at the top level it would land as a second block of the page.
@@ -360,9 +341,9 @@ test('deleting a block takes its children out of the fold with it', async () => 
   await addBlock(it, TODAY, 'kept');
   const parent = (await addBlock(it, TODAY, 'parent')).blocks[1].id;
   const child = (await addBlock(it, TODAY, 'child')).blocks[2].id;
-  await indentBlock(it, TODAY, child);
+  await indentBlock(it, child);
 
-  const page = await deleteBlock(it, TODAY, parent);
+  const page = await deleteBlock(it, parent);
   assert.deepEqual(
     page.blocks.map((block) => block.text),
     ['kept'],
@@ -376,7 +357,7 @@ test('deleting a block takes its children out of the fold with it', async () => 
     ['kept'],
   );
   await assert.rejects(
-    () => editBlock(it, TODAY, child, 'orphan'),
+    () => editBlock(it, child, 'orphan'),
     /No such block/,
   );
 
@@ -397,8 +378,8 @@ test('locate and lastLeaf read the page the way it renders', async () => {
   // Deepest first. Indent is always relative to the siblings a block has
   // *now*, so indenting `two` before `three` would leave `three` at the top
   // level with `one` above it, and file it there instead.
-  await indentBlock(it, TODAY, three);
-  await indentBlock(it, TODAY, two);
+  await indentBlock(it, three);
+  await indentBlock(it, two);
   // one
   //   two
   //     three
@@ -432,9 +413,9 @@ test('outdenting lands a block beneath what it hung under', async () => {
   await addBlock(it, TODAY, 'parent');
   const child = (await addBlock(it, TODAY, 'child')).blocks[1].id;
   await addBlock(it, TODAY, 'after the lot');
-  await indentBlock(it, TODAY, child);
+  await indentBlock(it, child);
 
-  const page = await outdentBlock(it, TODAY, child);
+  const page = await outdentBlock(it, child);
   assert.deepEqual(
     page.blocks.map((block) => block.text),
     ['parent', 'child', 'after the lot'],
@@ -462,14 +443,14 @@ test('outdenting brings the siblings below it along as children', async () => {
   // when its turn comes, so each lands as another of P's children. Going
   // backwards would build a ladder instead — P > A > B > C — because by then
   // the sibling above is the one just indented.
-  for (const id of [a, b, c]) await indentBlock(it, TODAY, id);
+  for (const id of [a, b, c]) await indentBlock(it, id);
   // P > A, B, C — all three filed under P.
   const before = await getPage(it, TODAY);
   assert.deepEqual(reading(before.blocks), ['P', 'A', 'B', 'C']);
 
   // Outdent the middle one. C cannot stay under P: P renders above B, so C
   // would come back reading *before* B off a keystroke about depth alone.
-  const page = await outdentBlock(it, TODAY, b);
+  const page = await outdentBlock(it, b);
   assert.deepEqual(reading(page.blocks), ['P', 'A', 'B', 'C']);
   assert.deepEqual(
     page.blocks.map((block) => block.text),
@@ -501,8 +482,8 @@ test('indent then outdent puts the page back as it was', async () => {
   const two = (await addBlock(it, TODAY, 'two')).blocks[1].id;
   await addBlock(it, TODAY, 'three');
 
-  await indentBlock(it, TODAY, two);
-  const back = await outdentBlock(it, TODAY, two);
+  await indentBlock(it, two);
+  const back = await outdentBlock(it, two);
   assert.deepEqual(
     back.blocks.map((block) => block.text),
     ['one', 'two', 'three'],
@@ -525,7 +506,7 @@ test('outdenting a top-level block appends nothing', async () => {
   const first = (await addBlock(it, TODAY, 'top level')).blocks[0].id;
   const before = await logSize(await segment(it.path));
 
-  const page = await outdentBlock(it, TODAY, first);
+  const page = await outdentBlock(it, first);
   assert.deepEqual(
     page.blocks.map((block) => block.text),
     ['top level'],
@@ -537,7 +518,7 @@ test('outdenting a top-level block appends nothing', async () => {
   );
 
   await assert.rejects(
-    () => outdentBlock(it, TODAY, 'not-a-real-id'),
+    () => outdentBlock(it, 'not-a-real-id'),
     /No such block/,
   );
 
@@ -576,7 +557,7 @@ test('every written day comes back newest first, emptied days left out', async (
   await addBlock(it, '2026-09-20', 'the oldest thing');
   await addBlock(it, TOMORROW, 'the newest thing');
   const gone = await addBlock(it, TODAY, 'written then deleted');
-  await deleteBlock(it, TODAY, gone.blocks[0].id);
+  await deleteBlock(it, gone.blocks[0].id);
 
   assert.deepEqual(
     (await getPages(it)).map((page) => page.title),
@@ -605,11 +586,11 @@ test('what links to a page, grouped by the page it is on', async () => {
   const shed = (await addBlock(it, TOMORROW, 'Shed')).blocks[0];
   const child = (await addBlock(it, TOMORROW, '#Mira measured it', shed.id))
     .blocks[1];
-  await indentBlock(it, TOMORROW, child.id);
+  await indentBlock(it, child.id);
   const about = (await addBlock(it, TOMORROW, 'About #[[Mira]]')).blocks[1];
   const again = (await addBlock(it, TOMORROW, 'Also [[Mira]]', about.id))
     .blocks[2];
-  await indentBlock(it, TOMORROW, again.id);
+  await indentBlock(it, again.id);
   await addBlock(it, 'Mira', 'Prefers #[[the good coffee]].');
   await addBlock(it, 'Mira', 'See [[Mira]] — herself.');
   await addBlock(it, 'Notes', 'Try `grep #Mira` first.');
@@ -661,14 +642,14 @@ test('references follow edits, deletes and restarts', async () => {
     [TODAY],
   );
 
-  await editBlock(it, TODAY, linking.id, 'Ask nobody.');
-  await editBlock(it, TOMORROW, plain.id, 'Ask #Mira.');
+  await editBlock(it, linking.id, 'Ask nobody.');
+  await editBlock(it, plain.id, 'Ask #Mira.');
   assert.deepEqual(
     (await getReferences(it, 'Mira')).map((page) => page.title),
     [TOMORROW],
   );
 
-  await deleteBlock(it, TOMORROW, plain.id);
+  await deleteBlock(it, plain.id);
   assert.deepEqual(await getReferences(it, 'Mira'), []);
   await closePages();
 

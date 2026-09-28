@@ -17,7 +17,7 @@
  */
 import { EventLog } from '../event-log/event-log.ts';
 import type { LogEvent, LogOptions } from '../event-log/event-log.ts';
-import type { Unhandled, ViewStatus } from '../../shared/log.ts';
+import type { Unhandled, ViewStatus } from '../../../shared/log.ts';
 
 /**
  * Must be pure, and its state must survive a structured clone: the view
@@ -26,6 +26,18 @@ import type { Unhandled, ViewStatus } from '../../shared/log.ts';
  * `useSyncExternalStore` wants on the other side.
  */
 export type Reducer<S> = (state: S, event: LogEvent) => S;
+
+/**
+ * Why the state moved: an event this device just appended, or a re-fold that
+ * picked up something which arrived in the folder.
+ *
+ * The difference matters to whoever is watching. A `dispatch` is already known
+ * to the caller that asked for it — `addBlock` hands the folded page straight
+ * back — so telling the view about it again is at best redundant work. A
+ * `refold` is the only kind the view could not have known about, because
+ * nothing local caused it.
+ */
+export type Change = 'dispatch' | 'refold';
 
 export type ProjectionOptions = LogOptions & {
   /**
@@ -49,12 +61,15 @@ export class Projection<S> {
   #reduce: Reducer<S>;
   #options: ProjectionOptions;
   #unhandled: Unhandled[];
-  #listeners = new Set<(state: S) => void>();
+  /** Events in the current fold. Compared to spot a re-fold that read the
+      same bytes, which the poll behind `watch` does every 30 seconds. */
+  #counted: number;
+  #listeners = new Set<(state: S, change: Change) => void>();
   #unwatch: (() => void) | undefined;
 
   private constructor(
     log: EventLog,
-    fold: { state: S; unhandled: Unhandled[] },
+    fold: { state: S; unhandled: Unhandled[]; count: number },
     reduce: Reducer<S>,
     options: ProjectionOptions,
     initial: S,
@@ -67,6 +82,7 @@ export class Projection<S> {
     // a reducer that appends (every block in a page), a doubled view.
     this.#initial = initial;
     this.#unhandled = fold.unhandled;
+    this.#counted = fold.count;
     this.#reduce = reduce;
     this.#options = options;
   }
@@ -98,12 +114,20 @@ export class Projection<S> {
     reduce: Reducer<S>,
     initial: S,
     handles: Record<string, number> | undefined,
-  ): { apply: (event: LogEvent) => void; state: S; unhandled: Unhandled[] } {
+  ): {
+    apply: (event: LogEvent) => void;
+    state: S;
+    unhandled: Unhandled[];
+    count: number;
+  } {
     const tally = new Map<string, Unhandled>();
     const fold = {
       state: initial,
       unhandled: [] as Unhandled[],
+      /** How many events went in, which is how a repeat fold is recognised. */
+      count: 0,
       apply(event: LogEvent): void {
+        fold.count += 1;
         if (handles && !(event.v <= (handles[event.type] ?? -1))) {
           const key = `${event.type}@${event.v}`;
           const seen = tally.get(key);
@@ -151,7 +175,14 @@ export class Projection<S> {
     await this.#log.replay(fold.apply);
     this.#state = fold.state;
     this.#unhandled = fold.unhandled;
-    for (const listener of this.#listeners) listener(this.#state);
+    // The poll behind `watch` re-folds on a timer whether or not anything
+    // arrived, and most of the time nothing has. The log is append-only, so the
+    // same number of events is the same events: an unchanged count is an
+    // identical fold, and listeners hear about the folder changing rather than
+    // about it being read again.
+    if (fold.count === this.#counted) return;
+    this.#counted = fold.count;
+    this.#notify('refold');
   }
 
   /**
@@ -185,12 +216,20 @@ export class Projection<S> {
   async dispatch<T>(type: string, payload: T, v = 1): Promise<LogEvent<T>> {
     const event = await this.#log.append(type, payload, v);
     this.#state = this.#reduce(this.#state, event as LogEvent);
-    for (const listener of this.#listeners) listener(this.#state);
+    // Folded here rather than by a replay, so the tally has to be told — left
+    // behind, the next re-fold counts one more event than it did and reports
+    // this device's own write as something that arrived.
+    this.#counted += 1;
+    this.#notify('dispatch');
     return event;
   }
 
+  #notify(change: Change): void {
+    for (const listener of this.#listeners) listener(this.#state, change);
+  }
+
   /** Returns an unsubscribe function. */
-  subscribe(listener: (state: S) => void): () => void {
+  subscribe(listener: (state: S, change: Change) => void): () => void {
     this.#listeners.add(listener);
     return () => {
       this.#listeners.delete(listener);

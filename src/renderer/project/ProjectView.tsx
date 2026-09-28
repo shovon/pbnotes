@@ -54,6 +54,13 @@ export default function ProjectView({ project, act: outer }: Props) {
   /** Counts the writes, so the references can be read again after each. */
   const [written, setWritten] = useState(0);
   const writes = useRef(0);
+  /**
+   * Counts what has arrived from another device, so the page can be read
+   * again. Separate from `written`: a write already holds the page it
+   * produced, and an arrival is the case where nothing on screen came from
+   * what changed.
+   */
+  const [arrived, setArrived] = useState(0);
 
   /**
    * A write on one page changes what links to another — today's new block
@@ -130,9 +137,33 @@ export default function ProjectView({ project, act: outer }: Props) {
     setStack(null);
   };
 
+  /**
+   * Another machine wrote in this project's folder and main has folded it in.
+   * Nothing local caused it, so nothing local would have read it back.
+   */
+  useEffect(() => {
+    const off = pages.onChanged((id) => {
+      if (id === project.id) setArrived((seen) => seen + 1);
+    });
+    // A stubbed bridge — Storybook's — answers with something that is not an
+    // unsubscribe, and a cleanup that is not a function throws.
+    return () => {
+      if (typeof off === 'function') off();
+    };
+  }, [project.id]);
+
+  /**
+   * To the top on navigation only. A day rolling over mid-session, or another
+   * device's notes landing, re-reads the page under someone who is reading it;
+   * moving them to the top of it would be a second surprise on top of the
+   * first.
+   */
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [project.id, title]);
+
   useEffect(() => {
     let current = true;
-    window.scrollTo(0, 0);
     const read =
       title === null
         ? pages.openAll(project.id)
@@ -153,7 +184,7 @@ export default function ProjectView({ project, act: outer }: Props) {
     return () => {
       current = false;
     };
-  }, [project.id, date, title]);
+  }, [project.id, date, title, arrived]);
 
   /**
    * Today is in the journal whether or not it has been written on: it is the
