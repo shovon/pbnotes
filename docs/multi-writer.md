@@ -109,7 +109,7 @@ But: fresh install on a second laptop, folder handed to the sync tool, user star
 
 It is not a cosmetic mis-ordering. `reduce` is written for events that arrive in causal order, and it fails quietly when they do not:
 
-- Across pages, nothing happens: different `page` keys never interact.
+- Across pages, nothing happens: a block belongs to one page, so events about blocks on different pages never touch the same entry.
 - On the same page, text is lost. A `block.edited` folding before its `block.created` finds no such block and returns the state unchanged; the `created` that follows then sets the original text. A block that was created empty and typed into comes back **empty**.
 - A `block.created` carrying `after: X` that sorts before `X` exists falls through to the append-at-end fallback: the block survives, at the bottom of the page rather than where it was written.
 
@@ -122,6 +122,14 @@ What remains is bounded: a device writing into a page another is concurrently ed
 Given a deterministic order and a full re-fold, every device lands on the same state whether or not the operations commute. Non-commutativity then costs *intention preservation* — the merged tree may not be what either machine pictured — but never *convergence*. Nobody's copy disagrees with anybody else's.
 
 That is what keeps `reduce` exactly as it is: pure, deterministic, over a single total order. No CRDT, no operational transform, no new dependency.
+
+### Blocks are addressed by id, not by page
+
+Only `block.created` carries a page. `block.edited`, `.deleted`, `.indented` and `.outdented` carry the block id and nothing else, and the fold finds the block wherever it is.
+
+This is a sync property rather than a tidiness one. A page on a post-creation event is a copy of where the block sat when the user typed — correct on the machine that wrote it, and stale as soon as another machine moves the block. `state[page]` would then miss and `reduce` would return the state unchanged, which is a keystroke lost in silence. Addressed by id, the same event folds correctly no matter what else has happened to the block. It is also what any cross-page move has to be built on, so the shape is settled before the feature that needs it exists, rather than after.
+
+Payloads went to `v: 2`. A `v1` payload needs no upcast — it has a field the fold no longer reads — but the bump matters in the other direction: an older build handed a `v2` event would look up `state[undefined]` and drop it without a word, and at `v: 2` its `HANDLES` gate refuses the event and `ViewStatus` reports it instead.
 
 The price is retroactive history. A late-arriving event slots into the middle of the order and the page reshuffles under the user after a sync. Every file-sync notes app has this; it is survivable, and it is the thing to watch for in dogfooding.
 
@@ -144,6 +152,8 @@ A local append's `(l, c)` is strictly greater than every event known at that mom
 This is a change of posture more than of algorithm. Today the reader assumes *I wrote everything here, so anything unexpected is damage.* Under a sync tool, all of the following are routine: a file arrives half-written, grows between two reads, appears before the segment that precedes it, vanishes under selective sync, or exists as an online-only placeholder that throws on read.
 
 A log is **own** if its directory name equals our device id, and **foreign** otherwise.
+
+The two sections below are one function: `verdict(stop, own, last)` in `src/main/ledger/event-log/event-log.ts`, which maps a stopping point to `repair` (truncate), `damaged` (refuse to open) or `stall` (wait). It is pure and separate from the directory walk that feeds it, because it is the only decision in the log that deletes anything — and it is covered by its own truth-table tests that touch no filesystem, alongside the byte-level recovery tests.
 
 ### Own log: unchanged
 
@@ -214,7 +224,7 @@ Carried alongside the page through the existing `pages:*` channels. No UI is spe
 
 None of these block convergence — every device agrees on the same answer. They are about the answer being the one a person expected. Ranked by how much they will actually bite.
 
-1. **`block.outdented` moves blocks it does not name.** Trailing siblings become children, so its effect is defined over whoever the siblings happened to be at fold time, which differs per device. Carrying the explicit ids it moves makes it mergeable. Payload `v: 2`. **Do this one before relying on sync daily.**
+1. **`block.outdented` moves blocks it does not name.** Trailing siblings become children, so its effect is defined over whoever the siblings happened to be at fold time, which differs per device. Carrying the explicit ids it moves makes it mergeable. Payload `v: 3` — `v: 2` is the one that dropped `page`. **Do this one before relying on sync daily.**
 2. **`block.deleted` has no tombstone.** Device A deletes X while device B writes a block `after: X`. The fallback at `pages-store.ts` keeps the content — the right instinct — but the block lands at the bottom of the page instead of where it was written. A tombstone restores the placement.
 3. **`block.indented` no-ops when its `parent` is gone**, silently dropping the user's intent. Deterministic, so both devices drop it identically. Still surprising.
 4. **Text is last-writer-wins per block.** Concurrent edits to one block lose one side. The loser is still on disk forever, so it can be surfaced rather than pretended away.
@@ -242,6 +252,7 @@ None of these block convergence — every device agrees on the same answer. They
 - An unrecognised event type is skipped, counted, and reported in `unhandled`.
 - A conflicted copy inside our own device directory mints a new device id, as does a tip on disk that runs past the one recorded in `notes.db`.
 - Root-level segments and junk files appear in `ignored`, not in the fold.
+- A re-fold caused by an arriving file is reported to subscribers; one caused by this device's own write, or by a poll that read an unchanged log, is not.
 
 ### The one that matters
 
@@ -258,6 +269,6 @@ This will find more than the rest of the list put together, because it tests the
 Steps 1 to 3 are done. Step 4 is not, and is the thing to watch in dogfooding.
 
 1. ~~**Layout and identity.**~~ Device id in `notes.db`, per-device directories, per-device `seq`.
-2. ~~**Foreign-log reading and watching.**~~ The stall rules, re-reading on change, and the `LogStatus` surface including `unhandled`.
+2. ~~**Foreign-log reading and watching.**~~ The stall rules, re-reading on change, and the `LogStatus` surface including `unhandled`. The re-read reaches the window too: a fold that moved because a file arrived is pushed over `pages:changed`, and the view reads the page again. A fold that moved because *this* device wrote is not — the write already handed its page back — and neither is a re-fold that read the same bytes, which is what the poll behind `watch` does most of the time.
 3. ~~**Ordering.**~~ `hlc` and `device` on the envelope, the persisted floor and its 24-hour bound, k-way merge with `(device, seq)` dedupe, full re-fold on remote change, and the convergence property test.
 4. **Reducer semantics**, one item at a time, driven by which anomaly actually shows up. Nothing here blocks convergence — every device already agrees on the same answer — so this is about the answer being the one a person expected.

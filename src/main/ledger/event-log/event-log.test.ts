@@ -1,5 +1,5 @@
 /**
- * Run with: node --test src/main/event-log.test.ts
+ * Run with: npm test
  *
  * Three behaviours are worth pinning down. Crash recovery, because getting the
  * torn-tail rules wrong silently destroys or misreads user history. Segment
@@ -27,8 +27,9 @@ import {
   compare,
   logSize,
   segmentName,
+  verdict,
 } from './event-log.ts';
-import type { LogEvent, LogOptions } from './event-log.ts';
+import type { LogEvent, LogOptions, Stop } from './event-log.ts';
 
 /**
  * The machine under test. Pinned because a device writes only inside its own
@@ -516,4 +517,39 @@ test("a log running past our recorded tip mints a new device id", async () => {
     events.map((it) => it.device),
     [DEVICE, DEVICE, DEVICE, minted],
   );
+});
+
+/**
+ * The truth table behind every recovery test above, checked directly.
+ *
+ * Those tests corrupt real bytes and are worth keeping — they prove the
+ * truncation lands where it should. This one covers the decision itself, all
+ * eight combinations of it, because `repair` is the only path in the log that
+ * deletes anything and "when exactly do we truncate" should be answerable
+ * without a temp directory.
+ */
+const TORN: Stop = { at: 40, why: "unreadable record", torn: true };
+const DAMAGED: Stop = { at: 40, why: "intact records follow it", torn: false };
+
+test("only our own newest segment, torn at the end, may be cut", () => {
+  assert.equal(verdict(TORN, true, true), "repair");
+});
+
+test("a foreign log is never cut, however it stopped", () => {
+  assert.equal(verdict(TORN, false, true), "stall");
+  assert.equal(verdict(DAMAGED, false, true), "stall");
+  assert.equal(verdict(TORN, false, false), "stall");
+  assert.equal(verdict(DAMAGED, false, false), "stall");
+});
+
+test("real damage in our own log refuses to open", () => {
+  // Intact records follow the bad one, so cutting would discard them.
+  assert.equal(verdict(DAMAGED, true, true), "damaged");
+});
+
+test("a sealed segment of ours that stops early is damage, not a torn tail", () => {
+  // We only ever append to the newest one, so our own crash cannot have torn
+  // this — something else did, and the segments after it hold good records.
+  assert.equal(verdict(TORN, true, false), "damaged");
+  assert.equal(verdict(DAMAGED, true, false), "damaged");
 });

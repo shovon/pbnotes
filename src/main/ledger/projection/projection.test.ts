@@ -254,3 +254,70 @@ test('re-folding a log that was not empty at open does not double it', async () 
   );
   await reopened.close();
 });
+
+/**
+ * What a subscriber is told, and when it is told nothing at all.
+ *
+ * This is what a window hangs off: it re-reads the page when the fold moved
+ * because a file arrived, and must not re-read it on a timer, or the view
+ * throws away what it is showing every half minute for no reason.
+ */
+test('a write is reported as our own, an arrival as a re-fold', async () => {
+  const folder = await scratch();
+  const view = await Projection.open<Notes>(folder, reduce, {}, {
+    device: 'reader',
+  });
+
+  const changes: string[] = [];
+  view.subscribe((_state, change) => changes.push(change));
+
+  await view.dispatch('note.written', { id: 'mine', text: 'typed here' });
+  assert.deepEqual(changes, ['dispatch']);
+
+  const arriving = await deviceLog('device-b', ['from elsewhere']);
+  await cp(arriving, path.join(folder, 'device-b'), { recursive: true });
+  await view.refold();
+
+  assert.deepEqual(changes, ['dispatch', 'refold']);
+  await view.close();
+});
+
+test('a re-fold that reads the same log tells nobody', async () => {
+  const folder = await scratch();
+  const view = await Projection.open<Notes>(folder, reduce, {}, {
+    device: 'reader',
+  });
+  await view.dispatch('note.written', { id: 'a', text: 'one' });
+
+  const changes: string[] = [];
+  view.subscribe((_state, change) => changes.push(change));
+
+  // The poll behind `watch` does exactly this every 30 seconds, and nothing
+  // has arrived in between.
+  await view.refold();
+  await view.refold();
+
+  assert.deepEqual(changes, [], 'an identical fold is not a change');
+  assert.deepEqual(view.state, { a: 'one' });
+  await view.close();
+});
+
+test('our own write is not reported again by the next re-fold', async () => {
+  const folder = await scratch();
+  const view = await Projection.open<Notes>(folder, reduce, {}, {
+    device: 'reader',
+  });
+
+  const changes: string[] = [];
+  view.subscribe((_state, change) => changes.push(change));
+
+  // A dispatch folds its event without replaying, so the tally it keeps has to
+  // be told. Left behind, the refold below counts one event more than the last
+  // fold did and reports this device's own writing as an arrival — which is
+  // the one thing a window must not re-read on.
+  await view.dispatch('note.written', { id: 'a', text: 'typed here' });
+  await view.refold();
+
+  assert.deepEqual(changes, ['dispatch']);
+  await view.close();
+});

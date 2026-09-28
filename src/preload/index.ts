@@ -1,6 +1,7 @@
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 import { contextBridge, ipcRenderer } from 'electron';
+import type { IpcRendererEvent } from 'electron';
 import { PROJECT_CHANNELS } from '../shared/projects';
 import type { ProjectsApi } from '../shared/projects';
 import { PAGE_CHANNELS } from '../shared/pages';
@@ -27,16 +28,26 @@ const pages: PagesApi = {
   references: (projectId, title) =>
     ipcRenderer.invoke(PAGE_CHANNELS.references, projectId, title),
   status: (projectId) => ipcRenderer.invoke(PAGE_CHANNELS.status, projectId),
+  onChanged: (listener) => {
+    // Wrapped rather than handed to `ipcRenderer.on` directly: the first
+    // argument of an IPC event is the event itself, which carries `sender`,
+    // and the whole point of the bridge is that the renderer never gets that.
+    const forward = (_event: IpcRendererEvent, projectId: unknown): void => {
+      if (typeof projectId === 'string') listener(projectId);
+    };
+    ipcRenderer.on(PAGE_CHANNELS.changed, forward);
+    return () => ipcRenderer.off(PAGE_CHANNELS.changed, forward);
+  },
   addBlock: (projectId, title, text, after) =>
     ipcRenderer.invoke(PAGE_CHANNELS.addBlock, projectId, title, text, after),
-  editBlock: (projectId, title, blockId, text) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.editBlock, projectId, title, blockId, text),
-  deleteBlock: (projectId, title, blockId) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.deleteBlock, projectId, title, blockId),
-  indentBlock: (projectId, title, blockId) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.indentBlock, projectId, title, blockId),
-  outdentBlock: (projectId, title, blockId) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.outdentBlock, projectId, title, blockId),
+  editBlock: (projectId, blockId, text) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.editBlock, projectId, blockId, text),
+  deleteBlock: (projectId, blockId) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.deleteBlock, projectId, blockId),
+  indentBlock: (projectId, blockId) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.indentBlock, projectId, blockId),
+  outdentBlock: (projectId, blockId) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.outdentBlock, projectId, blockId),
 };
 
 // Only this explicit surface crosses the context bridge; the renderer never

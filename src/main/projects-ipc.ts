@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
+import { requireString, requireStringArray } from './ipc';
 import { PROJECT_CHANNELS } from '../shared/projects';
 import type { AddOutcome, PickResult } from '../shared/projects';
 import {
@@ -17,20 +18,6 @@ import {
 
 function parentWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
-}
-
-export function requireString(value: unknown, label: string): string {
-  if (typeof value !== 'string') {
-    throw new TypeError(`Expected ${label} to be a string`);
-  }
-  return value;
-}
-
-function requireStringArray(value: unknown, label: string): string[] {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-    throw new TypeError(`Expected ${label} to be a string[]`);
-  }
-  return value as string[];
 }
 
 /**

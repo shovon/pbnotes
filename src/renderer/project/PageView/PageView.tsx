@@ -96,7 +96,7 @@ export default function PageView({
     setEditingId(null);
     if (text === block.text) return;
     act(async () => {
-      onPage(await pages.editBlock(project.id, title, block.id, text));
+      onPage(await pages.editBlock(project.id, block.id, text));
     });
   };
 
@@ -151,7 +151,7 @@ export default function PageView({
     // to fall back to; emptied, it is simply not shown any more.
     if (!above && !below && !reference) setWriting({});
     act(async () => {
-      onPage(await pages.deleteBlock(project.id, title, block.id));
+      onPage(await pages.deleteBlock(project.id, block.id));
     });
   };
 
@@ -187,9 +187,9 @@ export default function PageView({
       // Tab is not a commit, but the box has to close to move and the text in
       // it would go with it. Unchanged text appends nothing, as ever.
       if (text !== block.text) {
-        await pages.editBlock(project.id, title, block.id, text);
+        await pages.editBlock(project.id, block.id, text);
       }
-      onPage(await move(project.id, title, block.id));
+      onPage(await move(project.id, block.id));
       setEditingId(block.id);
     });
   };
@@ -251,7 +251,7 @@ export default function PageView({
         // top-level one coming out — comes back unchanged, and the box simply
         // reopens where it was.
         const move = then === 'indent' ? pages.indentBlock : pages.outdentBlock;
-        onPage(await move(project.id, title, id));
+        onPage(await move(project.id, id));
         setEditingId(id);
       }
     });

@@ -43,7 +43,7 @@ import { randomUUID } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 import path from 'node:path';
 import type { FileHandle } from 'node:fs/promises';
-import type { DeviceStatus, LogStatus } from '../../shared/log.ts';
+import type { DeviceStatus, LogStatus } from '../../../shared/log.ts';
 
 export type { DeviceStatus, LogStatus };
 
@@ -227,7 +227,37 @@ export class LogCorruptError extends Error {
  * repair: a half-written record at the very end, which is what a crash
  * mid-append leaves behind.
  */
-type Stop = { at: number; why: string; torn: boolean };
+export type Stop = { at: number; why: string; torn: boolean };
+
+/** What a stopping point earns: cut the file, refuse to load, or wait. */
+type Verdict = 'repair' | 'damaged' | 'stall';
+
+/**
+ * What a replay's stopping point means — the only decision in this file that
+ * can destroy something, so it is a pure function of three facts and lives
+ * apart from the I/O that gathers them.
+ *
+ * `repair` truncates, and all three conditions are load-bearing:
+ *
+ * - **ours**: a foreign log is never written to, full stop.
+ * - **newest segment**: the only one we append to, so the only one our own
+ *   crash can have torn. A sealed segment that stops early was damaged by
+ *   something else.
+ * - **torn**: a half-written record at the very end. Anything else — a `seq`
+ *   that jumps, intact records after a bad one — means good records follow the
+ *   damage, and cutting there throws away what the user did next.
+ *
+ * `damaged` refuses to open rather than guess, because every alternative
+ * silently discards history.
+ *
+ * `stall` is the foreign case: fold what arrived, stop there, try again on the
+ * next change. Under a sync tool a missing tail is an ordinary Tuesday, and
+ * truncating would turn a transient into a permanent loss.
+ */
+export function verdict(stop: Stop, own: boolean, last: boolean): Verdict {
+  if (!own) return 'stall';
+  return last && stop.torn ? 'repair' : 'damaged';
+}
 
 /** What one device's directory yielded, and how far it could be read. */
 type DeviceRead = {
@@ -243,8 +273,8 @@ type DeviceRead = {
  *
  * The distinction that drives everything: a bad record at the *end* of a file
  * is a torn write, while a bad record with intact records after it is real
- * damage. Only the owner of a file may act on that distinction — see
- * `readDevice`.
+ * damage. This only reports which it was, in `Stop.torn`; who may act on it is
+ * `verdict`'s call.
  */
 async function* readSegment(
   file: string,
@@ -297,12 +327,10 @@ async function* readSegment(
 /**
  * Replays one device's directory in `seq` order.
  *
- * `own` decides what a damaged file means. Our own log can only be torn by our
- * own crash, so the tail is repaired exactly as it always was. **A foreign log
- * is never written to**, because under a sync tool "the tail has not arrived
- * yet" is a routine state and truncating it would make a transient permanent.
- * A foreign log stalls instead: fold what is intact, stop there, try again
- * when something changes.
+ * Gathers the facts; `verdict` decides what a file that stopped early means
+ * and this carries that out. The rule itself lives there and not here, because
+ * a rule about when to delete bytes should be readable without reading a
+ * directory walk around it.
  */
 async function* readDevice(
   directory: string,
@@ -362,17 +390,14 @@ async function* readDevice(
       continue;
     }
 
-    if (own) {
-      // Only the newest segment can hold a torn tail, because it is the only
-      // one we ever write to, and only a half-written record at the end *is*
-      // one. A sequence that jumps, or intact records after a bad one, is
-      // damage — truncating there would throw away what the user did next.
-      if (!last || !stopped.torn) {
-        throw new LogCorruptError(
-          stopped.at,
-          `Log damaged at byte ${stopped.at} of ${name}: ${stopped.why}.`,
-        );
-      }
+    const call = verdict(stopped, own, last);
+    if (call === 'damaged') {
+      throw new LogCorruptError(
+        stopped.at,
+        `Log damaged at byte ${stopped.at} of ${name}: ${stopped.why}.`,
+      );
+    }
+    if (call === 'repair') {
       await truncate(file, from.bytes);
       stopped = null;
       continue;

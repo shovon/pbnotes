@@ -1,7 +1,7 @@
-import { ipcMain } from 'electron';
-import { PAGE_CHANNELS } from '../shared/pages';
-import { requireString } from './projects-ipc';
-import { checkAvailability, getProject } from './projects-store';
+import { BrowserWindow, ipcMain } from 'electron';
+import { PAGE_CHANNELS } from '../../shared/pages';
+import { requireString } from '../ipc';
+import { checkAvailability, getProject } from '../projects-store';
 import {
   addBlock,
   deleteBlock,
@@ -11,9 +11,10 @@ import {
   getPages,
   getReferences,
   indentBlock,
+  onPagesChanged,
   outdentBlock,
 } from './pages-store/pages-store';
-import type { Project } from '../shared/projects';
+import type { Project } from '../../shared/projects';
 
 /**
  * The log lives in the project's directory, so a write needs both a project we
@@ -51,6 +52,22 @@ function requireTitle(value: unknown): string {
 }
 
 export function registerPageIpc(): void {
+  /**
+   * Every window, not the one that caused it: nothing caused it. A re-fold is
+   * reported because a *file* arrived, so there is no originating window to
+   * exclude, and any window showing that project is equally behind.
+   *
+   * A window closing between the fold and the send is ordinary, not an error,
+   * which is the only thing the guard is for.
+   */
+  onPagesChanged((projectId) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send(PAGE_CHANNELS.changed, projectId);
+      }
+    }
+  });
+
   ipcMain.handle(
     PAGE_CHANNELS.open,
     async (_event, id: unknown, title: unknown) =>
@@ -90,18 +107,13 @@ export function registerPageIpc(): void {
       ),
   );
 
+  // No title on any of these four. The block id is the whole address, so
+  // there is nothing to check a title against and nothing to write one into.
   ipcMain.handle(
     PAGE_CHANNELS.editBlock,
-    async (
-      _event,
-      id: unknown,
-      title: unknown,
-      blockId: unknown,
-      text: unknown,
-    ) =>
+    async (_event, id: unknown, blockId: unknown, text: unknown) =>
       editBlock(
         await requireProject(id),
-        requireTitle(title),
         requireString(blockId, 'blockId'),
         requireString(text, 'text'),
       ),
@@ -109,31 +121,19 @@ export function registerPageIpc(): void {
 
   ipcMain.handle(
     PAGE_CHANNELS.deleteBlock,
-    async (_event, id: unknown, title: unknown, blockId: unknown) =>
-      deleteBlock(
-        await requireProject(id),
-        requireTitle(title),
-        requireString(blockId, 'blockId'),
-      ),
+    async (_event, id: unknown, blockId: unknown) =>
+      deleteBlock(await requireProject(id), requireString(blockId, 'blockId')),
   );
 
   ipcMain.handle(
     PAGE_CHANNELS.indentBlock,
-    async (_event, id: unknown, title: unknown, blockId: unknown) =>
-      indentBlock(
-        await requireProject(id),
-        requireTitle(title),
-        requireString(blockId, 'blockId'),
-      ),
+    async (_event, id: unknown, blockId: unknown) =>
+      indentBlock(await requireProject(id), requireString(blockId, 'blockId')),
   );
 
   ipcMain.handle(
     PAGE_CHANNELS.outdentBlock,
-    async (_event, id: unknown, title: unknown, blockId: unknown) =>
-      outdentBlock(
-        await requireProject(id),
-        requireTitle(title),
-        requireString(blockId, 'blockId'),
-      ),
+    async (_event, id: unknown, blockId: unknown) =>
+      outdentBlock(await requireProject(id), requireString(blockId, 'blockId')),
   );
 }

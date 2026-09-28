@@ -88,6 +88,7 @@ export const PAGE_CHANNELS = {
   indentBlock: 'pages:indent-block',
   outdentBlock: 'pages:outdent-block',
   status: 'pages:status',
+  changed: 'pages:changed',
 } as const;
 
 /** The surface exposed on `window.gnotes.pages` by the preload bridge. */
@@ -128,6 +129,25 @@ export type PagesApi = {
    */
   status(projectId: string): Promise<ViewStatus>;
   /**
+   * Calls `listener` with a project id whenever that project's fold changed
+   * because something arrived in its folder — another device's segment
+   * landing under a sync tool, most of the time. Returns an unsubscribe.
+   *
+   * Push, unlike everything else here, because there is nothing for the view
+   * to poll on: it cannot know a second machine wrote something, and a folder
+   * that is read once at open is a folder whose other devices never show up.
+   *
+   * Not called for this window's own writes. Those already hand the folded
+   * page back to whoever asked for them, and re-reading on top of that would
+   * throw away the page a write just returned.
+   *
+   * The id is passed rather than the pages themselves: what a view needs out
+   * of a fold is its own question — one page, the journal, or what links
+   * here — and main answers each of those already. This says only that the
+   * answers changed.
+   */
+  onChanged(listener: (projectId: string) => void): () => void;
+  /**
    * Appends a `block.created` event and returns the page it folded into.
    * `after` puts the new block directly beneath that one; without it the block
    * goes at the end of the page.
@@ -141,23 +161,21 @@ export type PagesApi = {
   /**
    * Appends a `block.edited` event. The earlier text is not replaced on disk —
    * the log keeps both facts, and the fold shows the later one.
+   *
+   * No title, here or on the three below: a block id identifies a block across
+   * the whole project, so the page is main's to look up rather than the
+   * caller's to remember. What comes back is the page the block turned out to
+   * be on — which is why a view showing blocks from several pages at once,
+   * like a references cut, can write to any of them without tracking a title
+   * per block.
    */
-  editBlock(
-    projectId: string,
-    title: string,
-    blockId: string,
-    text: string,
-  ): Promise<Page>;
+  editBlock(projectId: string, blockId: string, text: string): Promise<Page>;
   /**
    * Appends a `block.deleted` event. The block leaves the fold; everything
    * ever written into it stays on disk, because the log records that the user
    * deleted it, not that it never existed.
    */
-  deleteBlock(
-    projectId: string,
-    title: string,
-    blockId: string,
-  ): Promise<Page>;
+  deleteBlock(projectId: string, blockId: string): Promise<Page>;
   /**
    * Appends a `block.indented` event: the block becomes the last child of the
    * sibling above it, bringing its own children along.
@@ -167,11 +185,7 @@ export type PagesApi = {
    * pressed a key and the outline did not change, which is not an error and
    * not a fact the log has any use for.
    */
-  indentBlock(
-    projectId: string,
-    title: string,
-    blockId: string,
-  ): Promise<Page>;
+  indentBlock(projectId: string, blockId: string): Promise<Page>;
   /**
    * Appends a `block.outdented` event: the block comes out a level and lands
    * directly beneath the block it used to be filed under.
@@ -184,9 +198,5 @@ export type PagesApi = {
    * A block already at the top level has nothing to come out of, and returns
    * the page untouched rather than throwing, like `indentBlock`.
    */
-  outdentBlock(
-    projectId: string,
-    title: string,
-    blockId: string,
-  ): Promise<Page>;
+  outdentBlock(projectId: string, blockId: string): Promise<Page>;
 };
