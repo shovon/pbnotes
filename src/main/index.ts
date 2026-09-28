@@ -29,6 +29,11 @@ const createWindow = () => {
     // and what it paints underneath matches the app's own background rather
     // than Electron's white.
     show: false,
+    // No title bar: the window controls hover over the page instead. Nothing
+    // ever lived up there but the app's own name, and the page is the app.
+    // `titleBarOverlay` is what gives Windows and Linux their controls back.
+    titleBarStyle: 'hiddenInset',
+    titleBarOverlay: true,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1b1b1d' : '#ffffff',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
