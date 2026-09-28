@@ -8,13 +8,13 @@
  *
  * Nothing here touches a log, a file, a device or a window. It is the domain:
  * an event schema, the tree operations a fold is made of, and the fold itself.
- * `pages-store.ts` is the plumbing that points a log at it. The split is the
+ * `pages-store.ts` is the wiring that points a log at it. The split is the
  * reason this file is readable — and the reason it runs under plain
  * `node --test` with nothing around it.
  */
 import { locate } from '../../../../shared/pages.ts';
 import type { Block } from '../../../../shared/pages.ts';
-import type { Reducer } from '../../projection/projection.ts';
+import type { Reducer } from '../../../ledger/projection/projection.ts';
 
 /** Title → the blocks on it: a journal day or a page a link named. */
 export type Pages = Record<string, Block[]>;

@@ -65,17 +65,25 @@ Content is event-sourced: appended as immutable facts and replayed into in-memor
 
 ### The ledger — `src/main/ledger/`
 
-One folder, both tiers. The append-only log is the system of record, so how it is written, how it recovers and how it is interpreted are one subject and sit together.
+Plumbing, and only plumbing. How the append-only log is written, how it recovers, and how a fold is driven over it. Nothing here knows what an event *means*.
 
 | Path | Tier | Role |
 | --- | --- | --- |
 | `ledger/event-log/event-log.ts` | plumbing | Framing, fsync, crash recovery, segment rollover, the HLC, the merge across devices. `verdict` is the one rule that deletes bytes |
 | `ledger/projection/projection.ts` | plumbing | Folds the log into an in-memory view through a `Reducer<S>`. Knows nothing about pages. Main process only |
-| `ledger/pages-store/pages-store.ts` | domain | What the events *mean*: the `reduce` over a block tree, the commands that author events, the journal and back-reference queries. One projection per project, at `<project>/gnotes/` |
 | `ledger/device-store.ts` | adapter | This machine's id and what it remembers per project (clock floor, tip). The one file here that touches SQLite |
-| `ledger/pages-ipc.ts` | door | The `pages:*` channels. Checks the project against the registry, and its directory for reachability, before opening a log. Also broadcasts `pages:changed` to every window when a fold moved because a file arrived |
 
-`event-log` and `projection` import nothing but `src/shared/log.ts` — no Electron, no SQLite, no pages. That is worth keeping true. The folder's only other edges outward are `db.ts`, `ipc.ts`, `projects-store.ts` and the shared contracts.
+`event-log` and `projection` import nothing but `src/shared/log.ts` — no Electron, no SQLite, no pages. That is worth keeping true, and the folder's shape is what keeps it honest: the dependency runs one way, from a slice down into the ledger, never back. `device-store` is the folder's only edge outward, to `db.ts`.
+
+### The pages slice — `src/main/pages/`
+
+One subject, whole: what page events mean, and the door the renderer reaches them through. It sits on the ledger the way any slice would, and the ledger does not know it exists.
+
+| Path | Tier | Role |
+| --- | --- | --- |
+| `pages/pages-store/pages-store.ts` | domain | What the events *mean*: the commands that author events, the journal and back-reference queries. One projection per project, at `<project>/gnotes/` |
+| `pages/pages-store/blocks/blocks.ts` | domain | The `reduce` over the block tree — the pure `Reducer<Pages>` the projection is handed |
+| `pages/pages-ipc.ts` | door | The `pages:*` channels. Checks the project against the registry, and its directory for reachability, before opening a log. Also broadcasts `pages:changed` to every window when a fold moved because a file arrived |
 
 ### Registry and shell
 
