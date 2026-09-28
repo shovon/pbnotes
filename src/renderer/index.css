@@ -216,6 +216,16 @@ button.danger:hover {
   border-color: var(--accent);
 }
 
+/* The way back, beside the picker in the same strip: same borderless-until-
+   pointed-at treatment, and the same opt-out of the drag region. */
+.back {
+  -webkit-app-region: no-drag;
+  border-color: transparent;
+  font-size: 0.85rem;
+  margin-left: 0.25rem;
+  padding: 0.15rem 0.4rem;
+}
+
 .app-header .actions {
   display: flex;
   gap: 0.35rem;

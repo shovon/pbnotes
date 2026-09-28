@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Availability, Project } from '../../shared/projects';
 import { locate } from '../../shared/pages';
 import type { Page } from '../../shared/pages';
@@ -115,6 +116,13 @@ export default function ProjectView({ project, act: outer }: Props) {
     (references.get(title) ?? [])
       .map(recut)
       .filter((cut) => cut.blocks.length > 0);
+
+  /**
+   * Read after the first commit rather than during render: on the very first
+   * one the header has not been put in the DOM yet.
+   */
+  const [titlebar, setTitlebar] = useState<Element | null>(null);
+  useEffect(() => setTitlebar(document.querySelector('.titlebar')), []);
 
   /**
    * The two updates in one event, so they land in one render: the stack is
@@ -264,11 +272,20 @@ export default function ProjectView({ project, act: outer }: Props) {
 
   return (
     <div onClickCapture={follow}>
-      {title !== null && (
-        <button className="back" onClick={() => go(null)}>
-          ← Journal
-        </button>
-      )}
+      {/* The way back belongs with the window's own controls, beside the
+          project picker, not on the page it is a way back from — it is about
+          where you are, like the picker is, and the page below it is just
+          what is there at the moment. `App` owns that strip, and this view
+          owns the state the button acts on, so the button goes up there
+          through a portal: still this view's, rendered in App's corner. */}
+      {titlebar !== null &&
+        title !== null &&
+        createPortal(
+          <button className="back" onClick={() => go(null)}>
+            ← Journal
+          </button>,
+          titlebar,
+        )}
 
       {shown === null ? (
         <p className="subtitle">Loading…</p>
