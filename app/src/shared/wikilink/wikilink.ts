@@ -21,6 +21,17 @@ import remarkMath from 'remark-math';
  * the tree gets that for free — `code` and `inlineCode` carry a `value`, not
  * children, so the walk never reaches inside them.
  *
+ * An alias, `[foo]([[Foo Page]])`, is a fourth spelling: it opens `Foo Page`
+ * and reads `[[foo]]`, brackets kept for the same reason as above. Remark
+ * makes a `link` node of it when the target has no space, and plain text when
+ * it does, so both are handled: the node in the walk, the text here. It comes
+ * first in the alternation, or its `[[Foo Page]]` is taken on its own and
+ * `[foo](` and `)` are left behind as text.
+ *
+ * ponytail: a formatted label with a spaced target, `[**foo**]([[X Y]])`,
+ * stays text — remark splits it across nodes, so no one text node holds it
+ * whole. Stitch siblings back together if anyone writes that.
+ *
  * The bracketed forms come first in the alternation, so `#[[a b]]` is never
  * read as a bare `#` with nothing after it. A bare tag starts and ends with a
  * letter, digit or underscore and may run through `-` and `/` in between, so
@@ -33,7 +44,7 @@ import remarkMath from 'remark-math';
  * mid-word and `####Foo` on the same rule.
  */
 const PATTERN =
-  /(#?)\[\[(.*?)\]\]|(?<![\p{L}\p{N}/#])#[\p{L}\p{N}_](?:[\p{L}\p{N}_/-]*[\p{L}\p{N}_])?/gu;
+  /\[([^[\]]*)\]\(\[\[(.*?)\]\]\)|(#?)\[\[(.*?)\]\]|(?<![\p{L}\p{N}/#])#[\p{L}\p{N}_](?:[\p{L}\p{N}_/-]*[\p{L}\p{N}_])?/gu;
 
 /**
  * The custom node renders through `data.hName`; no handler to register. The
@@ -41,12 +52,13 @@ const PATTERN =
  * them: a tag reads the way a tag reads everywhere else, and a link written
  * without one keeps the only mark it has. The bare form has nothing to strip,
  * so it is carried through whole — which is also why the caller can hand the
- * raw match straight over.
+ * raw match straight over. Nodes rather than a string, so an alias's label
+ * keeps the bold or code it was written with.
  *
  * `title` is the page it names, trimmed: `[[ Mira ]]` and `[[Mira]]` are one
  * page, and a title is a key in a log that keeps everything forever.
  */
-function wikilink(label: string, title: string): RootContent {
+function wikilink(title: string, ...label: RootContent[]): RootContent {
   return {
     type: 'wikilink',
     data: {
@@ -56,9 +68,11 @@ function wikilink(label: string, title: string): RootContent {
         ...(title ? { href: `#${title}` } : {}),
       },
     },
-    children: [{ type: 'text', value: label }],
+    children: label,
   } as unknown as RootContent;
 }
+
+const text = (value: string): Text => ({ type: 'text', value });
 
 /** One text node becomes text, link, text… — or stays itself if there is no
     match, so an untouched note keeps the nodes it parsed to. */
@@ -67,22 +81,25 @@ function split(node: Text): RootContent[] {
   let at = 0;
   for (const match of node.value.matchAll(PATTERN)) {
     if (match.index > at) {
-      out.push({ type: 'text', value: node.value.slice(at, match.index) });
+      out.push(text(node.value.slice(at, match.index)));
     }
-    // The bare branch captures nothing, so `match[2]` is undefined there: the
-    // whole match is the label, and the page is the match minus its `#`. Give
-    // that branch a group and the two bracketed forms break.
-    const bracketed = match[2] !== undefined;
-    out.push(
-      bracketed
-        ? wikilink(match[1] ? `#${match[2]}` : match[0], match[2].trim())
-        : wikilink(match[0], match[0].slice(1)),
-    );
+    // Each branch fills only its own groups, so which one is defined says
+    // which form matched. The bare branch captures nothing: the whole match
+    // is the label, and the page is the match minus its `#`. Give that branch
+    // a group and the forms above it break.
+    if (match[2] !== undefined) {
+      out.push(wikilink(match[2].trim(), text(`[[${match[1]}]]`)));
+    } else if (match[4] !== undefined) {
+      const label = match[3] ? `#${match[4]}` : match[0];
+      out.push(wikilink(match[4].trim(), text(label)));
+    } else {
+      out.push(wikilink(match[0].slice(1), text(match[0])));
+    }
     at = match.index + match[0].length;
   }
   if (out.length === 0) return [node];
   if (at < node.value.length) {
-    out.push({ type: 'text', value: node.value.slice(at) });
+    out.push(text(node.value.slice(at)));
   }
   return out;
 }
@@ -107,6 +124,14 @@ export function remarkWikilink() {
     if (!('children' in node)) return;
     node.children = node.children.flatMap((child) => {
       if (child.type === 'text') return split(child);
+      // An alias whose target has no space: remark already made it a link,
+      // to the URL `[[Foo]]`. Its label keeps whatever formatting it had,
+      // and is not walked — a tag inside it would be a link inside a link.
+      const alias = child.type === 'link' && /^\[\[(.*)\]\]$/.exec(child.url);
+      if (alias) {
+        const label = [text('[['), ...child.children, text(']]')];
+        return wikilink(alias[1].trim(), ...label);
+      }
       walk(child);
       return child;
     }) as typeof node.children;
