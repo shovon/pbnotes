@@ -181,7 +181,13 @@ export function BlockEditor({
       rows={1}
       defaultValue={initial}
       placeholder={placeholder}
-      onBlur={(event) => onCommit(event.target.value.trim())}
+      /* The window losing focus blurs the box too, but that is the user
+         looking elsewhere, not leaving the block: the browser hands focus
+         back to this same box when the window returns, so stay open. */
+      onBlur={(event) => {
+        if (!document.hasFocus()) return;
+        onCommit(event.target.value.trim());
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onCancel();
         /**
