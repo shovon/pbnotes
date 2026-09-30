@@ -630,6 +630,26 @@ test('what links to a page, grouped by the page it is on', async () => {
   await closePages();
 });
 
+/** An alias names its target, not its label, in either form remark reads
+    it as. */
+test('an aliased link is a reference to its target', async () => {
+  const it = await project();
+  await addBlock(it, TODAY, 'Ask [her]([[Mira]]).');
+  await addBlock(it, TOMORROW, 'Try [the good one]([[the good coffee]]).');
+
+  assert.deepEqual(
+    (await getReferences(it, 'Mira')).map((page) => page.title),
+    [TODAY],
+  );
+  assert.deepEqual(
+    (await getReferences(it, 'the good coffee')).map((page) => page.title),
+    [TOMORROW],
+  );
+  assert.deepEqual(await getReferences(it, 'her'), []);
+
+  await closePages();
+});
+
 /** The links are read from the block as it is now, not as it was first
     parsed: an edit that adds or drops a link shows in the next read, a
     deleted block is gone from it, and a restart reads the same answer. */

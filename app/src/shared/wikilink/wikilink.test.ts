@@ -19,9 +19,13 @@ const md = unified().use(remarkParse).use(remarkWikilink);
 
 const parse = (source: string) => md.runSync(md.parse(source)) as Node;
 
+/** The text a node reads as, formatting dropped. */
+const read = (node: Node): string =>
+  node.value ?? (node.children ?? []).map(read).join('');
+
 /** Every label the plugin turned into a link, in document order. */
 function labels(node: Node): string[] {
-  if (node.type === 'wikilink') return [node.children?.[0]?.value ?? ''];
+  if (node.type === 'wikilink') return [read(node)];
   return (node.children ?? []).flatMap(labels);
 }
 
@@ -44,6 +48,33 @@ test('every spelling of a link names the same page', () => {
     pages(parse('[[Mira]] #Mira #[[Mira]] [[ the good coffee ]] #[[ Mira ]]')),
     ['Mira', 'Mira', 'Mira', 'the good coffee', 'Mira'],
   );
+});
+
+/** Remark makes a link node of the first and text of the second, because
+    of the space; both have to come out the same. The label keeps its
+    brackets, like any link written without a `#`. */
+test('an alias reads as its label and opens its target', () => {
+  const tree = parse('[foo]([[Foo]]) and [foo]([[ Foo Page ]]).');
+  assert.deepEqual(labels(tree), ['[[foo]]', '[[foo]]']);
+  assert.deepEqual(pages(tree), ['Foo', 'Foo Page']);
+  assert.deepEqual(
+    (tree.children?.[0].children ?? []).map((child) => child.value),
+    [undefined, ' and ', undefined, '.'],
+  );
+});
+
+test('an alias keeps the formatting of its label', () => {
+  const [paragraph] = parse('[**foo**]([[Foo]])').children ?? [];
+  const [link] = paragraph.children ?? [];
+  assert.deepEqual(
+    link.children?.map((child) => child.type),
+    ['text', 'strong', 'text'],
+  );
+  assert.deepEqual(pages(paragraph), ['Foo']);
+});
+
+test('an ordinary markdown link is not an alias', () => {
+  assert.deepEqual(labels(parse('[foo](https://example.com/[[x]])')), []);
 });
 
 test('empty brackets name no page', () => {
@@ -119,6 +150,7 @@ test('links inside headings and list items too', () => {
 test('leaves code alone', () => {
   assert.deepEqual(labels(parse('Try `grep [[foo]]` first.')), []);
   assert.deepEqual(labels(parse('```\ngrep #[[foo]]\n```')), []);
+  assert.deepEqual(labels(parse('`[foo]([[Foo Page]])`')), []);
 });
 
 test('a note with none of them is untouched', () => {
