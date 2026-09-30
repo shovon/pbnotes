@@ -68,9 +68,12 @@ export const blockFocus =
  * reachable and announced.
  */
 export function Block({
+  id,
   text,
   onActivate,
 }: {
+  /** Put on the element as `data-block-id`, so a view can scroll to it. */
+  id?: string;
   text: string;
   /** The offset the click landed on, when it could be worked out. */
   onActivate: (caret?: number) => void;
@@ -99,8 +102,9 @@ export function Block({
     [text],
   );
 
-  return (
+  const box = (
     <div
+      data-block-id={id}
       className={`${blockBox} ${blockFocus} markdown cursor-text`}
       role="button"
       tabIndex={0}
@@ -120,6 +124,22 @@ export function Block({
       }}
     >
       {rendered}
+    </div>
+  );
+  if (!id) return box;
+
+  /* The dot goes to the block: a link laid over the painted one, which the
+     project view follows by its `data-block-ref`. Beside the box, not in it —
+     inside, it would be the first child the Markdown margins are trimmed by. */
+  return (
+    <div className="relative">
+      {box}
+      <a
+        href="#"
+        data-block-ref={id}
+        aria-label="Go to block"
+        className="absolute top-0 left-0 h-7 w-indent cursor-pointer"
+      />
     </div>
   );
 }

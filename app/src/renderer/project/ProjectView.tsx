@@ -158,6 +158,48 @@ export default function ProjectView({ project, act: outer }: Props) {
     setStack(null);
   };
 
+  /** A block to scroll to and flash once its page has rendered. */
+  const [target, setTarget] = useState<string | null>(null);
+
+  /**
+   * Opens the page a block is on, the way a wikilink does, and brings the
+   * block into view. Through `outer`, not `act`: a lookup writes nothing, so
+   * there are no references to read again — but a block that is gone still
+   * lands in the app's notice rather than a click that did nothing.
+   */
+  const goToBlock = (id: string) =>
+    outer(async () => {
+      const found = await pages.locate(project.id, id);
+      if (!found) throw new Error('That block no longer exists.');
+      go(found.page);
+      setTarget(id);
+    });
+
+  /**
+   * After the page lands, not on `go`: the block is not in the DOM until the
+   * read behind it is. Cleared either way, so a block that is open in an
+   * editor — which carries no hook — is not scrolled to on some later render.
+   */
+  useEffect(() => {
+    if (target === null || stack === null) return;
+    setTarget(null);
+    const element = document.querySelector(
+      `[data-block-id="${CSS.escape(target)}"]`,
+    );
+    if (!element) return;
+    element.scrollIntoView({ block: 'center' });
+    element.animate(
+      [
+        {
+          backgroundColor:
+            'color-mix(in srgb, var(--color-accent) 25%, transparent)',
+        },
+        { backgroundColor: 'transparent' },
+      ],
+      { duration: 1500, easing: 'ease-out' },
+    );
+  }, [target, stack]);
+
   /**
    * Another machine wrote in this project's folder and main has folded it in.
    * Nothing local caused it, so nothing local would have read it back.
@@ -269,6 +311,16 @@ export default function ProjectView({ project, act: outer }: Props) {
    * comes back absolute and percent-encoded.
    */
   const follow = (event: React.MouseEvent) => {
+    // A block ref, by the id it carries. Rendering `((id))` into one is #2's.
+    const ref = (event.target as Element)
+      .closest('[data-block-ref]')
+      ?.getAttribute('data-block-ref');
+    if (ref) {
+      event.preventDefault();
+      event.stopPropagation();
+      goToBlock(ref);
+      return;
+    }
     const link = (event.target as Element).closest('a.wikilink[href]');
     const page = link?.getAttribute('href')?.slice(1);
     if (!page) return;

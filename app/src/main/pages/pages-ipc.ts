@@ -11,6 +11,7 @@ import {
   getPages,
   getReferences,
   indentBlock,
+  locateBlock,
   onPagesChanged,
   outdentBlock,
 } from './pages-store/pages-store';
@@ -82,6 +83,12 @@ export function registerPageIpc(): void {
     PAGE_CHANNELS.references,
     async (_event, id: unknown, title: unknown) =>
       getReferences(await requireProject(id), requireTitle(title)),
+  );
+
+  ipcMain.handle(
+    PAGE_CHANNELS.locate,
+    async (_event, id: unknown, blockId: unknown) =>
+      locateBlock(await requireProject(id), requireString(blockId, 'blockId')),
   );
 
   ipcMain.handle(PAGE_CHANNELS.status, async (_event, id: unknown) =>
