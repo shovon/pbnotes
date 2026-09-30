@@ -331,6 +331,7 @@ export default function PageView({
           />
         ) : (
           <Block
+            id={block.id}
             text={block.text}
             onActivate={(at) => {
               setCaret(at);

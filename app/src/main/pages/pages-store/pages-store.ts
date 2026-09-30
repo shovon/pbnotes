@@ -276,6 +276,15 @@ export async function getReferences(
     });
 }
 
+/** The page a block is on, or undefined for a block the project lacks. */
+export async function locateBlock(
+  project: ProjectRef,
+  blockId: string,
+): Promise<{ page: string } | undefined> {
+  const found = find((await projectionFor(project)).state, blockId);
+  return found && { page: found.page };
+}
+
 /**
  * How much of the folder this project's log could be read, and what the fold
  * could not use. Nothing here is an error to clear — a device that is still

@@ -82,6 +82,7 @@ export const PAGE_CHANNELS = {
   open: 'pages:open',
   openAll: 'pages:open-all',
   references: 'pages:references',
+  locate: 'pages:locate',
   addBlock: 'pages:add-block',
   editBlock: 'pages:edit-block',
   deleteBlock: 'pages:delete-block',
@@ -117,6 +118,12 @@ export type PagesApi = {
    * order: the same order the journal reads in, then the rest.
    */
   references(projectId: string, title: string): Promise<Page[]>;
+  /**
+   * The page a block is on, found by its id alone — an id is unique across
+   * the project. Undefined for an id the project does not have, including
+   * one whose block was deleted: that is an answer, not an error.
+   */
+  locate(projectId: string, blockId: string): Promise<{ page: string } | undefined>;
   /**
    * How much of the project's log folder could be read, and what the fold
    * could not use.
