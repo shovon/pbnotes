@@ -1,483 +1,209 @@
-:root {
-  color-scheme: light dark;
-  --bg: #ffffff;
-  --fg: #1c1c1e;
-  --muted: #6b6b70;
-  --line: #e3e3e6;
-  --accent: #2f6feb;
-  --danger: #c0392b;
-  --warn-bg: #fff6e5;
-  --warn-fg: #8a5a00;
+@import 'tailwindcss';
+
+/* The design system: every colour, font and named measure a view can reach
+   for, as Tailwind utilities (`bg-bg`, `text-muted`, `border-line`,
+   `pl-indent`, `max-w-page`). The default palette is cleared, so a colour is
+   always one of these and always follows the theme — `text-red-500` does not
+   exist here. Spacing, type and radius keep Tailwind's own scales.
+
+   Static, so every token is emitted whether or not a utility uses it yet:
+   the dark palette below redefines them, and the CSS further down reads them
+   through var(). */
+@theme static {
+  --color-*: initial;
+  --color-bg: #ffffff;
+  --color-fg: #1c1c1e;
+  --color-muted: #6b6b70;
+  --color-line: #e3e3e6;
+  --color-accent: #2f6feb;
+  --color-on-accent: #ffffff;
+  --color-danger: #c0392b;
+  --color-warn-bg: #fff6e5;
+  --color-warn-fg: #8a5a00;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* The column the writing sits in. */
+  --container-page: 44rem;
+
   /* The strip the hidden title bar left behind: tall enough to clear the
      traffic lights on macOS and the controls overlay elsewhere. */
-  --titlebar: 2.25rem;
+  --spacing-titlebar: 2.25rem;
+
+  /* How far a block's text sits in from its dot, and so how far a child
+     block sits in from its parent: the child's dot lands where the parent's
+     text starts. */
+  --spacing-indent: 0.95rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1b1b1d;
-    --fg: #ececee;
-    --muted: #9a9aa0;
-    --line: #313135;
-    --accent: #6ea0ff;
-    --danger: #ff6b5c;
-    --warn-bg: #3a2e14;
-    --warn-fg: #f0c168;
+    --color-bg: #1b1b1d;
+    --color-fg: #ececee;
+    --color-muted: #9a9aa0;
+    --color-line: #313135;
+    --color-accent: #6ea0ff;
+    --color-danger: #ff6b5c;
+    --color-warn-bg: #3a2e14;
+    --color-warn-fg: #f0c168;
   }
 }
 
-body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif;
-  margin: 0;
-  background: var(--bg);
-  color: var(--fg);
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  body {
+    background: var(--color-bg);
+    color: var(--color-fg);
+  }
 }
 
-.app {
-  margin: auto;
-  max-width: 44rem;
-  padding: calc(var(--titlebar) + 0.75rem) 1.5rem 3rem;
-}
-
-/* Where the title bar was: the project picker, and otherwise empty. With no
-   frame there is nothing left to drag the window by, so the strip is also the
-   handle — everything in it has to opt back out, see `.picker`.
-
-   The window buttons are laid over this same strip, and which corner they take
-   is the platform's business: macOS puts them left, Windows and Linux right.
-   `env(titlebar-area-*)` is the box they leave free, which is the whole point
-   of `titleBarOverlay` — the fallbacks are macOS's own inset, for the moment
-   before Chromium has measured the frame. */
-.titlebar {
+/* With no frame there is nothing left to drag the window by, so the title
+   bar strip is the handle, and anything clickable in it has to opt back out. */
+@utility app-region-drag {
   -webkit-app-region: drag;
-  align-items: center;
-  display: flex;
-  height: env(titlebar-area-height, var(--titlebar));
-  left: env(titlebar-area-x, 5rem);
-  position: fixed;
-  top: env(titlebar-area-y, 0px);
-  width: env(titlebar-area-width, calc(100% - 5rem));
 }
 
-.app-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
-
-.app-header h1 {
-  font-size: 1.4rem;
-  margin: 0;
-}
-
-.subtitle {
-  color: var(--muted);
-  font-size: 0.85rem;
-  margin: 0.2rem 0 0;
-}
-
-button {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0.3rem 0.65rem;
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-  padding: 0.45rem 0.9rem;
-  white-space: nowrap;
-}
-
-button.primary:hover {
-  filter: brightness(1.08);
-  color: #fff;
-}
-
-button.danger:hover {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.notice {
-  background: var(--warn-bg);
-  color: var(--warn-fg);
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  margin: 0 0 1rem;
-  padding: 0.5rem 0.75rem;
-}
-
-.welcome {
-  color: var(--muted);
-  line-height: 1.6;
-  margin-top: 20vh;
-  text-align: center;
-}
-
-.welcome h1 {
-  color: var(--fg);
-  font-size: 1.6rem;
-  margin: 0 0 0.5rem;
-}
-
-.welcome p {
-  margin: 0 auto 1.5rem;
-  max-width: 26rem;
-}
-
-.name {
-  border: none;
-  font-weight: 600;
-  padding: 0;
-  text-align: left;
-}
-
-.rename {
-  background: var(--bg);
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
-  padding: 0.1rem 0.3rem;
-  width: 100%;
-}
-
-.meta {
-  align-items: center;
-  color: var(--muted);
-  display: flex;
-  font-size: 0.78rem;
-  gap: 0.35rem;
-  margin-top: 0.15rem;
-  min-width: 0;
-}
-
-.path {
-  direction: rtl;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.dot {
-  flex: none;
-}
-
-.badge {
-  background: var(--warn-bg);
-  border-radius: 4px;
-  color: var(--warn-fg);
-  flex: none;
-  padding: 0.05rem 0.35rem;
-}
-
-/* Sits in the title bar strip, so it has to take itself back out of the drag
-   region or it cannot be clicked. Native menu, so it keeps the platform's own
-   look. Borderless until pointed at: at the top of the window it reads as the
-   name of what is open, and a permanent box up there is chrome for chrome. */
-.picker {
+@utility app-region-no-drag {
   -webkit-app-region: no-drag;
-  background: none;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: inherit;
-  /* A <select> is otherwise as wide as its widest option, which strands the
-     chevron a whole "Open project…" away from a short project name. Sized to
-     what is actually selected instead, so the chevron follows the name.
-     Chromium does this natively; this is Electron, so there is no other
-     browser to fall back for. */
-  field-sizing: content;
-  font: inherit;
-  font-weight: 600;
-  margin-left: 0.4rem;
-  max-width: 100%;
-  padding: 0.15rem 0.3rem;
 }
 
-.picker:hover {
-  border-color: var(--accent);
-}
-
-/* The way back, beside the picker in the same strip: same borderless-until-
-   pointed-at treatment, and the same opt-out of the drag region. */
-.back {
-  -webkit-app-region: no-drag;
-  border-color: transparent;
-  font-size: 0.85rem;
-  margin-left: 0.25rem;
-  /* It names the page it goes back to, and a page is named whatever a link
-     said — long enough to shove the picker out of the strip. */
-  max-width: 14rem;
-  overflow: hidden;
-  padding: 0.15rem 0.4rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-header .actions {
-  display: flex;
-  gap: 0.35rem;
-}
-
-.page-title {
-  border-bottom: 1px solid var(--line);
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 1.5rem 0 0.75rem;
-  padding-bottom: 0.4rem;
-}
-
-/* Blocks are lines of one note, not cards: with the borders gone the gap is
-   all that separates them, and a wide one reads as a list of things rather
-   than a page of writing. */
-.page {
-  /* The tail of a day is click-to-write, so it needs somewhere to click and
-     a caret to say so. Doubles as the air between one day and the next.
-     ponytail: the space below the *whole* stack belongs to no day and stays
-     dead; give it to a day only once it is clear which day that should be. */
-  cursor: text;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding-bottom: 3rem;
-}
-
-/* Room to click under the last block, but less of it when what follows is
-   the page's own references rather than the next day. */
-.page:has(+ .references) {
-  padding-bottom: 1.25rem;
-}
-
-/* What links here, after the page's own blocks: one cut per page that does,
-   each headed by a link to it. Padding, not margin, for the air before the
-   next day: a margin would collapse into the next title's and leave a day
-   with references 1.5rem closer to the one below than a day without. */
-.references {
-  padding-bottom: 3rem;
-}
-
-.references h3 {
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  margin: 0 0 0.5rem;
-}
-
-.references h4 {
-  font-size: 0.85rem;
-  font-weight: 600;
-  margin: 0.75rem 0 0.25rem;
-}
-
-/* The cut's own heading only. Every other link in here is inside a block,
-   and a block renders the same in a cut as it does on its own page — an
-   ordinary Markdown link keeps the underline it has up there. */
-.references h4 a {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-/* A cut's blocks sit in under its heading, indented like children under a
-   parent. Its blank space is not click-to-write, so no caret over it, and no
-   room kept for one. */
-.references .page {
-  cursor: default;
-  margin-left: 0.95rem;
-  padding-bottom: 0;
-}
-
-/* Logseq's model, and the reason the two states share every metric below:
-   clicking a block swaps rendered markdown for a textarea in place, and the
-   only thing that should visibly change is where the caret is. No borders,
-   no box that appears or disappears under the text — the dot below is the
-   one mark a block carries, and it is painted the same way in both. */
-.block,
-.block-input {
-  /* The dot Logseq marks a block with, drawn rather than marked up. A
-     <textarea> takes no ::before and no ::marker, so a real bullet would
-     disappear the moment a block was clicked into — a background paints in
-     both states and stays put. Positioned in rem, not em, so it holds its
-     line when the block starts with a heading.
-     ponytail: when blocks nest, this becomes a real <ul> and the dot becomes
-     a control (collapse, zoom) — that is the point to spend markup on. */
+/* The dot Logseq marks a block with, drawn rather than marked up. A
+   <textarea> takes no ::before and no ::marker, so a real bullet would
+   disappear the moment a block was clicked into — a background paints in
+   both states and stays put. Positioned in rem, not em, so it holds its line
+   when the block starts with a heading: centred on the first line, below the
+   block's top padding.
+   ponytail: when blocks nest, this becomes a real <ul> and the dot becomes a
+   control (collapse, zoom) — that is the point to spend markup on. */
+@utility bullet {
   background: radial-gradient(
-      circle at 0.4rem 0.9rem,
-      var(--muted) 2.5px,
+      circle at 0.4rem 0.875rem,
+      var(--color-muted) 2.5px,
       transparent 3px
     )
     no-repeat;
-  border: none;
-  border-radius: 4px;
-  /* Stated, not inherited from a UA sheet that treats a div and a textarea
-     differently: the two have to resolve `width: 100%` to the same text
-     column, or the same words wrap at different points and the box changes
-     height as it opens. */
-  box-sizing: border-box;
-  color: inherit;
-  display: block;
-  font: inherit;
-  line-height: 1.5;
-  /* An empty block is one empty line, not a 5px sliver: without this it
-     collapses to its padding, taking the dot (centred 0.9rem down) outside
-     the box with it, and leaves nothing to aim a click at. Costs nothing on
-     a block that has text — one line is already this tall. */
-  min-height: 1.5em;
-  /* A textarea breaks a word too long for the line; a <p> lets it stick out.
-     Same reason as box-sizing — a differing line count is a jump. */
-  overflow-wrap: break-word;
-  padding: 0.15rem 0.3rem 0.15rem 0.95rem;
-  text-align: left;
-  width: 100%;
 }
 
-/* Children sit in their own column, indented by exactly the parent's left
-   padding so a child's dot lands where the parent's text starts. Its own
-   flex column because it is a flex item of `.page` and the gap between
-   blocks does not inherit through it. */
-.block-children {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  margin-left: 0.95rem;
-}
+/* Rendered Markdown and KaTeX. Their elements are generated, so there is no
+   markup to put utilities on; this is the one place styles reach into
+   descendants. Preflight strips every element bare, so what Markdown means
+   by a heading, a list or a quote is put back here. Every metric agrees with
+   the textarea the block turns into, so opening one moves nothing but the
+   caret. */
+@utility markdown {
+  /* Markdown folds a single newline into a space; inside notes a line break
+     is meant literally, so paragraphs and headings keep theirs. Scoped to
+     those: the parser also leaves a newline between list items, and pre-wrap
+     on the whole box would open them up into blank lines. */
+  & :is(p, h1, h2, h3, h4, h5, h6) {
+    white-space: pre-wrap;
+  }
 
-/* A caret, not a pointer: the block is text you type in, not a control. */
-.block {
-  cursor: text;
-}
+  /* A blank line between two paragraphs is a line, not a margin: the
+     textarea shows it as one empty row of 1.5em. */
+  & > p + p {
+    margin-top: 1.5em;
+  }
 
-/* Markdown folds a single newline into a space; inside notes a line break is
-   meant literally, so paragraphs and headings keep theirs. Scoped to those:
-   the parser also leaves a newline between list items, and pre-wrap on the
-   whole box would open them up into blank lines. */
-.block :is(p, h1, h2, h3, h4, h5, h6),
-.block.empty {
-  white-space: pre-wrap;
-}
+  & :is(h1, h2, h3, h4, h5, h6) {
+    font-size: 1.05rem;
+    font-weight: var(--font-weight-bold);
+    margin: 0.8rem 0 0.3rem;
+  }
 
-/* Nothing on hover — Logseq leaves the text alone and so do we. Keyboard
-   focus still has to be visible, though: without a border there is no other
-   sign of where you are. */
-.block:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
+  & :is(pre, blockquote, ul, ol, hr) {
+    margin-block: 1em;
+  }
 
-.block.empty {
-  color: var(--muted);
-}
+  /* Markdown's own blocks sit inside the box: no margin at the edges. */
+  & > :first-child {
+    margin-top: 0;
+  }
 
-/* A blank line between two paragraphs is a line, not a margin. The textarea
-   shows it as one empty row of 1.5em; a <p>'s default 1em margin is 8px
-   short of that, and the block would shrink the moment it was opened. */
-.block > p {
-  margin: 0;
-}
+  & > :last-child {
+    margin-bottom: 0;
+  }
 
-.block > p + p {
-  margin-top: 1.5em;
-}
+  & :is(pre, code) {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
 
-/* Markdown's own blocks sit inside the box: no margin at the edges, and
-   nothing that blows the box out sideways. */
-.block > :first-child {
-  margin-top: 0;
-}
+  & pre {
+    background: var(--color-line);
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    padding: 0.5rem 0.6rem;
+  }
 
-.block > :last-child {
-  margin-bottom: 0;
-}
+  & blockquote {
+    border-left: 2px solid var(--color-line);
+    color: var(--color-muted);
+    padding-left: 0.7rem;
+  }
 
-.block :is(h1, h2, h3, h4, h5, h6) {
-  font-size: 1.05rem;
-  margin: 0.8rem 0 0.3rem;
-}
+  & :is(ul, ol) {
+    padding-left: 1.3rem;
+  }
 
-.block :is(pre, code) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.9em;
-}
+  & :is(ul, ol) :is(ul, ol) {
+    margin-block: 0;
+  }
 
-.block pre {
-  background: var(--line);
-  border-radius: 4px;
-  overflow-x: auto;
-  padding: 0.5rem 0.6rem;
-}
+  & ul {
+    list-style: disc;
+  }
 
-.block blockquote {
-  border-left: 2px solid var(--line);
-  color: var(--muted);
-  margin-left: 0;
-  padding-left: 0.7rem;
-}
+  & ol {
+    list-style: decimal;
+  }
 
-.block :is(ul, ol) {
-  padding-left: 1.3rem;
-}
+  & ul ul {
+    list-style: circle;
+  }
 
-.block img {
-  max-width: 100%;
-}
+  & hr {
+    border-color: var(--color-line);
+  }
 
-.block a {
-  color: var(--accent);
-}
+  & img {
+    display: inline;
+  }
 
-/* A little air after a wikilink, so the sigil that starts the next one does
-   not crowd the last word of this one when two sit side by side. Margin, not
-   padding: nothing is painted behind the link, so the two would look the
-   same, and margin collapses out of the way at the end of a line. */
-.block .wikilink {
-  margin-right: 0.15rem;
-  /* A link with an href picks up the UA underline; a tag reads as a tag, the
-     colour alone marks it, as it did before the links went anywhere. */
-  text-decoration: none;
-}
+  & a {
+    color: var(--color-accent);
+    text-decoration: underline;
+  }
 
-/* Display math ($$…$$) is a block of its own: KaTeX gives it a full em of
-   margin, which is more air than a note block has to spare, and a long
-   formula scrolls rather than pushing the box wide. */
-.block .katex-display {
-  margin: 0.5rem 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 0.15rem 0;
-}
+  /* A little air after a wikilink, so the sigil that starts the next one
+     does not crowd the last word of this one when two sit side by side.
+     Margin, not padding: nothing is painted behind the link, and margin
+     collapses out of the way at the end of a line. A tag reads as a tag,
+     the colour alone marks it. */
+  & .wikilink {
+    margin-right: 0.15rem;
+    text-decoration: none;
+  }
 
-/* KaTeX reports malformed TeX in red inside the text; keep it on the app's
-   own danger colour so it reads the same in dark mode. */
-.block .katex-error {
-  color: var(--danger) !important;
-}
+  /* Display math ($$…$$): KaTeX gives it a full em of margin, which is more
+     air than a note block has to spare, and a long formula scrolls rather
+     than pushing the box wide. */
+  & .katex-display {
+    margin: 0.5rem 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.15rem 0;
+  }
 
-/* The box grows with what is typed instead of standing at a fixed height
-   with a scrollbar inside it — a block is as tall as its text in both
-   states, which is the whole trick. Chromium does this natively; this is
-   Electron, so there is no other browser to fall back for. */
-.block-input {
-  field-sizing: content;
-  min-height: calc(1.5em + 0.3rem);
-  outline: none;
-  /* No resize handle: the height is the text's business. */
-  resize: none;
+  /* KaTeX reports malformed TeX in red inside the text; keep it on the
+     app's own danger colour so it reads the same in dark mode. */
+  & .katex-error {
+    color: var(--color-danger) !important;
+  }
 }

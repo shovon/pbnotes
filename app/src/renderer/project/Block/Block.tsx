@@ -39,6 +39,30 @@ function sourceOffset(
 }
 
 /**
+ * Every metric a block shares between its two states, so clicking one swaps
+ * rendered Markdown for a textarea in place and the only thing that visibly
+ * changes is where the caret is — Logseq's model. No borders, no box that
+ * appears or disappears under the text; the dot is the one mark a block
+ * carries, and it is painted the same way in both.
+ *
+ * `box-border` and `wrap-break-word` are stated rather than left to a UA sheet
+ * that treats a div and a textarea differently: the same words have to wrap
+ * at the same points in both, or the box changes height as it opens. The
+ * min-height keeps an empty block one line tall, with its dot inside it and
+ * something to aim a click at.
+ */
+export const blockBox =
+  'bullet box-border block min-h-[1.5em] w-full rounded-sm py-0.5 pr-1 pl-indent text-left leading-normal wrap-break-word';
+
+/**
+ * Nothing on hover — Logseq leaves the text alone. Keyboard focus still has
+ * to be visible, though: without a border there is no other sign of where
+ * you are.
+ */
+export const blockFocus =
+  'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent';
+
+/**
  * Not a <button>: Markdown emits block elements, and a button may not contain
  * them. A div with the button role keeps the click-to-edit affordance
  * reachable and announced.
@@ -77,7 +101,7 @@ export function Block({
 
   return (
     <div
-      className="block"
+      className={`${blockBox} ${blockFocus} markdown cursor-text`}
       role="button"
       tabIndex={0}
       onClick={(event) => onActivate(sourceOffset(event, text))}
@@ -167,8 +191,10 @@ export function BlockEditor({
   onCancel: () => void;
 }) {
   return (
+    /* Grows with what is typed instead of standing at a fixed height with a
+       scrollbar inside it — a block is as tall as its text in both states. */
     <textarea
-      className="block-input"
+      className={`${blockBox} field-sizing-content min-h-[calc(1.5em+--spacing(1))] resize-none outline-none placeholder:text-muted`}
       autoFocus
       /* Runs on mount, before or after autoFocus — focusing a textarea keeps
          whatever selection it already has, so either order lands here. */

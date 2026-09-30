@@ -27,8 +27,10 @@ export default function LinkedReferences({
   if (references.length === 0) return null;
   const count = references.reduce((n, page) => n + page.blocks.length, 0);
   return (
-    <section className="references">
-      <h3>
+    // Padding, not margin, for the air before the next day: a margin would
+    // collapse into the next title's.
+    <section className="pb-12">
+      <h3 className="mb-2 text-xs font-semibold tracking-wide text-muted">
         {count} linked reference{count === 1 ? '' : 's'}
       </h3>
       {references.map((page) => (
