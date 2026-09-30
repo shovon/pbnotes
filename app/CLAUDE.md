@@ -4,11 +4,11 @@ Electron + React + TypeScript, built with Electron Forge and Vite.
 
 ## Before removing anything
 
-The `projects` table and the `projects:*` IPC surface are **not** dead code, however little UI currently sits on top of them. They are the only record of which directories the user asked gnotes to track; the filesystem cannot hold that choice, so deleting them loses it permanently. See the "Why the `projects` table exists" section of `README.md` before touching `src/main/projects-*.ts`, `src/shared/projects.ts`, or the `projects` migration in `src/main/db.ts`.
+The `projects` table and the `projects:*` IPC surface are **not** dead code, however little UI currently sits on top of them. They are the only record of which directories the user asked gnotes to track; the filesystem cannot hold that choice, so deleting them loses it permanently. See the "Why the `projects` table exists" section of `../README.md` before touching `src/main/projects-*.ts`, `src/shared/projects.ts`, or the `projects` migration in `src/main/db.ts`.
 
 ## Storage boundary
 
-Two stores, and they do not swap. SQLite holds the projects registry and config; the append-only event log in `src/main/ledger/event-log/event-log.ts` holds project content. Content is never moved into SQLite and the registry is never moved onto the log — see "Two stores, on purpose" in `README.md`.
+Two stores, and they do not swap. SQLite holds the projects registry and config; the append-only event log in `src/main/ledger/event-log/event-log.ts` holds project content. Content is never moved into SQLite and the registry is never moved onto the log — see "Two stores, on purpose" in `../README.md`.
 
 **Content is written inside the user's project directory** (`<project>/gnotes/`, a plain folder, not behind a dot), never under `userData`. The folder is the point: notes back up, sync and move with the work they describe, and losing the app's support directory must never lose a word the user wrote. `userData` holds `notes.db` and nothing else that matters.
 

@@ -41,7 +41,7 @@ Not behind a dot. A dot-directory means *you can safely ignore this*, which is w
 
 `gnotes/` holds **one directory per device**, each holding numbered segments, `0000000000000001.log` upward. Only the newest is written to; the rest are sealed, and `seq` keeps counting across them within that device.
 
-The directory per device is what makes the folder safe to leave in Dropbox: **one writer per file, forever**, so two machines never touch the same path and a sync tool never has a divergence to resolve. `seq` therefore counts within a device rather than across the folder — it detects damage, and ordering is the hybrid logical clock's job. See `docs/multi-writer.md`, which is the design in full: what a foreign log may and may not be repaired to, how the clock is floored and bounded, and what the reducer still gets wrong when two machines edit the same page at once.
+The directory per device is what makes the folder safe to leave in Dropbox: **one writer per file, forever**, so two machines never touch the same path and a sync tool never has a divergence to resolve. `seq` therefore counts within a device rather than across the folder — it detects damage, and ordering is the hybrid logical clock's job. See `app/docs/multi-writer.md`, which is the design in full: what a foreign log may and may not be repaired to, how the clock is floored and bounded, and what the reducer still gets wrong when two machines edit the same page at once.
 
 Nothing is written at the top of `gnotes/`, and files found there are reported rather than folded.
 
@@ -63,52 +63,52 @@ Content is event-sourced: appended as immutable facts and replayed into in-memor
 
 ## Layout
 
-### The ledger — `src/main/ledger/`
+### The ledger — `app/src/main/ledger/`
 
 Plumbing, and only plumbing. How the append-only log is written, how it recovers, and how a fold is driven over it. Nothing here knows what an event *means*.
 
 | Path | Tier | Role |
 | --- | --- | --- |
-| `ledger/event-log/event-log.ts` | plumbing | Framing, fsync, crash recovery, segment rollover, the HLC, the merge across devices. `verdict` is the one rule that deletes bytes |
-| `ledger/projection/projection.ts` | plumbing | Folds the log into an in-memory view through a `Reducer<S>`. Knows nothing about pages. Main process only |
-| `ledger/device-store.ts` | adapter | This machine's id and what it remembers per project (clock floor, tip). The one file here that touches SQLite |
+| `app/src/main/ledger/event-log/event-log.ts` | plumbing | Framing, fsync, crash recovery, segment rollover, the HLC, the merge across devices. `verdict` is the one rule that deletes bytes |
+| `app/src/main/ledger/projection/projection.ts` | plumbing | Folds the log into an in-memory view through a `Reducer<S>`. Knows nothing about pages. Main process only |
+| `app/src/main/ledger/device-store.ts` | adapter | This machine's id and what it remembers per project (clock floor, tip). The one file here that touches SQLite |
 
-`event-log` and `projection` import nothing but `src/shared/log.ts` — no Electron, no SQLite, no pages. That is worth keeping true, and the folder's shape is what keeps it honest: the dependency runs one way, from a slice down into the ledger, never back. `device-store` is the folder's only edge outward, to `db.ts`.
+`event-log` and `projection` import nothing but `app/src/shared/log.ts` — no Electron, no SQLite, no pages. That is worth keeping true, and the folder's shape is what keeps it honest: the dependency runs one way, from a slice down into the ledger, never back. `device-store` is the folder's only edge outward, to `db.ts`.
 
-### The pages slice — `src/main/pages/`
+### The pages slice — `app/src/main/pages/`
 
 One subject, whole: what page events mean, and the door the renderer reaches them through. It sits on the ledger the way any slice would, and the ledger does not know it exists.
 
 | Path | Tier | Role |
 | --- | --- | --- |
-| `pages/pages-store/pages-store.ts` | domain | What the events *mean*: the commands that author events, the journal and back-reference queries. One projection per project, at `<project>/gnotes/` |
-| `pages/pages-store/blocks/blocks.ts` | domain | The `reduce` over the block tree — the pure `Reducer<Pages>` the projection is handed |
-| `pages/pages-ipc.ts` | door | The `pages:*` channels. Checks the project against the registry, and its directory for reachability, before opening a log. Also broadcasts `pages:changed` to every window when a fold moved because a file arrived |
+| `app/src/main/pages/pages-store/pages-store.ts` | domain | What the events *mean*: the commands that author events, the journal and back-reference queries. One projection per project, at `<project>/gnotes/` |
+| `app/src/main/pages/pages-store/blocks/blocks.ts` | domain | The `reduce` over the block tree — the pure `Reducer<Pages>` the projection is handed |
+| `app/src/main/pages/pages-ipc.ts` | door | The `pages:*` channels. Checks the project against the registry, and its directory for reachability, before opening a log. Also broadcasts `pages:changed` to every window when a fold moved because a file arrived |
 
 ### Registry and shell
 
 | Path | Role |
 | --- | --- |
-| `src/main/db.ts` | SQLite (`node:sqlite`) at `userData/notes.db`, WAL, append-only migrations keyed on `PRAGMA user_version` |
-| `src/main/projects-store.ts` | All registry SQL. Path canonicalisation and case-folded dedupe live here |
-| `src/main/projects-ipc.ts` | The ten `projects:*` channels |
-| `src/main/ipc.ts` | The `unknown` → string argument guards both IPC files use |
-| `src/main/index.ts` | Composition root: opens the database, binds the device, registers both IPC surfaces, makes the window |
-| `src/main/window-state/` | Where the main window was last time, and the maths that fits it back onto a display |
+| `app/src/main/db.ts` | SQLite (`node:sqlite`) at `userData/notes.db`, WAL, append-only migrations keyed on `PRAGMA user_version` |
+| `app/src/main/projects-store.ts` | All registry SQL. Path canonicalisation and case-folded dedupe live here |
+| `app/src/main/projects-ipc.ts` | The ten `projects:*` channels |
+| `app/src/main/ipc.ts` | The `unknown` → string argument guards both IPC files use |
+| `app/src/main/index.ts` | Composition root: opens the database, binds the device, registers both IPC surfaces, makes the window |
+| `app/src/main/window-state/` | Where the main window was last time, and the maths that fits it back onto a display |
 
 ### Contracts and renderer
 
 | Path | Role |
 | --- | --- |
-| `src/shared/log.ts` | What the log can report about itself: devices read, files skipped, events not understood |
-| `src/shared/pages.ts` | The pages contract. A page is a title; a journal day is the page titled with its local `YYYY-MM-DD` |
-| `src/shared/projects.ts` | Types and channel names shared by all three processes — keep it free of `node:` imports |
-| `src/shared/wikilink/wikilink.ts` | The remark plugin that makes `[[Mira]]`, `#Mira` and `#[[Mira]]` links. Shared because main reads a block with the same parser to find what it links to |
-| `src/preload/index.ts` | Exposes `window.gnotes.projects` and `window.gnotes.pages` across the context bridge |
-| `src/renderer/App/App.tsx` | Owns the project data and switches between the two views |
-| `src/renderer/ProjectPicker/ProjectPicker.tsx` | The project list UI |
-| `src/renderer/project/ProjectView.tsx` | One project: the journal, or the one page a link led to |
-| `src/renderer/project/PageView/PageView.tsx` | One page: its blocks, and what links to it |
+| `app/src/shared/log.ts` | What the log can report about itself: devices read, files skipped, events not understood |
+| `app/src/shared/pages.ts` | The pages contract. A page is a title; a journal day is the page titled with its local `YYYY-MM-DD` |
+| `app/src/shared/projects.ts` | Types and channel names shared by all three processes — keep it free of `node:` imports |
+| `app/src/shared/wikilink/wikilink.ts` | The remark plugin that makes `[[Mira]]`, `#Mira` and `#[[Mira]]` links. Shared because main reads a block with the same parser to find what it links to |
+| `app/src/preload/index.ts` | Exposes `window.gnotes.projects` and `window.gnotes.pages` across the context bridge |
+| `app/src/renderer/App/App.tsx` | Owns the project data and switches between the two views |
+| `app/src/renderer/ProjectPicker/ProjectPicker.tsx` | The project list UI |
+| `app/src/renderer/project/ProjectView.tsx` | One project: the journal, or the one page a link led to |
+| `app/src/renderer/project/PageView/PageView.tsx` | One page: its blocks, and what links to it |
 
 A page is not a record anywhere. It is the set of blocks carrying its title, so opening a page appends nothing — the log holds what the user did, and reading is not one of the things they did. The first write to a page is its first event. Pages are never created: naming one is enough. The calendar names the journal days, and a link — `[[Mira]]`, `#Mira` or `#[[Mira]]`, all the same page — names everything else. Following a link opens that page, empty until something is written on it; only the days are in the journal stack. Under its own blocks, every page lists what links to it: each page that names it, cut down to the blocks that do, edited in place like any other block — a write there is a write to the page the block is on. The cuts are read from the fold in main, with the same parser the renderer draws links with, so what counts as a reference is exactly what shows as a link.
 
@@ -117,6 +117,7 @@ The folder is shared, so the page can change without anyone here touching it. Ma
 ## Development
 
 ```sh
+cd app
 npm start      # electron-forge start
 npm test       # node --test, no framework
 npm run lint
