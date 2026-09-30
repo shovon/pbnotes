@@ -148,8 +148,18 @@ export default function App() {
       {/* The window's own top strip, where the title bar used to be. The
           picker is the one control that is not about the project currently
           open, so it belongs above the page rather than on it — beside
-          whichever corner the platform puts its window buttons in. */}
-      <header className="titlebar">
+          whichever corner the platform puts its window buttons in.
+
+          The window buttons are laid over this same strip, and which corner
+          they take is the platform's business: macOS puts them left, Windows
+          and Linux right. `env(titlebar-area-*)` is the box they leave free,
+          which is the whole point of `titleBarOverlay` — the fallbacks are
+          macOS's own inset, for the moment before Chromium has measured the
+          frame. */}
+      <header
+        id="titlebar"
+        className="app-region-drag fixed top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,5rem)] flex h-[env(titlebar-area-height,var(--spacing-titlebar))] w-[env(titlebar-area-width,calc(100%-5rem))] items-center"
+      >
         {project && (
           <ProjectPicker
             projects={projects}
@@ -160,9 +170,11 @@ export default function App() {
         )}
       </header>
 
-      <main className="app">
+      <main className="mx-auto box-content max-w-page px-6 pt-[calc(var(--spacing-titlebar)+--spacing(3))] pb-12">
         {notice && (
-          <p className="notice" onClick={() => setNotice(null)}>
+          <p
+            className="mb-4 cursor-pointer rounded-md bg-warn-bg px-3 py-2 text-sm text-warn-fg"
+            onClick={() => setNotice(null)}>
             {notice}
           </p>
         )}

@@ -71,7 +71,9 @@
   "overrides": [
     {
       "files": [
-        "vite.*.config.ts"
+        "vite.*.config.ts",
+        "vite.*.config.mts",
+        ".storybook/main.ts"
       ],
       "rules": {
         "import/no-unresolved": "off"

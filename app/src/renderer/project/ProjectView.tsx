@@ -129,7 +129,7 @@ export default function ProjectView({ project, act: outer }: Props) {
    * one the header has not been put in the DOM yet.
    */
   const [titlebar, setTitlebar] = useState<Element | null>(null);
-  useEffect(() => setTitlebar(document.querySelector('.titlebar')), []);
+  useEffect(() => setTitlebar(document.getElementById('titlebar')), []);
 
   /**
    * The two updates in one event, so they land in one render: the stack is
@@ -294,14 +294,20 @@ export default function ProjectView({ project, act: outer }: Props) {
       {titlebar !== null &&
         title !== null &&
         createPortal(
-          <button className="back" onClick={back}>
+          // Borderless until pointed at, like the picker beside it. Capped,
+          // because it names the page it goes back to, and a page is named
+          // whatever a link said — long enough to shove the picker out.
+          <button
+            className="app-region-no-drag ml-1 max-w-56 cursor-pointer truncate rounded-md border border-transparent px-1.5 py-0.5 text-sm hover:border-accent hover:text-accent"
+            onClick={back}
+          >
             ← {trail.at(-2) ?? 'Journal'}
           </button>,
           titlebar,
         )}
 
       {shown === null ? (
-        <p className="subtitle">Loading…</p>
+        <p className="mt-1 text-sm text-muted">Loading…</p>
       ) : (
         shown.map((page) => (
           // Keyed by the title, so a page is never handed another page's

@@ -3,7 +3,7 @@ import type { Project } from '../../../shared/projects';
 import { lastLeaf, locate } from '../../../shared/pages';
 import type { Block as BlockType, Page } from '../../../shared/pages';
 import type { Act } from '../../ui';
-import { Block, BlockEditor } from '../Block/Block';
+import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
 
 const { pages } = window.gnotes;
@@ -339,24 +339,38 @@ export default function PageView({
           />
         )}
         {block.children.length > 0 && (
-          <div className="block-children">{renderBlocks(block.children)}</div>
+          // Its own column, since the gap between blocks does not inherit.
+          <div className="ml-indent flex flex-col gap-1">{renderBlocks(block.children)}</div>
         )}
         {writing?.after === block.id && newBlockEditor}
       </Fragment>
     ));
+
+  /**
+   * The tail of a day is click-to-write, so it needs somewhere to click and a
+   * caret to say so, and the room doubles as the air before the next day —
+   * less of it when what follows is the page's own references. A cut sits in
+   * under its heading like children under a parent, and its blank space is
+   * not click-to-write, so no caret and no room kept.
+   */
+  const pageSpace = reference
+    ? 'ml-indent cursor-default'
+    : references?.length
+      ? 'cursor-text pb-5'
+      : 'cursor-text pb-12';
 
   return (
     <>
       {/* A cut is headed by the page it is cut from, as a link there — the
           project view follows it like the ones in the blocks. */}
       {reference ? (
-        <h4>
-          <a className="wikilink" href={`#${title}`}>
+        <h4 className="mt-3 mb-1 text-sm font-semibold">
+          <a className="wikilink text-accent" href={`#${title}`}>
             {title}
           </a>
         </h4>
       ) : (
-        <h2 className="page-title">{title}</h2>
+        <h2 className="mt-6 mb-3 border-b border-line pb-1.5 text-2xl font-semibold">{title}</h2>
       )}
 
       {/* The blank space under the page is part of the page: clicking it opens
@@ -365,7 +379,7 @@ export default function PageView({
           itself — a click on a block is that block's, and it bubbles here.
           Not in a cut, which has no end to write at. */}
       <div
-        className="page"
+        className={`flex flex-col gap-1 ${pageSpace}`}
         onClick={(event) => {
           if (!reference && event.target === event.currentTarget) {
             setWriting({});
@@ -383,7 +397,9 @@ export default function PageView({
             is added to it. */}
         {reference ? null : writing === null ? (
           page.blocks.length === 0 && (
-            <button className="block empty" onClick={() => setWriting({})}>
+            <button
+              className={`${blockBox} ${blockFocus} cursor-text text-muted`}
+              onClick={() => setWriting({})}>
               Click to write the first block
             </button>
           )
