@@ -93,3 +93,6 @@ out/
 
 *storybook.log
 storybook-static
+
+# Stale bundle output
+build/
