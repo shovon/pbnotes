@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, Menu, clipboard, ipcMain } from 'electron';
 import { PAGE_CHANNELS } from '../../shared/pages';
 import { requireString } from '../ipc';
 import { checkAvailability, getProject } from '../projects-store';
@@ -143,4 +143,16 @@ export function registerPageIpc(): void {
     async (_event, id: unknown, blockId: unknown) =>
       outdentBlock(await requireProject(id), requireString(blockId, 'blockId')),
   );
+
+  // Native rather than drawn: placement at the screen edge, keyboard and
+  // dismissal come with it. More items go in the template.
+  ipcMain.handle(PAGE_CHANNELS.blockMenu, (event, blockId: unknown) => {
+    const id = requireString(blockId, 'blockId');
+    Menu.buildFromTemplate([
+      {
+        label: 'Copy Block Reference',
+        click: () => clipboard.writeText(`((${id}))`),
+      },
+    ]).popup({ window: BrowserWindow.fromWebContents(event.sender) ?? undefined });
+  });
 }
