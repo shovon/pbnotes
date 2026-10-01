@@ -71,19 +71,22 @@ Plumbing, and only plumbing. How the append-only log is written, how it recovers
 | --- | --- | --- |
 | `app/src/main/ledger/event-log/event-log.ts` | plumbing | Framing, fsync, crash recovery, segment rollover, the HLC, the merge across devices. `verdict` is the one rule that deletes bytes |
 | `app/src/main/ledger/projection/projection.ts` | plumbing | Folds the log into an in-memory view through a `Reducer<S>`. Knows nothing about pages. Main process only |
+| `app/src/main/ledger/project-ledger/project-ledger.ts` | plumbing | One open log per project, at `<project>/gnotes/`, with every fold a slice defines through `defineFold` riding on it. Owns the device binding, the watch for other devices' events, and reopening a project that moved |
 | `app/src/main/ledger/device-store.ts` | adapter | This machine's id and what it remembers per project (clock floor, tip). The one file here that touches SQLite |
 
-`event-log` and `projection` import nothing but `app/src/shared/log.ts` — no Electron, no SQLite, no pages. That is worth keeping true, and the folder's shape is what keeps it honest: the dependency runs one way, from a slice down into the ledger, never back. `device-store` is the folder's only edge outward, to `db.ts`.
+`event-log`, `projection` and `project-ledger` import nothing but `app/src/shared/log.ts` — no Electron, no SQLite, no pages. That is worth keeping true, and the folder's shape is what keeps it honest: the dependency runs one way, from a feature down into the ledger, never back. `device-store` is the folder's only edge outward, to `db.ts`.
 
-### The pages slice — `app/src/main/pages/`
+### Features — `app/src/main/features/`
 
-One subject, whole: what page events mean, and the door the renderer reaches them through. It sits on the ledger the way any slice would, and the ledger does not know it exists.
+One folder per subject. `pages` is the one that keeps events: what page events mean, and the door the renderer reaches them through. It sits on the ledger the way any feature would, and the ledger does not know it exists.
 
 | Path | Tier | Role |
 | --- | --- | --- |
-| `app/src/main/pages/pages-store/pages-store.ts` | domain | What the events *mean*: the commands that author events, the journal and back-reference queries. One projection per project, at `<project>/gnotes/` |
-| `app/src/main/pages/pages-store/blocks/blocks.ts` | domain | The `reduce` over the block tree — the pure `Reducer<Pages>` the projection is handed |
-| `app/src/main/pages/pages-ipc.ts` | door | The `pages:*` channels. Checks the project against the registry, and its directory for reachability, before opening a log. Also broadcasts `pages:changed` to every window when a fold moved because a file arrived |
+| `app/src/main/features/pages/pages-store/pages-store.ts` | domain | What the events *mean*: the commands that author events, the journal and back-reference queries, over the `pages` fold it defines on the project's ledger |
+| `app/src/main/features/pages/pages-store/blocks/blocks.ts` | domain | The `reduce` over the block tree — the pure `Reducer<Pages>` the ledger is handed |
+| `app/src/main/features/pages/pages-ipc.ts` | door | The `pages:*` channels. Checks the project against the registry, and its directory for reachability, before opening a log. Also broadcasts `pages:changed` to every window when a fold moved because a file arrived |
+| `app/src/main/features/pages/images/images.ts` | domain | Images pasted into a block, stored by hash in the writing device's folder beside its log |
+| `app/src/main/features/window-state/` | shell | Where the main window was last time, and the maths that fits it back onto a display |
 
 ### Registry and shell
 
@@ -94,7 +97,6 @@ One subject, whole: what page events mean, and the door the renderer reaches the
 | `app/src/main/projects-ipc.ts` | The ten `projects:*` channels |
 | `app/src/main/ipc.ts` | The `unknown` → string argument guards both IPC files use |
 | `app/src/main/index.ts` | Composition root: opens the database, binds the device, registers both IPC surfaces, makes the window |
-| `app/src/main/window-state/` | Where the main window was last time, and the maths that fits it back onto a display |
 
 ### Contracts and renderer
 

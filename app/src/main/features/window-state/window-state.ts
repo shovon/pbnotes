@@ -7,7 +7,7 @@
  */
 import { screen } from "electron";
 import type { BrowserWindow, Rectangle } from "electron";
-import { getDatabase } from "../db";
+import { getDatabase } from "../../db";
 import { MIN_SIZE, fitToWorkArea } from "./window-bounds/window-bounds";
 
 export { MIN_SIZE };
