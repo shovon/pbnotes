@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Block } from './Block';
+import { Block, Previews } from './Block';
 
 const meta = {
   component: Block,
@@ -94,4 +94,32 @@ export const Wikilinks: Story = {
   args: {
     text: 'Ask [[Mira]] whether #[[the good coffee]] is still in the #money budget.\n\n- `grep #foo` is not a link, and neither is https://example.com/#top',
   },
+};
+
+/** A ref quotes the first paragraph of the block it names, formatting and
+    all, on a faint ground so it does not read as a page name; a link inside
+    the quote is coloured but goes where the ref goes. An alias shows its
+    label, a block with no paragraph shows its id, one that is gone is struck
+    through, and a ref inside a quote is not followed. In code it is text. */
+export const BlockRefs: Story = {
+  args: {
+    text: 'Per ((hinge)), and [the survey](((survey))).\n\n- no paragraph: ((list))\n- deleted: ((gone)) and [aliased](((gone)))\n- quoting a ref: ((nested))\n- not yet answered: ((pending))\n- `((code))`',
+  },
+  decorators: [
+    (Story) => (
+      <Previews
+        value={
+          new Map([
+            ['hinge', 'Ordered the **replacement** hinge from #Mira, `M6`.'],
+            ['survey', 'Not shown: the alias is.'],
+            ['list', ''],
+            ['gone', null],
+            ['nested', 'As said in ((hinge)).'],
+          ])
+        }
+      >
+        <Story />
+      </Previews>
+    ),
+  ],
 };

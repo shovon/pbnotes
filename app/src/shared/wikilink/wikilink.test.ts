@@ -153,6 +153,32 @@ test('leaves code alone', () => {
   assert.deepEqual(labels(parse('`[foo]([[Foo Page]])`')), []);
 });
 
+/** The id each block ref carries, in document order. */
+function refs(node: Node): string[] {
+  if (node.type === 'blockRef') {
+    const { data } = node as unknown as {
+      data: { hProperties: { dataBlockRef: string } };
+    };
+    return [data.hProperties.dataBlockRef];
+  }
+  return (node.children ?? []).flatMap(refs);
+}
+
+/** Bare, it is empty for the view to fill; aliased, it keeps its label.
+    Code stays code, and a wikilink beside one is still a wikilink. */
+test('a block ref carries its id, and its label when it has one', () => {
+  const tree = parse(
+    'See ((abc-1)) and [**foo**](((abc-2))), not `((abc-3))`. #Mira',
+  );
+  assert.deepEqual(refs(tree), ['abc-1', 'abc-2']);
+  const found = (tree.children?.[0].children ?? []).filter(
+    (child) => child.type === 'blockRef',
+  );
+  assert.deepEqual(found.map(read), ['', 'foo']);
+  assert.deepEqual(labels(tree), ['#Mira']);
+  assert.deepEqual(refs(parse('f((x)) is (( not )) one, nor (()).')), ['x']);
+});
+
 test('a note with none of them is untouched', () => {
   assert.deepEqual(
     labels(parse('Nothing to see, [a link](https://example.com).')),

@@ -5,6 +5,7 @@ import { locate } from '../../shared/pages';
 import type { Page } from '../../shared/pages';
 import { today } from '../ui';
 import type { Act } from '../ui';
+import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
 
 const { pages } = window.gnotes;
@@ -304,6 +305,27 @@ export default function ProjectView({ project, act: outer }: Props) {
   }, [project.id, stack, written]);
 
   /**
+   * What every `((id))` shows, for the whole project in one read: a ref
+   * points at any page, shown or not. Again after each write and each
+   * arrival, since either can change the words a ref quotes or take its
+   * block away. Swallowed like the reads above; a ref with no answer shows
+   * its id.
+   */
+  const [previews, setPreviews] = useState(new Map<string, string | null>());
+  useEffect(() => {
+    let current = true;
+    void pages
+      .previews(project.id)
+      .then((entries) => {
+        if (current) setPreviews(new Map(entries));
+      })
+      .catch((): void => undefined);
+    return () => {
+      current = false;
+    };
+  }, [project.id, written, arrived]);
+
+  /**
    * Every wikilink in every block lands here, in the capture phase, before
    * the block it sits in can turn the click into an edit. Stopping it there
    * is what keeps the editor closed: React's bubbling `onClick` on the block
@@ -311,7 +333,7 @@ export default function ProjectView({ project, act: outer }: Props) {
    * comes back absolute and percent-encoded.
    */
   const follow = (event: React.MouseEvent) => {
-    // A block ref, by the id it carries. Rendering `((id))` into one is #2's.
+    // A block ref, by the id it carries: a dot, or a rendered `((id))`.
     const ref = (event.target as Element)
       .closest('[data-block-ref]')
       ?.getAttribute('data-block-ref');
@@ -372,23 +394,25 @@ export default function ProjectView({ project, act: outer }: Props) {
           titlebar,
         )}
 
-      {shown === null ? (
-        <p className="mt-1 text-sm text-muted">Loading…</p>
-      ) : (
-        shown.map((page) => (
-          // Keyed by the title, so a page is never handed another page's
-          // editor state — the open box and the block id in it belong to the
-          // page they were opened on.
-          <PageView
-            key={page.title}
-            project={project}
-            page={latest.get(page.title) ?? page}
-            onPage={onPage}
-            references={cuts(page.title)}
-            act={act}
-          />
-        ))
-      )}
+      <Previews value={previews}>
+        {shown === null ? (
+          <p className="mt-1 text-sm text-muted">Loading…</p>
+        ) : (
+          shown.map((page) => (
+            // Keyed by the title, so a page is never handed another page's
+            // editor state — the open box and the block id in it belong to
+            // the page they were opened on.
+            <PageView
+              key={page.title}
+              project={project}
+              page={latest.get(page.title) ?? page}
+              onPage={onPage}
+              references={cuts(page.title)}
+              act={act}
+            />
+          ))
+        )}
+      </Previews>
     </div>
   );
 }

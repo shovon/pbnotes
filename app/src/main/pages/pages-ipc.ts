@@ -9,6 +9,7 @@ import {
   getLogStatus,
   getPage,
   getPages,
+  getPreviews,
   getReferences,
   indentBlock,
   locateBlock,
@@ -89,6 +90,10 @@ export function registerPageIpc(): void {
     PAGE_CHANNELS.locate,
     async (_event, id: unknown, blockId: unknown) =>
       locateBlock(await requireProject(id), requireString(blockId, 'blockId')),
+  );
+
+  ipcMain.handle(PAGE_CHANNELS.previews, async (_event, id: unknown) =>
+    getPreviews(await requireProject(id)),
   );
 
   ipcMain.handle(PAGE_CHANNELS.status, async (_event, id: unknown) =>

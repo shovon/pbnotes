@@ -83,6 +83,7 @@ export const PAGE_CHANNELS = {
   openAll: 'pages:open-all',
   references: 'pages:references',
   locate: 'pages:locate',
+  previews: 'pages:previews',
   addBlock: 'pages:add-block',
   editBlock: 'pages:edit-block',
   deleteBlock: 'pages:delete-block',
@@ -125,6 +126,16 @@ export type PagesApi = {
    * one whose block was deleted: that is an answer, not an error.
    */
   locate(projectId: string, blockId: string): Promise<{ page: string } | undefined>;
+  /**
+   * What each `((id))` in the project shows: a pair per block anything
+   * refers to, the id and the Markdown of that block's first paragraph.
+   * Empty for a block with no paragraph to show; null for an id the project
+   * does not have, which is a ref to a deleted block as often as a typo.
+   *
+   * The whole project's in one answer, since a ref on this page points at
+   * any other. Read again after a write or an arrival, like `references`.
+   */
+  previews(projectId: string): Promise<[string, string | null][]>;
   /**
    * How much of the project's log folder could be read, and what the fold
    * could not use.
