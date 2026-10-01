@@ -193,7 +193,7 @@ Watching is not optional garnish. Without it, per-device directories fix the fil
 
 `reduce` ends in a bare `return state`, so an event type it does not recognise is skipped. Under one writer that is unreachable: a log only ever holds events the build that wrote it understood. Under sync it is routine — an older build on one machine reads what a newer build on another wrote, and **renders an incomplete page with no indication that anything is missing.**
 
-That is the quietly-wrong failure this codebase is otherwise built to refuse. It is not worth a version-negotiation protocol; it is worth counting. The fold tallies event types it does not handle and payload `v` values above what it can upcast, and `LogStatus` reports them, so the app can say the project holds notes written by a newer gnotes rather than showing a page with holes in it.
+That is the quietly-wrong failure this codebase is otherwise built to refuse. It is not worth a version-negotiation protocol; it is worth counting. The fold tallies event types it does not handle and payload `v` values above what it can upcast, and `LogStatus` reports them, so the app can say the project holds notes written by a newer pbnotes rather than showing a page with holes in it.
 
 Skipping stays the behaviour — refusing to open would make one new event type on one machine lock the user out of their notes everywhere.
 

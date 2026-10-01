@@ -6,7 +6,7 @@
 export default function Welcome({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="mt-[20vh] text-center leading-relaxed text-muted">
-      <h1 className="mb-2 text-2xl font-bold text-fg">gnotes</h1>
+      <h1 className="mb-2 text-2xl font-bold text-fg">pbnotes</h1>
       <p className="mx-auto mb-6 max-w-md">
         Pick a project directory to write in. Nothing is copied — notes live in
         a <code>gnotes</code> folder inside the directory you choose, so they

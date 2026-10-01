@@ -55,7 +55,7 @@ export const PROJECT_CHANNELS = {
   reveal: 'projects:reveal',
 } as const;
 
-/** The surface exposed on `window.gnotes.projects` by the preload bridge. */
+/** The surface exposed on `window.pbnotes.projects` by the preload bridge. */
 export type ProjectsApi = {
   list(): Promise<Project[]>;
   /** Opens a directory picker and tracks whatever the user selects. */

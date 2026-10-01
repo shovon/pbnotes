@@ -15,7 +15,7 @@ const meta = {
   component: ProjectPicker,
   args: {
     projects: [
-      project('a', 'gnotes', '/Users/sal/projects/gnotes'),
+      project('a', 'pbnotes', '/Users/sal/projects/pbnotes'),
       project('b', 'Field notes', '/Volumes/archive/field-notes'),
     ],
     projectId: 'a',
@@ -31,5 +31,5 @@ export const Default: Story = {};
 
 /** The only project there is: the menu is still how you open another. */
 export const Single: Story = {
-  args: { projects: [project('a', 'gnotes', '/Users/sal/projects/gnotes')] },
+  args: { projects: [project('a', 'pbnotes', '/Users/sal/projects/pbnotes')] },
 };

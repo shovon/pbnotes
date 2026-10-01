@@ -39,7 +39,7 @@ const DEVICE = 'device-under-test';
 
 /** A fresh log directory; the projection owns everything inside it. */
 async function scratch(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), 'gnotes-proj-'));
+  return mkdtemp(path.join(tmpdir(), 'pbnotes-proj-'));
 }
 
 async function writeSession(directory: string): Promise<Notes> {

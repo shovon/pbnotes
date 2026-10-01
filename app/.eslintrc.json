@@ -22,7 +22,7 @@
           {
             "target": "./src/renderer",
             "from": "./src/main",
-            "message": "The renderer has no Node.js. Reach the main process through the preload bridge on `window.gnotes`."
+            "message": "The renderer has no Node.js. Reach the main process through the preload bridge on `window.pbnotes`."
           },
           {
             "target": "./src/renderer",

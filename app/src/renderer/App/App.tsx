@@ -5,7 +5,7 @@ import ProjectView from '../project/ProjectView';
 import Welcome from '../Welcome/Welcome';
 import type { Act } from '../ui';
 
-const { projects: api } = window.gnotes;
+const { projects: api } = window.pbnotes;
 
 /**
  * Main rejects with messages meant for the user to read ("That directory is
@@ -127,7 +127,7 @@ export default function App() {
   /**
    * Which project is showing is ordinary state. The window has no address bar
    * and nobody reloads it, so there is no URL for a router to own; when there
-   * is an external `gnotes://` link to honour, this becomes the route.
+   * is an external `pbnotes://` link to honour, this becomes the route.
    *
    * Held as an id resolved against the current list, not as a captured
    * project: a rename then shows through, and a project removed from under the

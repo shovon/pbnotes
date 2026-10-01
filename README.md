@@ -33,7 +33,7 @@ An unreachable directory reports `unknown` rather than `missing` and is never pr
 
 ### Content lives in the project, not in `userData`
 
-The log is written **inside the directory the user chose**, one log per project, in a plain `gnotes/` folder. That is the reason project folders exist: the notes are about the work that is already there, so they back up with it, sync with it, and travel with it to another machine. Nuking `~/Library/Application Support/gnotes` must cost the user nothing but the registry — a list they can rebuild by picking the folders again. It must never cost them a word they wrote.
+The log is written **inside the directory the user chose**, one log per project, in a plain `gnotes/` folder. That is the reason project folders exist: the notes are about the work that is already there, so they back up with it, sync with it, and travel with it to another machine. Nuking `~/Library/Application Support/pbnotes` must cost the user nothing but the registry — a list they can rebuild by picking the folders again. It must never cost them a word they wrote.
 
 Not behind a dot. A dot-directory means *you can safely ignore this*, which is what `.git` or `.venv` earns by being bookkeeping the user's work survives without. This log is the system of record: it is the only copy of what they wrote, and marking it ignorable is how it gets excluded from a backup or swept out as tool debris. Other content follows the same rule and sits in the same folder: a pasted image goes in the writing device's directory, beside its segments.
 
@@ -109,7 +109,7 @@ Not features: what every feature stands on.
 | `app/src/shared/pages.ts` | The pages contract. A page is a title; a journal day is the page titled with its local `YYYY-MM-DD` |
 | `app/src/shared/projects.ts` | Types and channel names shared by all three processes — keep it free of `node:` imports |
 | `app/src/shared/wikilink/wikilink.ts` | The remark plugin that makes `[[Mira]]`, `#Mira` and `#[[Mira]]` links. Shared because main reads a block with the same parser to find what it links to |
-| `app/src/preload/index.ts` | Exposes `window.gnotes.projects` and `window.gnotes.pages` across the context bridge |
+| `app/src/preload/index.ts` | Exposes `window.pbnotes.projects` and `window.pbnotes.pages` across the context bridge |
 | `app/src/renderer/App/App.tsx` | Owns the project data and switches between the two views |
 | `app/src/renderer/ProjectPicker/ProjectPicker.tsx` | The project list UI |
 | `app/src/renderer/project/ProjectView.tsx` | One project: the journal, or the one page a link led to |

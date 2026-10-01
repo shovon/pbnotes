@@ -6,7 +6,7 @@ import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
 
-const { pages } = window.gnotes;
+const { pages } = window.pbnotes;
 
 /**
  * Where an unwritten block is waiting to be typed. `after` is the block it
