@@ -88,6 +88,7 @@ export const PAGE_CHANNELS = {
   deleteBlock: 'pages:delete-block',
   indentBlock: 'pages:indent-block',
   outdentBlock: 'pages:outdent-block',
+  blockMenu: 'pages:block-menu',
   status: 'pages:status',
   changed: 'pages:changed',
 } as const;
@@ -206,4 +207,10 @@ export type PagesApi = {
    * the page untouched rather than throwing, like `indentBlock`.
    */
   outdentBlock(projectId: string, blockId: string): Promise<Page>;
+  /**
+   * Pops the native menu for a block's dot at the pointer. Its one item puts
+   * `((blockId))` on the clipboard. Resolves once the menu is shown, not when
+   * it closes; whatever the item does happens in main.
+   */
+  blockMenu(blockId: string): Promise<void>;
 };

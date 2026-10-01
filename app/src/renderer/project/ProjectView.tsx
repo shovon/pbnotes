@@ -335,8 +335,22 @@ export default function ProjectView({ project, act: outer }: Props) {
     go(page);
   };
 
+  /**
+   * Right-click on a dot opens its menu instead of the browser's. Anywhere
+   * else is left alone, so text keeps its cut/copy/paste. A right-click never
+   * fires `click`, so `follow` stays out of it on its own.
+   */
+  const blockMenu = (event: React.MouseEvent) => {
+    const ref = (event.target as Element)
+      .closest('[data-block-ref]')
+      ?.getAttribute('data-block-ref');
+    if (!ref) return;
+    event.preventDefault();
+    void window.gnotes.pages.blockMenu(ref);
+  };
+
   return (
-    <div onClickCapture={follow}>
+    <div onClickCapture={follow} onContextMenuCapture={blockMenu}>
       {/* The way back belongs with the window's own controls, beside the
           project picker, not on the page it is a way back from — it is about
           where you are, like the picker is, and the page below it is just

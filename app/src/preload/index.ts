@@ -50,6 +50,7 @@ const pages: PagesApi = {
     ipcRenderer.invoke(PAGE_CHANNELS.indentBlock, projectId, blockId),
   outdentBlock: (projectId, blockId) =>
     ipcRenderer.invoke(PAGE_CHANNELS.outdentBlock, projectId, blockId),
+  blockMenu: (blockId) => ipcRenderer.invoke(PAGE_CHANNELS.blockMenu, blockId),
 };
 
 // Only this explicit surface crosses the context bridge; the renderer never
