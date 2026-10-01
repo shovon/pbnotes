@@ -19,6 +19,7 @@ import {
   editBlock,
   getPage,
   getPages,
+  getPreviews,
   getReferences,
   indentBlock,
   logDirectory,
@@ -679,6 +680,54 @@ test('references follow edits, deletes and restarts', async () => {
     (await getReferences(it, 'Mira')).map((page) => page.title),
     [TODAY],
   );
+
+  await closePages();
+});
+
+/**
+ * What a `((id))` shows: the first paragraph of the block it names, as it
+ * was written, wherever in the project that block is. The sigil of a heading
+ * is not part of it, a block that opens with a list has none, and an id
+ * nothing answers to is null rather than missing — the view tells a ref to a
+ * deleted block from one it has not heard about yet. A ref in code is not a
+ * ref, and only blocks something refers to are answered for.
+ */
+test('a block ref previews the first paragraph of its target', async () => {
+  const it = await project();
+  const [prose] = (
+    await addBlock(it, 'Mira', 'Prefers **the good** coffee.\n\nAnd tea.')
+  ).blocks;
+  const heading = (await addBlock(it, 'Mira', '## Shed, [[second]] pass'))
+    .blocks[1];
+  const list = (await addBlock(it, 'Mira', '- joists\n- felt')).blocks[2];
+  const gone = (await addBlock(it, 'Mira', 'Not for long.')).blocks[3];
+  await addBlock(it, 'Mira', 'Nobody refers to this one.');
+  await deleteBlock(it, gone.id);
+
+  const parent = (await addBlock(it, TODAY, `See ((${prose.id})).`)).blocks[0];
+  const child = (
+    await addBlock(
+      it,
+      TODAY,
+      `[the shed](((${heading.id}))), ((${list.id})), ((${gone.id})), \`((code))\``,
+      parent.id,
+    )
+  ).blocks[1];
+  await indentBlock(it, child.id);
+
+  const previews = async () => new Map(await getPreviews(it));
+  assert.deepEqual(
+    await previews(),
+    new Map([
+      [prose.id, 'Prefers **the good** coffee.'],
+      [heading.id, 'Shed, [[second]] pass'],
+      [list.id, ''],
+      [gone.id, null],
+    ]),
+  );
+
+  await editBlock(it, prose.id, 'Prefers tea now.');
+  assert.equal((await previews()).get(prose.id), 'Prefers tea now.');
 
   await closePages();
 });

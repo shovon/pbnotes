@@ -187,8 +187,31 @@
      collapses out of the way at the end of a line. A tag reads as a tag,
      the colour alone marks it. */
   & .wikilink {
+    color: var(--color-accent);
     margin-right: 0.15rem;
     text-decoration: none;
+  }
+
+  /* A block ref is someone else's words, so it reads as a quotation and not
+     as a page name: the text's own colour on a faint ground, and the accent
+     only when pointed at. Struck through when the block it names is gone. */
+  & .block-ref {
+    background: var(--color-line);
+    border-radius: var(--radius-sm);
+    box-decoration-break: clone;
+    color: inherit;
+    padding: 0 0.2rem;
+    text-decoration: none;
+  }
+
+  & .block-ref:hover {
+    color: var(--color-accent);
+  }
+
+  & .block-ref.broken {
+    background: none;
+    color: var(--color-muted);
+    text-decoration: line-through;
   }
 
   /* Display math ($$…$$): KaTeX gives it a full em of margin, which is more

@@ -29,6 +29,8 @@ const pages: PagesApi = {
     ipcRenderer.invoke(PAGE_CHANNELS.references, projectId, title),
   locate: (projectId, blockId) =>
     ipcRenderer.invoke(PAGE_CHANNELS.locate, projectId, blockId),
+  previews: (projectId) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.previews, projectId),
   status: (projectId) => ipcRenderer.invoke(PAGE_CHANNELS.status, projectId),
   onChanged: (listener) => {
     // Wrapped rather than handed to `ipcRenderer.on` directly: the first

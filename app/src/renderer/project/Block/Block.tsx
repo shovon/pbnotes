@@ -1,7 +1,86 @@
-import { useMemo } from 'react';
+import { createContext, useContext, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import Markdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import { remarkPlugins } from '../../../shared/wikilink/wikilink';
+
+/**
+ * KaTeX throws on malformed TeX by default, which would take the whole page
+ * down over a half-typed formula. Bad math renders as flagged source instead;
+ * the note is still readable and still editable.
+ */
+const rehypePlugins: [typeof rehypeKatex, { throwOnError: boolean }][] = [
+  [rehypeKatex, { throwOnError: false }],
+];
+
+/**
+ * Block id → what a `((id))` shows, as `pages.previews` answers it. A
+ * context rather than a prop, because a ref points at any block in the
+ * project and the block holding it is several components down from the one
+ * view that can ask. Its consumers re-render when the answer changes, which
+ * a block memoised on its own text otherwise would not.
+ *
+ * An id that is not in it has not been answered for yet; null is main saying
+ * there is no such block.
+ */
+export const Previews = createContext<ReadonlyMap<string, string | null>>(
+  new Map(),
+);
+
+type RefProps = { 'data-block-ref'?: string; children?: ReactNode };
+
+/**
+ * How a preview is rendered: one run of inline text inside the link that is
+ * the ref. So no paragraph around it, and nothing in it is a link of its own
+ * — a link in a link is not HTML, and the whole ref goes one place. A ref
+ * inside the preview is not followed: it shows its label or its id and stops
+ * there, or A → B → A never ends.
+ */
+const quoted = {
+  p: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  a: ({ className, children }: { className?: string; children?: ReactNode }) => (
+    <span className={className}>{children}</span>
+  ),
+  'block-ref': ({ 'data-block-ref': id, children }: RefProps) => (
+    <>{children ?? id}</>
+  ),
+} as Components;
+
+/**
+ * A block ref. `[foo](((ID)))` reads `foo`; a bare `((ID))` reads as the
+ * first paragraph of the block it names, or as the id when that block has no
+ * paragraph to show or has not been answered for yet.
+ *
+ * Following it is the project view's job, by the `data-block-ref` it
+ * carries — the same hook the dot has. One whose block is gone is still a
+ * link: the click is what says so.
+ */
+function BlockRef({ 'data-block-ref': id, children }: RefProps) {
+  const preview = useContext(Previews).get(id ?? '');
+  return (
+    <a
+      href="#"
+      data-block-ref={id}
+      className={preview === null ? 'block-ref broken' : 'block-ref'}
+    >
+      {children ??
+        (preview ? (
+          <Markdown
+            remarkPlugins={remarkPlugins}
+            rehypePlugins={rehypePlugins}
+            components={quoted}
+          >
+            {preview}
+          </Markdown>
+        ) : (
+          id
+        ))}
+    </a>
+  );
+}
+
+const components = { 'block-ref': BlockRef } as Components;
 
 /**
  * One block in its two states. Neither reaches main: the page decides what a
@@ -88,13 +167,8 @@ export function Block({
     () => (
       <Markdown
         remarkPlugins={remarkPlugins}
-        /**
-         * KaTeX throws on malformed TeX by default, which would take the
-         * whole page down over a half-typed formula. Bad math renders as
-         * flagged source instead; the note is still readable and still
-         * editable.
-         */
-        rehypePlugins={[[rehypeKatex, { throwOnError: false }]]}
+        rehypePlugins={rehypePlugins}
+        components={components}
       >
         {text}
       </Markdown>

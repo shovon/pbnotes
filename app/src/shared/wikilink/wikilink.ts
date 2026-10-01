@@ -42,9 +42,13 @@ import remarkMath from 'remark-math';
  * autolinking bare URLs, so `https://example.com/#top` arrives as a text node
  * the walk does descend into, and `#top` would be coloured. It blocks `a#b`
  * mid-word and `####Foo` on the same rule.
+ *
+ * `((ID))` is a block ref, with a group of its own. An id has no spaces or
+ * parentheses in it, so `f((x))` in prose about code is the only thing it
+ * can take by mistake.
  */
 const PATTERN =
-  /\[([^[\]]*)\]\(\[\[(.*?)\]\]\)|(#?)\[\[(.*?)\]\]|(?<![\p{L}\p{N}/#])#[\p{L}\p{N}_](?:[\p{L}\p{N}_/-]*[\p{L}\p{N}_])?/gu;
+  /\[([^[\]]*)\]\(\[\[(.*?)\]\]\)|(#?)\[\[(.*?)\]\]|\(\(([^()\s]+)\)\)|(?<![\p{L}\p{N}/#])#[\p{L}\p{N}_](?:[\p{L}\p{N}_/-]*[\p{L}\p{N}_])?/gu;
 
 /**
  * The custom node renders through `data.hName`; no handler to register. The
@@ -72,6 +76,21 @@ function wikilink(title: string, ...label: RootContent[]): RootContent {
   } as unknown as RootContent;
 }
 
+/**
+ * A reference to a block, by its id. Not an `a`: what it shows is the other
+ * block's words, which the tree does not hold, so it renders through an
+ * element of its own that the block view supplies a component for. With a
+ * label — `[foo](((ID)))` — it shows the label; without, the node is empty
+ * and the view fills it.
+ */
+function blockRef(id: string, ...label: RootContent[]): RootContent {
+  return {
+    type: 'blockRef',
+    data: { hName: 'block-ref', hProperties: { dataBlockRef: id } },
+    children: label,
+  } as unknown as RootContent;
+}
+
 const text = (value: string): Text => ({ type: 'text', value });
 
 /** One text node becomes text, link, text… — or stays itself if there is no
@@ -92,6 +111,8 @@ function split(node: Text): RootContent[] {
     } else if (match[4] !== undefined) {
       const label = match[3] ? `#${match[4]}` : match[0];
       out.push(wikilink(match[4].trim(), text(label)));
+    } else if (match[5] !== undefined) {
+      out.push(blockRef(match[5]));
     } else {
       out.push(wikilink(match[0].slice(1), text(match[0])));
     }
@@ -132,6 +153,11 @@ export function remarkWikilink() {
         const label = [text('[['), ...child.children, text(']]')];
         return wikilink(alias[1].trim(), ...label);
       }
+      // `[foo](((ID)))`: an id has no space, so remark always makes a link
+      // of this one and there is no text form to catch.
+      const ref =
+        child.type === 'link' && /^\(\(([^()\s]+)\)\)$/.exec(child.url);
+      if (ref) return blockRef(ref[1], ...child.children);
       walk(child);
       return child;
     }) as typeof node.children;

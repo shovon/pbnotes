@@ -190,7 +190,7 @@ export async function getPages(project: ProjectRef): Promise<Page[]> {
 }
 
 /**
- * The pages a text links to, read with the same parser that renders it, so
+ * The pages a text links to and the blocks it refers to, read with the same parser that renders it, so
  * a `#foo` in a code span is text on both sides.
  *
  * Memoised on the text, not the block: identical text links identically,
@@ -208,26 +208,69 @@ export async function getPages(project: ProjectRef): Promise<Page[]> {
  * follows a link by; a link to nothing has no `href` and is not a link.
  */
 const md = unified().use(remarkParse).use(remarkPlugins);
-const linksOf = new Map<string, string[]>();
+
+/** What one parse of a block's text has to say, for everything that asks. */
+type Reading = {
+  /** The pages it links to. */
+  links: string[];
+  /** The blocks it refers to, by id. */
+  refs: string[];
+  /** What a ref to it shows; see `preview`. */
+  preview: string;
+};
+
+const readings = new Map<string, Reading>();
 
 type Node = {
   type: string;
-  data?: { hProperties?: { href?: string } };
+  data?: { hProperties?: { href?: string; dataBlockRef?: string } };
+  position?: { start: { offset: number }; end: { offset: number } };
   children?: Node[];
 };
 
-function links(text: string): string[] {
-  const memo = linksOf.get(text);
+/**
+ * What a ref to a block shows: the source of its first paragraph, cut out
+ * of the text rather than rebuilt from the tree, so the view renders it with
+ * the bold, code and links it was written with. A heading counts — it is a
+ * line of prose with a sigil in front, and the cut leaves the sigil behind.
+ *
+ * Empty for a block that starts with anything else, and the ref shows the id.
+ * ponytail: a list or a code block could show its text flattened instead;
+ * `mdast-util-to-string` does it, as a dependency of our own, if ids for
+ * those turn out to be common.
+ *
+ * Taken before the plugins run: they replace text nodes with ones that carry
+ * no position.
+ */
+function preview(text: string, root: Node): string {
+  const first = root.children?.[0];
+  const inline = first?.children ?? [];
+  const from = inline[0]?.position?.start.offset;
+  const to = inline.at(-1)?.position?.end.offset;
+  if (first?.type !== 'paragraph' && first?.type !== 'heading') return '';
+  return from === undefined || to === undefined ? '' : text.slice(from, to);
+}
+
+function read(text: string): Reading {
+  const memo = readings.get(text);
   if (memo) return memo;
-  const found: string[] = [];
+  const root = md.parse(text);
+  const reading: Reading = {
+    links: [],
+    refs: [],
+    preview: preview(text, root as Node),
+  };
   const walk = (node: Node): void => {
-    const href = node.data?.hProperties?.href;
-    if (node.type === 'wikilink' && href) found.push(href.slice(1));
+    const { href, dataBlockRef } = node.data?.hProperties ?? {};
+    if (node.type === 'wikilink' && href) reading.links.push(href.slice(1));
+    if (node.type === 'blockRef' && dataBlockRef) {
+      reading.refs.push(dataBlockRef);
+    }
     node.children?.forEach(walk);
   };
-  walk(md.runSync(md.parse(text)) as Node);
-  linksOf.set(text, found);
-  return found;
+  walk(md.runSync(root) as Node);
+  readings.set(text, reading);
+  return reading;
 }
 
 /**
@@ -238,7 +281,7 @@ function links(text: string): string[] {
  */
 function linking(blocks: Block[], title: string): Block[] {
   return blocks.flatMap((block) =>
-    links(block.text).includes(title)
+    read(block.text).links.includes(title)
       ? [block]
       : linking(block.children, title),
   );
@@ -274,6 +317,37 @@ export async function getReferences(
         ? b.title.localeCompare(a.title)
         : a.title.localeCompare(b.title);
     });
+}
+
+/**
+ * Every block the project refers to with `((id))`, and what a ref to it
+ * shows: the target's first paragraph, or null for an id the project does
+ * not have — deleted, or never there.
+ *
+ * For the whole project rather than per page, and resolved here rather than
+ * in the view: a ref points anywhere, the view holds only the pages on
+ * screen, and main has all of them. The answer is as big as the number of
+ * blocks anyone has referred to, which is small.
+ *
+ * Pairs, not an object: an id is whatever was typed between the parentheses,
+ * and `((__proto__))` is a key an object does not hold.
+ */
+export async function getPreviews(
+  project: ProjectRef,
+): Promise<[string, string | null][]> {
+  const { state } = await projectionFor(project);
+  const ids = new Set<string>();
+  const collect = (blocks: Block[]): void => {
+    for (const block of blocks) {
+      for (const id of read(block.text).refs) ids.add(id);
+      collect(block.children);
+    }
+  };
+  Object.values(state).forEach(collect);
+  return [...ids].map((id) => {
+    const found = find(state, id);
+    return [id, found ? read(found.siblings[found.at].text).preview : null];
+  });
 }
 
 /** The page a block is on, or undefined for a block the project lacks. */
