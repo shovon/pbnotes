@@ -123,3 +123,12 @@ export const BlockRefs: Story = {
     ),
   ],
 };
+
+/** An image is as wide as it is, up to the width of the block. One the notes
+    hold is written `images/<name>` and served by main, which a story has no
+    main for — so this one is off the web, which a note can link too. */
+export const Image: Story = {
+  args: {
+    text: 'The hinge, for reference.\n\n![A grey placeholder](https://placehold.co/320x180.png)',
+  },
+};

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
+import { IMAGE_SCHEME } from '../../../shared/pages';
 import { remarkPlugins } from '../../../shared/wikilink/wikilink';
 
 /**
@@ -28,6 +29,29 @@ export const Previews = createContext<ReadonlyMap<string, string | null>>(
   new Map(),
 );
 
+/**
+ * The id of the project whose images a block shows. A context for the reason
+ * `Previews` is one: the view that knows is several components up.
+ */
+export const ImageProject = createContext('');
+
+/**
+ * `![](images/<name>)` is a file in the project's folder, which the page
+ * cannot reach by that path — main serves it, by project and name. Any other
+ * source is left as written: an image on the web is an image on the web.
+ */
+function Image({ src, alt, title }: { src?: string; alt?: string; title?: string }) {
+  const project = useContext(ImageProject);
+  const name = /^images\/([^/]+)$/.exec(src ?? '')?.[1];
+  return (
+    <img
+      src={name && project ? `${IMAGE_SCHEME}://${project}/${name}` : src}
+      alt={alt}
+      title={title}
+    />
+  );
+}
+
 type RefProps = { 'data-block-ref'?: string; children?: ReactNode };
 
 /**
@@ -45,6 +69,7 @@ const quoted = {
   'block-ref': ({ 'data-block-ref': id, children }: RefProps) => (
     <>{children ?? id}</>
   ),
+  img: Image,
 } as Components;
 
 /**
@@ -80,7 +105,7 @@ function BlockRef({ 'data-block-ref': id, children }: RefProps) {
   );
 }
 
-const components = { 'block-ref': BlockRef } as Components;
+const components = { 'block-ref': BlockRef, img: Image } as Components;
 
 /**
  * One block in its two states. Neither reaches main: the page decides what a

@@ -5,8 +5,8 @@ import { locate } from '../../shared/pages';
 import type { Page } from '../../shared/pages';
 import { today } from '../ui';
 import type { Act } from '../ui';
-import { Previews } from './Block/Block';
-import PageView from './PageView/PageView';
+import { ImageProject, Previews } from './Block/Block';
+import PageView, { created } from './PageView/PageView';
 
 const { pages } = window.gnotes;
 
@@ -45,6 +45,10 @@ type Place = { page: string; block?: string };
 
 const same = (a: Place | undefined, b: Place) =>
   a?.page === b.page && a.block === b.block;
+
+/** The image files in a paste or a drop. */
+const images = (data: DataTransfer): File[] =>
+  [...data.files].filter((file) => file.type.startsWith('image/'));
 
 export default function ProjectView({ project, act: outer }: Props) {
   // ponytail: read once per render, so a window left open across midnight
@@ -411,6 +415,89 @@ export default function ProjectView({ project, act: outer }: Props) {
     go({ page });
   };
 
+  const wrapper = useRef<HTMLDivElement>(null);
+
+  /**
+   * Puts pasted or dropped images into the notes: each is stored in the
+   * project's folder, and its link goes in one of two places.
+   *
+   * With a block open, at the end of that block as a paragraph of its own —
+   * not at the caret, which can be in the middle of a sentence or a code
+   * block, and the end is the same place every time. Written into the box
+   * like typing: it is committed, or discarded, with the rest of the box.
+   *
+   * With none open, or one that closed while the file was being stored, as a
+   * new block last on the page: the page dropped on, else the one showing,
+   * else today. Zoomed, last under the zoomed block, as a box at the end of
+   * that view writes — the end of the page would be out of sight.
+   */
+  const placeImages = (files: File[], dropped?: string) => {
+    const active = document.activeElement;
+    const box =
+      active instanceof HTMLTextAreaElement && wrapper.current?.contains(active)
+        ? active
+        : null;
+    const to = dropped ?? title ?? date;
+    // Kept across the files, so a second one lands beneath the first.
+    let page = latest.get(to) ?? stack?.find((it) => it.title === to);
+    act(async () => {
+      for (const file of files) {
+        const link = await pages.addImage(
+          project.id,
+          new Uint8Array(await file.arrayBuffer()),
+          file.type,
+        );
+        const text = `![](${link})`;
+        if (box?.isConnected) {
+          box.value = [box.value.trimEnd(), text].filter(Boolean).join('\n\n');
+          continue;
+        }
+        const found =
+          zoom && to === title && page ? locate(page.blocks, zoom) : undefined;
+        const root = found?.siblings[found.at];
+        const after = root ? (root.children.at(-1)?.id ?? root.id) : undefined;
+        page = await pages.addBlock(project.id, to, text, after);
+        // The first under a root with no children: written beside it, then
+        // filed under it, like the box in `PageView`.
+        const id = root?.children.length === 0 && created(page, after);
+        if (id) page = await pages.indentBlock(project.id, id);
+        onPage(page);
+      }
+    });
+  };
+
+  /**
+   * On the document, not the view: with no box open the paste has nothing
+   * focused to land on, and arrives at the body. Subscribed again each
+   * render, so it places by the page as it is now.
+   */
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const data = event.clipboardData;
+      // Text copied out of a word processor comes with a picture of itself.
+      // That is a paste of text.
+      if (!data || ['text/plain', 'text/html'].every((it) => data.types.includes(it))) {
+        return;
+      }
+      const files = images(data);
+      if (files.length === 0) return;
+      event.preventDefault();
+      placeImages(files);
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  });
+
+  const onDrop = (event: React.DragEvent) => {
+    const files = images(event.dataTransfer);
+    if (files.length === 0) return;
+    event.preventDefault();
+    placeImages(
+      files,
+      (event.target as Element).closest<HTMLElement>('[data-page]')?.dataset.page,
+    );
+  };
+
   /**
    * Right-click on a dot opens its menu instead of the browser's. Anywhere
    * else is left alone, so text keeps its cut/copy/paste. A right-click never
@@ -426,7 +513,16 @@ export default function ProjectView({ project, act: outer }: Props) {
   };
 
   return (
-    <div onClickCapture={follow} onContextMenuCapture={blockMenu}>
+    <div
+      ref={wrapper}
+      onClickCapture={follow}
+      onContextMenuCapture={blockMenu}
+      // A drop is only offered where `dragover` was refused its default.
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes('Files')) event.preventDefault();
+      }}
+      onDrop={onDrop}
+    >
       {/* The way back belongs with the window's own controls, beside the
           project picker, not on the page it is a way back from — it is about
           where you are, like the picker is, and the page below it is just
@@ -448,28 +544,32 @@ export default function ProjectView({ project, act: outer }: Props) {
           titlebar,
         )}
 
-      <Previews value={previews}>
-        {shown === null ? (
-          <p className="mt-1 text-sm text-muted">Loading…</p>
-        ) : (
-          shown.map((page) => (
-            // Keyed by the title, so a page is never handed another page's
-            // editor state — the open box and the block id in it belong to
-            // the page they were opened on.
-            <PageView
-              key={page.title}
-              project={project}
-              page={latest.get(page.title) ?? page}
-              onPage={onPage}
-              // Not under a zoom: what links to one block is #2's.
-              references={zoom ? undefined : cuts(page.title)}
-              zoom={zoom}
-              onZoom={rezoom}
-              act={act}
-            />
-          ))
-        )}
-      </Previews>
+      <ImageProject value={project.id}>
+        <Previews value={previews}>
+          {shown === null ? (
+            <p className="mt-1 text-sm text-muted">Loading…</p>
+          ) : (
+            shown.map((page) => (
+              // Keyed by the title, so a page is never handed another page's
+              // editor state — the open box and the block id in it belong to
+              // the page they were opened on. The element is only a name on
+              // everything the page shows, for a drop to read; it has no box.
+              <div key={page.title} data-page={page.title} className="contents">
+                <PageView
+                  project={project}
+                  page={latest.get(page.title) ?? page}
+                  onPage={onPage}
+                  // Not under a zoom: what links to one block is #2's.
+                  references={zoom ? undefined : cuts(page.title)}
+                  zoom={zoom}
+                  onZoom={rezoom}
+                  act={act}
+                />
+              </div>
+            ))
+          )}
+        </Previews>
+      </ImageProject>
     </div>
   );
 }

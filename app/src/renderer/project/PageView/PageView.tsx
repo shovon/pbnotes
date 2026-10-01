@@ -26,7 +26,7 @@ type Writing = { after?: string } | null;
  * and a miss there does not read as a miss — it reads as index 0, which is
  * the first block on the page.
  */
-function created(page: Page, after?: string): string | undefined {
+export function created(page: Page, after?: string): string | undefined {
   if (!after) return page.blocks.at(-1)?.id;
   const found = locate(page.blocks, after);
   return found && found.siblings[found.at + 1]?.id;

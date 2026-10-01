@@ -12,6 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   cp,
+  mkdir,
   mkdtemp,
   readFile,
   readdir,
@@ -362,6 +363,9 @@ test("files that are not a device's segments are reported, not swallowed", async
     path.join(dir, "device-b", "0000000000000001 (conflicted copy).log"),
     "someone else\n",
   );
+
+  // A device's images are its own, beside its segments, and are not junk.
+  await mkdir(path.join(dir, "device-b", "images"));
 
   const log = await openLog(dir);
   const names = log.status.ignored.map((it) => path.basename(it)).sort();
