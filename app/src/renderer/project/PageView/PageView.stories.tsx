@@ -83,6 +83,26 @@ export const Named: Story = {
   },
 };
 
+/** Zoomed into a block two levels down: it alone is the root, its children
+    are the top level, and above it the page and what it hangs under are the
+    ways back out. Its sibling is not shown. */
+export const Zoomed: Story = {
+  args: {
+    zoom: '3',
+    references: undefined,
+    page: page('2026-09-24', [
+      block('1', 'Ordered the replacement hinge. Two weeks, apparently.'),
+      block('2', 'Shed', [
+        block('3', 'Measure the second door before Friday', [
+          block('12', 'Tape is in the kitchen drawer'),
+          block('13', 'Width at the top *and* the bottom'),
+        ]),
+        block('14', 'Not shown: a sibling of the zoomed block'),
+      ]),
+    ]),
+  },
+};
+
 /** The default view of a project: every written day, newest first, today at
     the top. The check is that the headings do the separating on their own —
     two days of notes must not read as one long day. */
