@@ -22,6 +22,7 @@ import remarkParse from 'remark-parse';
 import { Projection } from '../../ledger/projection/projection.ts';
 import type { DeviceMemory } from '../../ledger/event-log/event-log.ts';
 import { find, HANDLES, reduce } from './blocks/blocks.ts';
+import { findImage, saveImage } from '../images/images.ts';
 import type { PageEvent, Pages } from './blocks/blocks.ts';
 import { DATE_PATTERN, locate } from '../../../shared/pages.ts';
 import type { Block, Page } from '../../../shared/pages.ts';
@@ -519,6 +520,31 @@ export async function outdentBlock(
     after: found.parent.id,
   });
   return pageOf(projection, found.page);
+}
+
+/**
+ * Stores an image beside this device's log and returns the link a note holds
+ * it by. Writes no event: the image is in the notes once a block's text
+ * links it, and that is an ordinary edit.
+ *
+ * Through the projection for the device it gives, which is the one the log
+ * is writing as — after a rotation, not the one this session started with.
+ */
+export async function addImage(
+  project: ProjectRef,
+  bytes: Uint8Array,
+  mime: string,
+): Promise<string> {
+  const { device } = await projectionFor(project);
+  return saveImage(logDirectory(project.path), device, bytes, mime);
+}
+
+/** The file behind a note's `images/<name>`, on whichever device has it. */
+export function imageFile(
+  project: ProjectRef,
+  name: string,
+): Promise<string | undefined> {
+  return findImage(logDirectory(project.path), name);
 }
 
 export async function closePages(): Promise<void> {

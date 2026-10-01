@@ -44,6 +44,8 @@ const pages: PagesApi = {
   },
   addBlock: (projectId, title, text, after) =>
     ipcRenderer.invoke(PAGE_CHANNELS.addBlock, projectId, title, text, after),
+  addImage: (projectId, bytes, mime) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.addImage, projectId, bytes, mime),
   editBlock: (projectId, blockId, text) =>
     ipcRenderer.invoke(PAGE_CHANNELS.editBlock, projectId, blockId, text),
   deleteBlock: (projectId, blockId) =>

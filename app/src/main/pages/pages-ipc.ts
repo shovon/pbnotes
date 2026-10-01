@@ -1,9 +1,11 @@
-import { BrowserWindow, Menu, clipboard, ipcMain } from 'electron';
-import { PAGE_CHANNELS } from '../../shared/pages';
+import { BrowserWindow, Menu, clipboard, ipcMain, net, protocol } from 'electron';
+import { pathToFileURL } from 'node:url';
+import { IMAGE_SCHEME, PAGE_CHANNELS } from '../../shared/pages';
 import { requireString } from '../ipc';
 import { checkAvailability, getProject } from '../projects-store';
 import {
   addBlock,
+  addImage,
   deleteBlock,
   editBlock,
   getLogStatus,
@@ -11,6 +13,7 @@ import {
   getPages,
   getPreviews,
   getReferences,
+  imageFile,
   indentBlock,
   locateBlock,
   onPagesChanged,
@@ -118,6 +121,38 @@ export function registerPageIpc(): void {
         after === undefined ? undefined : requireString(after, 'after'),
       ),
   );
+
+  ipcMain.handle(
+    PAGE_CHANNELS.addImage,
+    async (_event, id: unknown, bytes: unknown, mime: unknown) => {
+      if (!(bytes instanceof Uint8Array)) {
+        throw new TypeError('Expected bytes to be a Uint8Array');
+      }
+      return addImage(
+        await requireProject(id),
+        bytes,
+        requireString(mime, 'mime'),
+      );
+    },
+  );
+
+  /**
+   * `pbnotes-image://<project id>/<name>`: the image a note links as
+   * `images/<name>`. The URL is built from note text, so nothing in it is
+   * trusted — the project has to be one we track, and the name is checked by
+   * `findImage` before it is anywhere near a path.
+   */
+  protocol.handle(IMAGE_SCHEME, async (request) => {
+    const url = new URL(request.url);
+    const project = getProject(url.hostname);
+    const file =
+      project &&
+      // Not decoded: a name that needed escaping is not one `findImage` takes.
+      (await imageFile(project, url.pathname.slice(1)));
+    return file
+      ? net.fetch(pathToFileURL(file).toString())
+      : new Response(null, { status: 404 });
+  });
 
   // No title on any of these four. The block id is the whole address, so
   // there is nothing to check a title against and nothing to write one into.

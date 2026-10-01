@@ -352,6 +352,10 @@ async function* readDevice(
 
   const segments = names.filter((name) => SEGMENT_PATTERN.test(name));
   for (const name of names) {
+    // A device's images sit beside its segments (`pages/images/images.ts`):
+    // its own to write, like the log, and nothing the fold reads. Not junk, so
+    // not reported as skipped.
+    if (name === 'images') continue;
     if (!segments.includes(name)) ignored.push(path.join(directory, name));
   }
 

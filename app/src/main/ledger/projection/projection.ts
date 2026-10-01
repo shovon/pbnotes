@@ -148,6 +148,11 @@ export class Projection<S> {
     return this.#state;
   }
 
+  /** The device the log writes as — after a rotation, the new one. */
+  get device(): string {
+    return this.#log.device;
+  }
+
   /** The last event *this device* wrote. Other devices count separately. */
   get seq(): number {
     return this.#log.seq;

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, nativeTheme, protocol, shell } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { closeDatabase, openDatabase } from './db';
@@ -6,6 +6,7 @@ import { registerProjectIpc } from './projects-ipc';
 import { bindDevice, closePages } from './pages/pages-store/pages-store';
 import { deviceId, recall, remember, rotateDeviceId } from './ledger/device-store';
 import { registerPageIpc } from './pages/pages-ipc';
+import { IMAGE_SCHEME } from '../shared/pages';
 import {
   MIN_SIZE,
   restoreWindowBounds,
@@ -16,6 +17,12 @@ import {
 if (started) {
   app.quit();
 }
+
+// Before the app is ready, or it is too late. `standard` gives the URL a
+// host, which is where the project id goes; the handler is in `pages-ipc`.
+protocol.registerSchemesAsPrivileged([
+  { scheme: IMAGE_SCHEME, privileges: { standard: true, secure: true } },
+]);
 
 const createWindow = () => {
   const { maximized, ...bounds } = restoreWindowBounds();

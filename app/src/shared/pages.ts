@@ -78,6 +78,13 @@ export type Page = {
  */
 export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * The scheme an image in a note is loaded through. The page is served from a
+ * dev server or a `file:` URL, neither of which can reach into a project
+ * folder, so main answers `pbnotes-image://<project id>/<name>` itself.
+ */
+export const IMAGE_SCHEME = 'pbnotes-image';
+
 export const PAGE_CHANNELS = {
   open: 'pages:open',
   openAll: 'pages:open-all',
@@ -85,6 +92,7 @@ export const PAGE_CHANNELS = {
   locate: 'pages:locate',
   previews: 'pages:previews',
   addBlock: 'pages:add-block',
+  addImage: 'pages:add-image',
   editBlock: 'pages:edit-block',
   deleteBlock: 'pages:delete-block',
   indentBlock: 'pages:indent-block',
@@ -177,6 +185,12 @@ export type PagesApi = {
     text: string,
     after?: string,
   ): Promise<Page>;
+  /**
+   * Stores an image in the project's folder and returns the link a block
+   * holds it by, `images/<sha256>.png`. Appends nothing: the caller puts the
+   * link in a block, and that write is what the log records.
+   */
+  addImage(projectId: string, bytes: Uint8Array, mime: string): Promise<string>;
   /**
    * Appends a `block.edited` event. The earlier text is not replaced on disk —
    * the log keeps both facts, and the fold shows the later one.
