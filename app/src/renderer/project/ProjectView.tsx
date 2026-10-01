@@ -8,7 +8,7 @@ import type { Act } from '../ui';
 import { ImageProject, Previews } from './Block/Block';
 import PageView, { created } from './PageView/PageView';
 
-const { pages } = window.gnotes;
+const { pages } = window.pbnotes;
 
 type Props = {
   project: Project;
@@ -509,7 +509,7 @@ export default function ProjectView({ project, act: outer }: Props) {
       ?.getAttribute('data-block-ref');
     if (!ref) return;
     event.preventDefault();
-    void window.gnotes.pages.blockMenu(ref);
+    void window.pbnotes.pages.blockMenu(ref);
   };
 
   return (

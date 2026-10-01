@@ -5,8 +5,8 @@ import LinkedReferences from './LinkedReferences';
 
 const project: Project = {
   id: 'a',
-  name: 'gnotes',
-  path: '/Users/sal/projects/gnotes',
+  name: 'pbnotes',
+  path: '/Users/sal/projects/pbnotes',
   addedAt: '2026-01-01T00:00:00.000Z',
   lastOpenedAt: null,
   pinned: false,

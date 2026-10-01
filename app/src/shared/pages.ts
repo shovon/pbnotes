@@ -102,7 +102,7 @@ export const PAGE_CHANNELS = {
   changed: 'pages:changed',
 } as const;
 
-/** The surface exposed on `window.gnotes.pages` by the preload bridge. */
+/** The surface exposed on `window.pbnotes.pages` by the preload bridge. */
 export type PagesApi = {
   /** The page with that title, empty if nothing has been written to it yet. */
   open(projectId: string, title: string): Promise<Page>;

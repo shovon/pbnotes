@@ -41,7 +41,7 @@ const DEVICE = "device-a";
 
 /** A fresh, empty log directory. */
 async function scratch(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "gnotes-log-"));
+  return mkdtemp(path.join(tmpdir(), "pbnotes-log-"));
 }
 
 function openLog(

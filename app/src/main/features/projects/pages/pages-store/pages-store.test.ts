@@ -38,7 +38,7 @@ const TOMORROW = "2026-09-22";
 async function project(): Promise<ProjectRef> {
   return {
     id: randomUUID(),
-    path: await mkdtemp(path.join(tmpdir(), "gnotes-project-")),
+    path: await mkdtemp(path.join(tmpdir(), "pbnotes-project-")),
   };
 }
 

@@ -1,14 +1,14 @@
-# gnotes
+# pbnotes
 
 Electron + React + TypeScript, built with Electron Forge and Vite.
 
 ## Naming
 
-The app is called **pbnotes**. The one place `gnotes` is the correct name is the content folder inside a user's project, `<project>/gnotes/`: it is on-disk format, and it stays. Everywhere else — `package.json`, identifiers, URL schemes, the `window.gnotes` bridge, this file's own title — `gnotes` is a leftover from the old name. Name anything new `pbnotes`.
+The app is called **pbnotes**. The one place `gnotes` is the correct name is the content folder inside a user's project, `<project>/gnotes/`: it is on-disk format, and it stays. Name everything else `pbnotes`.
 
 ## Before removing anything
 
-The `projects` table and the `projects:*` IPC surface are **not** dead code, however little UI currently sits on top of them. They are the only record of which directories the user asked gnotes to track; the filesystem cannot hold that choice, so deleting them loses it permanently. See the "Why the `projects` table exists" section of `../README.md` before touching `src/main/features/projects/projects-*.ts`, `src/shared/projects.ts`, or the `projects` migration in `src/main/db.ts`.
+The `projects` table and the `projects:*` IPC surface are **not** dead code, however little UI currently sits on top of them. They are the only record of which directories the user asked pbnotes to track; the filesystem cannot hold that choice, so deleting them loses it permanently. See the "Why the `projects` table exists" section of `../README.md` before touching `src/main/features/projects/projects-*.ts`, `src/shared/projects.ts`, or the `projects` migration in `src/main/db.ts`.
 
 ## Storage boundary
 
@@ -33,7 +33,7 @@ Two stores, and they do not swap. SQLite holds the projects registry and config;
 - Images are stored per device and linked without one: a paste writes `gnotes/<device-id>/images/<sha256>.png`, the block says `![](images/<sha256>.png)`, and main looks in every device's `images/` for the name (`src/main/features/projects/pages/images/images.ts`). The hash name is what makes that safe — the same name is the same bytes — so never store an image under a name that is not its hash, and never in a shared folder at the top of `gnotes/`.
 - `seq` detects damage within a device. Ordering across devices is the hybrid logical clock (`hlc`), floored by what has been seen and bounded against a clock set to the wrong year. Never order by `at`; it is for display.
 - Never truncate, rewrite or repair a file belonging to another device. A half-arrived foreign log stalls and retries; it must never stop a project from opening. See `docs/multi-writer.md`.
-- The renderer reaches main only through `window.gnotes`; keep new surface behind the context bridge in `src/preload/index.ts`.
+- The renderer reaches main only through `window.pbnotes`; keep new surface behind the context bridge in `src/preload/index.ts`.
 - Each component should have an associated story in Storybook.
 - Encapsulate by folder
   - Storybook stories and components should remain in the same folder

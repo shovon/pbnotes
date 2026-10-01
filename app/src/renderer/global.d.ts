@@ -3,7 +3,7 @@ import type { PagesApi } from '../shared/pages';
 
 declare global {
   interface Window {
-    gnotes: {
+    pbnotes: {
       projects: ProjectsApi;
       pages: PagesApi;
     };

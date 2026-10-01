@@ -59,4 +59,4 @@ const pages: PagesApi = {
 
 // Only this explicit surface crosses the context bridge; the renderer never
 // sees `ipcRenderer` itself.
-contextBridge.exposeInMainWorld('gnotes', { projects, pages });
+contextBridge.exposeInMainWorld('pbnotes', { projects, pages });
