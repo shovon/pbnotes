@@ -202,7 +202,7 @@ export function Block({
   );
   if (!id) return box;
 
-  /* The dot goes to the block: a link laid over the painted one, which the
+  /* The dot zooms into the block: a link laid over the painted one, which the
      project view follows by its `data-block-ref`. Beside the box, not in it —
      inside, it would be the first child the Markdown margins are trimmed by. */
   return (
@@ -211,7 +211,7 @@ export function Block({
       <a
         href="#"
         data-block-ref={id}
-        aria-label="Go to block"
+        aria-label="Zoom into block"
         className="absolute top-0 left-0 h-7 w-indent cursor-pointer"
       />
     </div>

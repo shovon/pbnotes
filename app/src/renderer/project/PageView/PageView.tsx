@@ -50,6 +50,14 @@ type Props = {
    * anywhere, a write to the page the block is on.
    */
   reference?: boolean;
+  /**
+   * The block this view is zoomed into: it is shown alone, as the root, with
+   * its children as the top level. One the page does not have shows the
+   * whole page; the project view is what notices and says so.
+   */
+  zoom?: string;
+  /** Moves the zoom to another block, or — with none — out to the page. */
+  onZoom?: (block?: string) => void;
   act: Act;
 };
 
@@ -74,9 +82,18 @@ export default function PageView({
   onPage,
   references,
   reference = false,
+  zoom,
+  onZoom,
   act,
 }: Props) {
   const title = page.title;
+  const rooted = zoom ? locate(page.blocks, zoom) : undefined;
+  const root = rooted?.siblings[rooted.at];
+  /** What the root hangs under, outermost first: the breadcrumb. */
+  const ancestors: BlockType[] = [];
+  for (let at = rooted; at?.parent; at = locate(page.blocks, at.parent.id)) {
+    ancestors.unshift(at.parent);
+  }
   const [writing, setWriting] = useState<Writing>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   // Where the click that opened the block landed. Undefined when there was no
@@ -150,6 +167,9 @@ export default function PageView({
     // Nothing either side: the page is about to be empty. A cut has no box
     // to fall back to; emptied, it is simply not shown any more.
     if (!above && !below && !reference) setWriting({});
+    // The zoomed block itself: out to what it hung under, or to the page,
+    // before the delete lands and leaves the view rooted on nothing.
+    if (block.id === root?.id) onZoom?.(found?.parent?.id);
     act(async () => {
       onPage(await pages.deleteBlock(project.id, block.id));
     });
@@ -180,6 +200,15 @@ export default function PageView({
     const found = locate(page.blocks, block.id);
     if (!found) return;
     if (by === 1 ? found.at === 0 : !found.parent) return;
+    // Zoomed, the root's children are the top level, and the root itself has
+    // no siblings in view to move among: either move would take a block out
+    // of the view it is being written in.
+    if (
+      root &&
+      (block.id === root.id || (by === -1 && found.parent === root))
+    ) {
+      return;
+    }
     const move = by === 1 ? pages.indentBlock : pages.outdentBlock;
     setEditingId(null);
     setCaret(at);
@@ -214,7 +243,12 @@ export default function PageView({
       caret,
     }: { then: 'stop' | 'again' | 'indent' | 'outdent'; caret?: number },
   ) => {
-    const after = writing?.after;
+    // Zoomed, the end of the view is the end of the root's children, not of
+    // the page. A root with none yet takes two events, like Tab in a new box:
+    // the block is written beside the root and then filed under it.
+    const tail = root && writing?.after === undefined;
+    const first = tail && root.children.length === 0;
+    const after = tail ? (root.children.at(-1)?.id ?? root.id) : writing?.after;
     setWriting(null);
 
     /**
@@ -231,7 +265,9 @@ export default function PageView({
     const parent = after
       ? locate(page.blocks, after)?.parent
       : undefined;
-    if (!text && (then === 'again' || then === 'outdent') && parent) {
+    // Not past the root, though: zoomed, its children are the top level.
+    const top = root !== undefined && (first || parent === root);
+    if (!text && (then === 'again' || then === 'outdent') && parent && !top) {
       setWriting({ after: parent.id });
       return;
     }
@@ -241,11 +277,17 @@ export default function PageView({
     // ever typed into is a click that landed elsewhere, and writes nothing.
     if (!text && then === 'stop') return;
     act(async () => {
-      const next = await pages.addBlock(project.id, title, text, after);
-      onPage(next);
+      let next = await pages.addBlock(project.id, title, text, after);
       const id = created(next, after);
+      if (first && id) next = await pages.indentBlock(project.id, id);
+      onPage(next);
       if (then === 'again') setWriting({ after: id });
-      if ((then === 'indent' || then === 'outdent') && id) {
+      // Out of the top level of a zoom is out of the view: the box reopens
+      // where it was, like any move with nowhere to go.
+      if (then === 'outdent' && top) {
+        setCaret(caret);
+        setEditingId(id ?? null);
+      } else if ((then === 'indent' || then === 'outdent') && id) {
         setCaret(caret);
         // Nowhere to go — the first block of an empty page going in, a
         // top-level one coming out — comes back unchanged, and the box simply
@@ -277,7 +319,7 @@ export default function PageView({
     const blocks = page.blocks;
     const after = writing?.after;
     const found = after ? locate(blocks, after) : undefined;
-    const under = after ? found?.siblings[found.at] : blocks.at(-1);
+    const under = after ? found?.siblings[found.at] : (root ?? blocks.at(-1));
     if (!under) return;
     const above = lastLeaf(under);
     setWriting(null);
@@ -309,36 +351,43 @@ export default function PageView({
    * the focus key it is everywhere else: there is nowhere to add, and
    * nothing here to move a block under.
    */
+  const renderBlock = (block: BlockType) =>
+    editingId === block.id ? (
+      <BlockEditor
+        initial={block.text}
+        caret={caret}
+        onCancel={() => setEditingId(null)}
+        onCommit={(text) => commitEdit(block, text)}
+        onBackspace={() => commitDelete(block)}
+        onIndent={
+          reference
+            ? undefined
+            : (text, at, by) => commitIndent(block, text, at, by)
+        }
+        onContinue={(text) => {
+          commitEdit(block, text);
+          // Out of the zoomed block, the next one goes under it: beside
+          // it would be a sibling nobody can see.
+          if (!reference) {
+            setWriting(block.id === root?.id ? {} : { after: block.id });
+          }
+        }}
+      />
+    ) : (
+      <Block
+        id={block.id}
+        text={block.text}
+        onActivate={(at) => {
+          setCaret(at);
+          setEditingId(block.id);
+        }}
+      />
+    );
+
   const renderBlocks = (blocks: BlockType[]) =>
     blocks.map((block) => (
       <Fragment key={block.id}>
-        {editingId === block.id ? (
-          <BlockEditor
-            initial={block.text}
-            caret={caret}
-            onCancel={() => setEditingId(null)}
-            onCommit={(text) => commitEdit(block, text)}
-            onBackspace={() => commitDelete(block)}
-            onIndent={
-              reference
-                ? undefined
-                : (text, at, by) => commitIndent(block, text, at, by)
-            }
-            onContinue={(text) => {
-              commitEdit(block, text);
-              if (!reference) setWriting({ after: block.id });
-            }}
-          />
-        ) : (
-          <Block
-            id={block.id}
-            text={block.text}
-            onActivate={(at) => {
-              setCaret(at);
-              setEditingId(block.id);
-            }}
-          />
-        )}
+        {renderBlock(block)}
         {block.children.length > 0 && (
           // Its own column, since the gap between blocks does not inherit.
           <div className="ml-indent flex flex-col gap-1">{renderBlocks(block.children)}</div>
@@ -370,6 +419,30 @@ export default function PageView({
             {title}
           </a>
         </h4>
+      ) : root ? (
+        /* Zoomed: the title steps back to a link out to the whole page, and
+           what the block hangs under follows it, each a way out to that
+           level. The project view follows both — the title as the wikilink
+           it is, a crumb by its `data-block-ref`, like a dot.
+           ponytail: a crumb is the first line of its block as written,
+           Markdown and all. Render it once a `**` in one looks wrong. */
+        <nav className="mt-6 mb-3 flex flex-wrap items-center gap-x-1.5 border-b border-line pb-1.5 text-sm text-muted">
+          <a className="wikilink text-accent" href={`#${title}`}>
+            {title}
+          </a>
+          {ancestors.map((ancestor) => (
+            <Fragment key={ancestor.id}>
+              <span aria-hidden>›</span>
+              <a
+                href="#"
+                data-block-ref={ancestor.id}
+                className="max-w-48 truncate hover:text-accent"
+              >
+                {ancestor.text.split('\n')[0] || '…'}
+              </a>
+            </Fragment>
+          ))}
+        </nav>
       ) : (
         <h2 className="mt-6 mb-3 border-b border-line pb-1.5 text-2xl font-semibold">{title}</h2>
       )}
@@ -387,7 +460,16 @@ export default function PageView({
           }
         }}
       >
-        {renderBlocks(page.blocks)}
+        {root ? (
+          // Keyed, or zooming out with a box open hands the new root the old
+          // root's box — and its text, which blur would then commit over it.
+          <Fragment key={root.id}>
+            {renderBlock(root)}
+            {renderBlocks(root.children)}
+          </Fragment>
+        ) : (
+          renderBlocks(page.blocks)
+        )}
 
         {/* The tail: a box when one is waiting at the end of the page, and
             nothing at all otherwise — a written page ends on its last

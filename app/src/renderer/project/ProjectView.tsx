@@ -37,6 +37,15 @@ type Props = {
  * ponytail: the whole history renders at once. Add windowing when someone has
  * enough years in one project for that to show.
  */
+/**
+ * A stop on the trail: a page, or one block of a page as the root of the
+ * view. Both are places you go back to, so they share the one history.
+ */
+type Place = { page: string; block?: string };
+
+const same = (a: Place | undefined, b: Place) =>
+  a?.page === b.page && a.block === b.block;
+
 export default function ProjectView({ project, act: outer }: Props) {
   // ponytail: read once per render, so a window left open across midnight
   // keeps yesterday at the top until something re-renders it. Add a timer to
@@ -48,8 +57,10 @@ export default function ProjectView({ project, act: outer }: Props) {
    * more on the end. Back takes the last one off, so A → B → C comes back
    * through B instead of skipping the middle of its own history.
    */
-  const [trail, setTrail] = useState<string[]>([]);
-  const title = trail.at(-1) ?? null;
+  const [trail, setTrail] = useState<Place[]>([]);
+  const title = trail.at(-1)?.page ?? null;
+  /** The block the view is zoomed into, when it is. */
+  const zoom = trail.at(-1)?.block;
   const [stack, setStack] = useState<Page[] | null>(null);
   /**
    * Title → the page as the last write to it handed it back, over the stack
@@ -145,19 +156,33 @@ export default function ProjectView({ project, act: outer }: Props) {
    * A link to the page already showing — every block listed under a page as
    * a reference to it holds one — is nothing to do, and must not clear the
    * stack: nothing the read depends on would change, so nothing would read
-   * it back.
+   * it back. Nor must a zoom within the page showing, for the same reason —
+   * and it has no need to: the page is already here.
    */
-  const go = (next: string | null) => {
-    if (next === title) return;
-    setTrail((was) => (next === null ? [] : [...was, next]));
-    setStack(null);
+  const go = (next: Place) => {
+    if (same(trail.at(-1), next)) return;
+    setTrail((was) => [...was, next]);
+    if (next.page !== title) setStack(null);
   };
 
   /** One step back along the trail; from the first page that is the journal. */
   const back = () => {
     setTrail((was) => was.slice(0, -1));
-    setStack(null);
+    if (trail.at(-2)?.page !== title) setStack(null);
   };
+
+  /**
+   * The zoom moved rather than followed: the zoomed block is gone, and the
+   * view lands on what it was under — or on the whole page. In place of the
+   * last stop, not after it, so back does not return to a block that is not
+   * there; and not twice in a row, so back is never a step that goes nowhere.
+   */
+  const rezoom = (block?: string) =>
+    setTrail((was) => {
+      const rest = was.slice(0, -1);
+      const next = { page: was.at(-1)?.page ?? '', block };
+      return same(rest.at(-1), next) ? rest : [...rest, next];
+    });
 
   /** A block to scroll to and flash once its page has rendered. */
   const [target, setTarget] = useState<string | null>(null);
@@ -172,8 +197,20 @@ export default function ProjectView({ project, act: outer }: Props) {
     outer(async () => {
       const found = await pages.locate(project.id, id);
       if (!found) throw new Error('That block no longer exists.');
-      go(found.page);
+      go({ page: found.page });
       setTarget(id);
+    });
+
+  /**
+   * Makes a block the root of the view: what its dot does. Asked of main like
+   * `goToBlock`, because a dot in a cut belongs to a page that is not the one
+   * showing.
+   */
+  const zoomTo = (id: string) =>
+    outer(async () => {
+      const found = await pages.locate(project.id, id);
+      if (!found) throw new Error('That block no longer exists.');
+      go({ page: found.page, block: id });
     });
 
   /**
@@ -224,7 +261,7 @@ export default function ProjectView({ project, act: outer }: Props) {
    */
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [project.id, title]);
+  }, [project.id, title, zoom]);
 
   useEffect(() => {
     let current = true;
@@ -249,6 +286,20 @@ export default function ProjectView({ project, act: outer }: Props) {
       current = false;
     };
   }, [project.id, date, title, arrived]);
+
+  /**
+   * The zoomed block is not on its page: another device deleted it, or back
+   * came round to one deleted since. The page it was on is the nearest thing
+   * left, with a notice so the view did not just change by itself. A delete
+   * made here never gets this far — the page zooms out before it writes.
+   */
+  const zoomed =
+    zoom && stack?.[0] ? (latest.get(stack[0].title) ?? stack[0]) : null;
+  useEffect(() => {
+    if (!zoom || !zoomed || locate(zoomed.blocks, zoom)) return;
+    rezoom();
+    outer(() => Promise.reject(new Error('That block no longer exists.')));
+  }, [zoom, zoomed]);
 
   /**
    * Today is in the journal whether or not it has been written on: it is the
@@ -334,13 +385,15 @@ export default function ProjectView({ project, act: outer }: Props) {
    */
   const follow = (event: React.MouseEvent) => {
     // A block ref, by the id it carries: a dot, or a rendered `((id))`.
-    const ref = (event.target as Element)
-      .closest('[data-block-ref]')
-      ?.getAttribute('data-block-ref');
-    if (ref) {
+    // A rendered ref goes to the block where it sits; a dot, or a crumb
+    // above a zoomed block, zooms into it.
+    const mark = (event.target as Element).closest('[data-block-ref]');
+    const ref = mark?.getAttribute('data-block-ref');
+    if (mark && ref) {
       event.preventDefault();
       event.stopPropagation();
-      goToBlock(ref);
+      if (mark.matches('.block-ref')) goToBlock(ref);
+      else zoomTo(ref);
       return;
     }
     const link = (event.target as Element).closest('a.wikilink[href]');
@@ -352,9 +405,10 @@ export default function ProjectView({ project, act: outer }: Props) {
     // to the block, which opens it. Every block listed under a page holds
     // one of these by construction, so in a cut it is the common case —
     // swallowed, the most obvious thing on screen to click did nothing.
-    if (page === title) return;
+    // Zoomed in, the same link is the way out to the whole page.
+    if (page === title && !zoom) return;
     event.stopPropagation();
-    go(page);
+    go({ page });
   };
 
   /**
@@ -389,7 +443,7 @@ export default function ProjectView({ project, act: outer }: Props) {
             className="app-region-no-drag ml-1 max-w-56 cursor-pointer truncate rounded-md border border-transparent px-1.5 py-0.5 text-sm hover:border-accent hover:text-accent"
             onClick={back}
           >
-            ← {trail.at(-2) ?? 'Journal'}
+            ← {trail.at(-2)?.page ?? 'Journal'}
           </button>,
           titlebar,
         )}
@@ -407,7 +461,10 @@ export default function ProjectView({ project, act: outer }: Props) {
               project={project}
               page={latest.get(page.title) ?? page}
               onPage={onPage}
-              references={cuts(page.title)}
+              // Not under a zoom: what links to one block is #2's.
+              references={zoom ? undefined : cuts(page.title)}
+              zoom={zoom}
+              onZoom={rezoom}
               act={act}
             />
           ))
