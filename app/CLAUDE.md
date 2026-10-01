@@ -2,6 +2,10 @@
 
 Electron + React + TypeScript, built with Electron Forge and Vite.
 
+## Naming
+
+The app is called **pbnotes**. The one place `gnotes` is the correct name is the content folder inside a user's project, `<project>/gnotes/`: it is on-disk format, and it stays. Everywhere else — `package.json`, identifiers, URL schemes, the `window.gnotes` bridge, this file's own title — `gnotes` is a leftover from the old name. Name anything new `pbnotes`.
+
 ## Before removing anything
 
 The `projects` table and the `projects:*` IPC surface are **not** dead code, however little UI currently sits on top of them. They are the only record of which directories the user asked gnotes to track; the filesystem cannot hold that choice, so deleting them loses it permanently. See the "Why the `projects` table exists" section of `../README.md` before touching `src/main/projects-*.ts`, `src/shared/projects.ts`, or the `projects` migration in `src/main/db.ts`.
