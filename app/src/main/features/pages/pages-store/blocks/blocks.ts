@@ -12,9 +12,9 @@
  * reason this file is readable — and the reason it runs under plain
  * `node --test` with nothing around it.
  */
-import { locate } from '../../../../shared/pages.ts';
-import type { Block } from '../../../../shared/pages.ts';
-import type { Reducer } from '../../../ledger/projection/projection.ts';
+import { locate } from "../../../../../shared/pages.ts";
+import type { Block } from "../../../../../shared/pages.ts";
+import type { Reducer } from "../../../../ledger/projection/projection.ts";
 
 /** Title → the blocks on it: a journal day or a page a link named. */
 export type Pages = Record<string, Block[]>;
@@ -63,11 +63,11 @@ export type BlockOutdented = { id: string; after: string };
  * payload still folds, including one whose page is outright wrong.
  */
 export type PageEvent =
-  | { type: 'block.created'; payload: BlockCreated }
-  | { type: 'block.edited'; payload: BlockEdited }
-  | { type: 'block.deleted'; payload: BlockDeleted }
-  | { type: 'block.indented'; payload: BlockIndented }
-  | { type: 'block.outdented'; payload: BlockOutdented };
+  | { type: "block.created"; payload: BlockCreated }
+  | { type: "block.edited"; payload: BlockEdited }
+  | { type: "block.deleted"; payload: BlockDeleted }
+  | { type: "block.indented"; payload: BlockIndented }
+  | { type: "block.outdented"; payload: BlockOutdented };
 
 /**
  * Event type → the payload `v` this build folds, which is also the `v` it
@@ -83,16 +83,16 @@ export type PageEvent =
  * one does not understand. Those events are skipped, as they always were, but
  * counted and reported rather than silently leaving holes in the page.
  */
-export const HANDLES: Record<PageEvent['type'], number> = {
-  'block.created': 1,
+export const HANDLES: Record<PageEvent["type"], number> = {
+  "block.created": 1,
   // 2 since the page came off the payload. Nothing needed an upcast in this
   // direction — the field is simply unread — but an older build handed one of
   // these would look up `state[undefined]`, miss, and drop the user's text
   // without a word. At `v: 2` its own gate refuses the event and says so.
-  'block.edited': 2,
-  'block.deleted': 2,
-  'block.indented': 2,
-  'block.outdented': 2,
+  "block.edited": 2,
+  "block.deleted": 2,
+  "block.indented": 2,
+  "block.outdented": 2,
 };
 
 /**
@@ -233,23 +233,26 @@ export const reduce: Reducer<Pages> = (state, event) => {
   const it = event as unknown as PageEvent;
 
   switch (it.type) {
-    case 'block.created': {
+    case "block.created": {
       const { page, id, text, after } = it.payload;
       const blocks = state[page] ?? [];
       const block: Block = { id, text, children: [] };
       // `addBlock` refuses an `after` the page does not have, so missing it
       // here means a log written by something else. Append rather than drop: a
       // block in the wrong place can be moved, one the fold discarded is gone.
-      const next = (after && beside(blocks, after, block)) || [...blocks, block];
+      const next = (after && beside(blocks, after, block)) || [
+        ...blocks,
+        block,
+      ];
       return { ...state, [page]: next };
     }
 
-    case 'block.edited': {
+    case "block.edited": {
       const { id, text } = it.payload;
       return onBlock(state, id, ({ blocks }) => retext(blocks, id, text));
     }
 
-    case 'block.deleted': {
+    case "block.deleted": {
       const { id } = it.payload;
       // A plain filter, no tombstone. Nothing later in the log needs to know
       // this block was here: `after` only ever names a block that was present
@@ -262,7 +265,7 @@ export const reduce: Reducer<Pages> = (state, event) => {
       return onBlock(state, id, ({ blocks }) => without(blocks, id));
     }
 
-    case 'block.indented': {
+    case "block.indented": {
       const { id, parent } = it.payload;
       return onBlock(state, id, (found) => {
         // A parent on another page is not a move across pages; there is no
@@ -279,7 +282,7 @@ export const reduce: Reducer<Pages> = (state, event) => {
       });
     }
 
-    case 'block.outdented': {
+    case "block.outdented": {
       const { id, after } = it.payload;
       return onBlock(state, id, (found) => {
         if (!after || !found.parent) return undefined;
@@ -295,10 +298,8 @@ export const reduce: Reducer<Pages> = (state, event) => {
           ...moving,
           children: [...moving.children, ...trailing],
         };
-        const trimmed = mapChildren(
-          found.blocks,
-          found.parent.id,
-          (children) => children.slice(0, found.at),
+        const trimmed = mapChildren(found.blocks, found.parent.id, (children) =>
+          children.slice(0, found.at),
         );
         // `after` is the block it used to hang under, so this lands it
         // directly beneath, at that block's own level.

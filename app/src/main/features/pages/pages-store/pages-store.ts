@@ -1,160 +1,44 @@
 /**
- * Project content: one pages projection per project, folded out of a log that
- * lives *inside the project's own directory*.
+ * Project content: what page events mean, read and written through the pages
+ * fold of a project's ledger.
  *
- * That location is the point of the whole app. A project folder is where the
- * user's work already lives, so the notes about it belong beside it: they get
- * backed up with it, sync with it, travel with it to another machine, and
- * outlive gnotes itself. Put them in `userData` instead and wiping an OS
- * support folder — or losing the registry that maps a UUID back to a path —
- * takes the writing with it. The content is the user's, not the app's.
+ * No plumbing. Where the log lives, which device this is and which logs are
+ * open belong to `ledger/project-ledger`; what a block *is* — the event schema
+ * and the fold over it — is `blocks/blocks.ts`. What is left here is the
+ * commands that author events and the queries over what they fold to.
  *
- * Deliberately free of `electron` imports, like `projection.ts`: callers hand
- * in the project, which also keeps the store runnable under `node --test`.
- *
- * The plumbing only. What a block *is* — the event schema and the fold over it
- * — is `blocks/blocks.ts`, which knows nothing about logs, devices or windows.
+ * Deliberately free of `electron` imports: callers hand in the project, which
+ * keeps the store runnable under `node --test`.
  */
-import path from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { unified } from 'unified';
-import remarkParse from 'remark-parse';
-import { Projection } from '../../ledger/projection/projection.ts';
-import type { DeviceMemory } from '../../ledger/event-log/event-log.ts';
-import { find, HANDLES, reduce } from './blocks/blocks.ts';
-import { findImage, saveImage } from '../images/images.ts';
-import type { PageEvent, Pages } from './blocks/blocks.ts';
-import { DATE_PATTERN, locate } from '../../../shared/pages.ts';
-import type { Block, Page } from '../../../shared/pages.ts';
-import { remarkPlugins } from '../../../shared/wikilink/wikilink.ts';
-import type { ViewStatus } from '../../../shared/log.ts';
+import { randomUUID } from "node:crypto";
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import {
+  defineFold,
+  logDirectory,
+} from "../../../ledger/project-ledger/project-ledger.ts";
+import type {
+  ProjectRef,
+  View,
+} from "../../../ledger/project-ledger/project-ledger.ts";
+import { find, HANDLES, reduce } from "./blocks/blocks.ts";
+import { findImage, saveImage } from "../images/images.ts";
+import type { PageEvent, Pages } from "./blocks/blocks.ts";
+import { DATE_PATTERN, locate } from "../../../../shared/pages.ts";
+import type { Block, Page } from "../../../../shared/pages.ts";
+import { remarkPlugins } from "../../../../shared/wikilink/wikilink.ts";
+import type { ViewStatus } from "../../../../shared/log.ts";
 
-/** Enough of a project to find its log. */
-export type ProjectRef = {
-  id: string;
-  path: string;
-};
+type PagesView = View<Pages, PageEvent["type"]>;
 
-/**
- * `<project>/gnotes/`, holding the numbered segments. Visible, not behind a
- * dot: a dot-directory tells the user "you can safely ignore this", which is
- * true of a tool's bookkeeping and a lie about the only copy of their notes.
- *
- * A folder rather than a loose file because the log is segmented and there
- * will be more than one of them, and because the things that come later —
- * images and whatever else a page can hold — get their own folders beside it.
- */
-export function logDirectory(projectPath: string): string {
-  return path.join(projectPath, 'gnotes');
-}
-
-/**
- * How this machine identifies itself in a shared folder, and where it keeps
- * what it remembers between sessions.
- *
- * Injected rather than imported so the store stays runnable under
- * `node --test`, which has no `userData` and no database. Left unset, every
- * session writes in a directory of its own: visible litter, never a lost
- * event, and exactly what a test wants.
- */
-export type DeviceBinding = {
-  device: string;
-  recall(projectId: string): DeviceMemory;
-  remember(projectId: string, memory: DeviceMemory): void;
-  rotate(): string;
-};
-
-let binding: DeviceBinding | undefined;
-
-export function bindDevice(next: DeviceBinding): void {
-  binding = next;
-}
-
-/**
- * Told which project's fold moved because something arrived in its folder.
- *
- * Injected for the same reason as `bindDevice`: this file holds no `electron`
- * import, so it cannot reach a window itself and stays runnable under
- * `node --test`. Left unset, another device's notes are folded and nobody is
- * told — which is exactly what a test wants, and what a headless main process
- * would do anyway.
- */
-let announce: ((projectId: string) => void) | undefined;
-
-export function onPagesChanged(next: (projectId: string) => void): void {
-  announce = next;
-}
-
-/**
- * Cached by project id, but remembering the path it was opened at, and
- * holding the *promise* rather than the projection — two overlapping opens of
- * one project would otherwise each end up with their own appender on one file,
- * and two appenders means two writers picking the same sequence numbers.
- */
-type Entry = {
-  path: string;
-  projection: Promise<Projection<Pages>>;
-};
-
-const projections = new Map<string, Entry>();
-
-async function release(entry: Entry): Promise<void> {
-  try {
-    await (await entry.projection).close();
-  } catch {
-    // A log that never opened has nothing to close.
-  }
-}
-
-function projectionFor(project: ProjectRef): Promise<Projection<Pages>> {
-  const cached = projections.get(project.id);
-  if (cached?.path === project.path) return cached.projection;
-  // Relocated since it was last opened. The log travelled with the directory,
-  // so the open handle points at a file that is no longer this project's.
-  if (cached) void release(cached);
-
-  const entry: Entry = {
-    path: project.path,
-    projection: Projection.open<Pages>(logDirectory(project.path), reduce, {}, {
-      handles: HANDLES,
-      device: binding?.device,
-      memory: binding?.recall(project.id),
-      remember: (memory) => binding?.remember(project.id, memory),
-      // A new identity is this machine's, not this project's: every project's
-      // log has to start writing under it from here on.
-      rotate: () => {
-        if (!binding) throw new Error('No device binding to rotate');
-        const device = binding.rotate();
-        binding = { ...binding, device };
-        return device;
-      },
-    }).then((projection) => {
-      // The folder is shared, so another machine's notes can land at any
-      // moment. Without this they would not appear until the app restarts.
-      projection.watch();
-      // And without this the fold would hold them while the window went on
-      // showing what it read before them — a refresh nobody can ask for,
-      // because there is nothing on screen to say the page is behind.
-      //
-      // Only a re-fold. This device's own writes already hand the folded page
-      // back to the caller that asked for them.
-      projection.subscribe((_state, change) => {
-        if (change === 'refold') announce?.(project.id);
-      });
-      return projection;
-    }),
-  };
-  // A log that failed to open — a damaged tail, a directory that went away
-  // mid-write — must not stay cached as this project's log for the session.
-  entry.projection.catch(() => {
-    if (projections.get(project.id) === entry) projections.delete(project.id);
-  });
-  projections.set(project.id, entry);
-  return entry.projection;
-}
+const pagesOf = defineFold<Pages, PageEvent["type"]>("pages", {
+  reduce,
+  initial: {},
+  handles: HANDLES,
+});
 
 /** The page as it stands right now, empty if nothing has been written to it. */
-function pageOf(projection: Projection<Pages>, title: string): Page {
+function pageOf(projection: PagesView, title: string): Page {
   return { title, blocks: projection.state[title] ?? [] };
 }
 
@@ -162,7 +46,7 @@ export async function getPage(
   project: ProjectRef,
   title: string,
 ): Promise<Page> {
-  return pageOf(await projectionFor(project), title);
+  return pageOf(await pagesOf(project), title);
 }
 
 /**
@@ -183,7 +67,7 @@ export async function getPage(
  * dates themselves. That is the reason for the format.
  */
 export async function getPages(project: ProjectRef): Promise<Page[]> {
-  const projection = await projectionFor(project);
+  const projection = await pagesOf(project);
   return Object.entries(projection.state)
     .filter(([title, blocks]) => DATE_PATTERN.test(title) && blocks.length > 0)
     .sort(([a], [b]) => b.localeCompare(a))
@@ -248,8 +132,8 @@ function preview(text: string, root: Node): string {
   const inline = first?.children ?? [];
   const from = inline[0]?.position?.start.offset;
   const to = inline.at(-1)?.position?.end.offset;
-  if (first?.type !== 'paragraph' && first?.type !== 'heading') return '';
-  return from === undefined || to === undefined ? '' : text.slice(from, to);
+  if (first?.type !== "paragraph" && first?.type !== "heading") return "";
+  return from === undefined || to === undefined ? "" : text.slice(from, to);
 }
 
 function read(text: string): Reading {
@@ -263,8 +147,8 @@ function read(text: string): Reading {
   };
   const walk = (node: Node): void => {
     const { href, dataBlockRef } = node.data?.hProperties ?? {};
-    if (node.type === 'wikilink' && href) reading.links.push(href.slice(1));
-    if (node.type === 'blockRef' && dataBlockRef) {
+    if (node.type === "wikilink" && href) reading.links.push(href.slice(1));
+    if (node.type === "blockRef" && dataBlockRef) {
       reading.refs.push(dataBlockRef);
     }
     node.children?.forEach(walk);
@@ -306,7 +190,7 @@ export async function getReferences(
   project: ProjectRef,
   title: string,
 ): Promise<Page[]> {
-  const projection = await projectionFor(project);
+  const projection = await pagesOf(project);
   return Object.entries(projection.state)
     .filter(([page]) => page !== title)
     .map(([page, blocks]) => ({ title: page, blocks: linking(blocks, title) }))
@@ -336,7 +220,7 @@ export async function getReferences(
 export async function getPreviews(
   project: ProjectRef,
 ): Promise<[string, string | null][]> {
-  const { state } = await projectionFor(project);
+  const { state } = await pagesOf(project);
   const ids = new Set<string>();
   const collect = (blocks: Block[]): void => {
     for (const block of blocks) {
@@ -356,7 +240,7 @@ export async function locateBlock(
   project: ProjectRef,
   blockId: string,
 ): Promise<{ page: string } | undefined> {
-  const found = find((await projectionFor(project)).state, blockId);
+  const found = find((await pagesOf(project)).state, blockId);
   return found && { page: found.page };
 }
 
@@ -367,24 +251,24 @@ export async function locateBlock(
  * skipped without the user being able to find out.
  */
 export async function getLogStatus(project: ProjectRef): Promise<ViewStatus> {
-  return (await projectionFor(project)).status;
+  return (await pagesOf(project)).status;
 }
 
 /**
  * Appends one of this fold's events: the payload checked against the schema,
- * and the version taken from `HANDLES` rather than written out here.
+ * and the version left to the view, which takes it from `HANDLES`.
  *
  * Both halves of one hazard. A payload literal that drifts from the schema
  * folds to nothing, and a `v` typed out by hand next to a `HANDLES` that says
  * something else is a build whose own gate refuses its own writes — either
  * way the user's keystroke lands on disk and never comes back.
  */
-function append<T extends PageEvent['type']>(
-  projection: Projection<Pages>,
+function append<T extends PageEvent["type"]>(
+  projection: PagesView,
   type: T,
-  payload: Extract<PageEvent, { type: T }>['payload'],
+  payload: Extract<PageEvent, { type: T }>["payload"],
 ): Promise<unknown> {
-  return projection.dispatch(type, payload, HANDLES[type]);
+  return projection.dispatch(type, payload);
 }
 
 /**
@@ -400,15 +284,15 @@ export async function addBlock(
   text: string,
   after?: string,
 ): Promise<Page> {
-  const projection = await projectionFor(project);
+  const projection = await pagesOf(project);
   const blocks = projection.state[title] ?? [];
   if (after && !locate(blocks, after)) {
-    throw new Error('No such block');
+    throw new Error("No such block");
   }
 
   // dispatch appends before it folds, so this resolves only once the event is
   // durable — the page handed back can never show something a crash takes.
-  await append(projection, 'block.created', {
+  await append(projection, "block.created", {
     page: title,
     id: randomUUID(),
     text,
@@ -436,11 +320,11 @@ export async function editBlock(
   blockId: string,
   text: string,
 ): Promise<Page> {
-  const projection = await projectionFor(project);
+  const projection = await pagesOf(project);
   const found = find(projection.state, blockId);
-  if (!found) throw new Error('No such block');
+  if (!found) throw new Error("No such block");
 
-  await append(projection, 'block.edited', { id: blockId, text });
+  await append(projection, "block.edited", { id: blockId, text });
   return pageOf(projection, found.page);
 }
 
@@ -457,11 +341,11 @@ export async function deleteBlock(
   project: ProjectRef,
   blockId: string,
 ): Promise<Page> {
-  const projection = await projectionFor(project);
+  const projection = await pagesOf(project);
   const found = find(projection.state, blockId);
-  if (!found) throw new Error('No such block');
+  if (!found) throw new Error("No such block");
 
-  await append(projection, 'block.deleted', { id: blockId });
+  await append(projection, "block.deleted", { id: blockId });
   return pageOf(projection, found.page);
 }
 
@@ -483,12 +367,12 @@ export async function indentBlock(
   project: ProjectRef,
   blockId: string,
 ): Promise<Page> {
-  const projection = await projectionFor(project);
+  const projection = await pagesOf(project);
   const found = find(projection.state, blockId);
-  if (!found) throw new Error('No such block');
+  if (!found) throw new Error("No such block");
   if (found.at === 0) return pageOf(projection, found.page);
 
-  await append(projection, 'block.indented', {
+  await append(projection, "block.indented", {
     id: blockId,
     parent: found.siblings[found.at - 1].id,
   });
@@ -510,12 +394,12 @@ export async function outdentBlock(
   project: ProjectRef,
   blockId: string,
 ): Promise<Page> {
-  const projection = await projectionFor(project);
+  const projection = await pagesOf(project);
   const found = find(projection.state, blockId);
-  if (!found) throw new Error('No such block');
+  if (!found) throw new Error("No such block");
   if (!found.parent) return pageOf(projection, found.page);
 
-  await append(projection, 'block.outdented', {
+  await append(projection, "block.outdented", {
     id: blockId,
     after: found.parent.id,
   });
@@ -535,7 +419,7 @@ export async function addImage(
   bytes: Uint8Array,
   mime: string,
 ): Promise<string> {
-  const { device } = await projectionFor(project);
+  const { device } = await pagesOf(project);
   return saveImage(logDirectory(project.path), device, bytes, mime);
 }
 
@@ -545,10 +429,4 @@ export function imageFile(
   name: string,
 ): Promise<string | undefined> {
   return findImage(logDirectory(project.path), name);
-}
-
-export async function closePages(): Promise<void> {
-  const open = [...projections.values()];
-  projections.clear();
-  await Promise.all(open.map(release));
 }

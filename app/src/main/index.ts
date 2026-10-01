@@ -1,17 +1,25 @@
-import { app, BrowserWindow, nativeTheme, protocol, shell } from 'electron';
-import path from 'node:path';
-import started from 'electron-squirrel-startup';
-import { closeDatabase, openDatabase } from './db';
-import { registerProjectIpc } from './projects-ipc';
-import { bindDevice, closePages } from './pages/pages-store/pages-store';
-import { deviceId, recall, remember, rotateDeviceId } from './ledger/device-store';
-import { registerPageIpc } from './pages/pages-ipc';
-import { IMAGE_SCHEME } from '../shared/pages';
+import { app, BrowserWindow, nativeTheme, protocol, shell } from "electron";
+import path from "node:path";
+import started from "electron-squirrel-startup";
+import { closeDatabase, openDatabase } from "./db";
+import { registerProjectIpc } from "./projects-ipc";
+import {
+  bindDevice,
+  closeLedgers,
+} from "./ledger/project-ledger/project-ledger";
+import {
+  deviceId,
+  recall,
+  remember,
+  rotateDeviceId,
+} from "./ledger/device-store";
+import { registerPageIpc } from "./features/pages/pages-ipc";
+import { IMAGE_SCHEME } from "../shared/pages";
 import {
   MIN_SIZE,
   restoreWindowBounds,
   trackWindowState,
-} from './window-state/window-state';
+} from "./features/window-state/window-state";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -39,16 +47,16 @@ const createWindow = () => {
     // No title bar: the window controls hover over the page instead. Nothing
     // ever lived up there but the app's own name, and the page is the app.
     // `titleBarOverlay` is what gives Windows and Linux their controls back.
-    titleBarStyle: 'hiddenInset',
+    titleBarStyle: "hiddenInset",
     titleBarOverlay: true,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1b1b1d' : '#ffffff',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1b1b1d" : "#ffffff",
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
     },
   });
 
   if (maximized) mainWindow.maximize();
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.once("ready-to-show", () => mainWindow.show());
   trackWindowState(mainWindow);
 
   // and load the index.html of the app.
@@ -66,17 +74,17 @@ const createWindow = () => {
    * has left — so anything outward opens in the real browser instead.
    */
   const openExternally = (url: string) => {
-    if (url.startsWith('https://') || url.startsWith('http://')) {
+    if (url.startsWith("https://") || url.startsWith("http://")) {
       void shell.openExternal(url);
     }
   };
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     openExternally(url);
-    return { action: 'deny' };
+    return { action: "deny" };
   });
 
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  mainWindow.webContents.on("will-navigate", (event, url) => {
     if (url === mainWindow.webContents.getURL()) return;
     event.preventDefault();
     openExternally(url);
@@ -90,7 +98,7 @@ const createWindow = () => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.on('ready', () => {
+app.on("ready", () => {
   openDatabase();
   // Who we are in a shared log folder, and what we remember about it. Has to
   // happen before any log is opened: a device that appends before it knows its
@@ -106,23 +114,23 @@ app.on('ready', () => {
   createWindow();
 });
 
-app.on('will-quit', () => {
+app.on("will-quit", () => {
   closeDatabase();
   // Best effort, and that is enough: every append is fsynced before it is
   // acknowledged, so a log left unclosed has already lost nothing.
-  void closePages();
+  void closeLedgers();
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
     app.quit();
   }
 });
 
-app.on('activate', () => {
+app.on("activate", () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {

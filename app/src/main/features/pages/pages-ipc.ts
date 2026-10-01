@@ -1,8 +1,15 @@
-import { BrowserWindow, Menu, clipboard, ipcMain, net, protocol } from 'electron';
-import { pathToFileURL } from 'node:url';
-import { IMAGE_SCHEME, PAGE_CHANNELS } from '../../shared/pages';
-import { requireString } from '../ipc';
-import { checkAvailability, getProject } from '../projects-store';
+import {
+  BrowserWindow,
+  Menu,
+  clipboard,
+  ipcMain,
+  net,
+  protocol,
+} from "electron";
+import { pathToFileURL } from "node:url";
+import { IMAGE_SCHEME, PAGE_CHANNELS } from "../../../shared/pages";
+import { requireString } from "../../ipc";
+import { checkAvailability, getProject } from "../../projects-store";
 import {
   addBlock,
   addImage,
@@ -16,10 +23,18 @@ import {
   imageFile,
   indentBlock,
   locateBlock,
-  onPagesChanged,
   outdentBlock,
-} from './pages-store/pages-store';
-import type { Project } from '../../shared/projects';
+} from "./pages-store/pages-store";
+import { onArrival } from "../../ledger/project-ledger/project-ledger";
+import type { Project } from "../../../shared/projects";
+
+// This software is split into two components: the renderer, and the main
+// process. Neither can see each other directly, and IPC is the only way to
+// relay information among eachother.
+//
+// This file exists such that when a user event is triggered, handlers for them
+// capture them, and record them, and carry out any other domain-specific
+// activities.
 
 /**
  * The log lives in the project's directory, so a write needs both a project we
@@ -31,12 +46,12 @@ import type { Project } from '../../shared/projects';
  * moment it comes back.
  */
 async function requireProject(value: unknown): Promise<Project> {
-  const id = requireString(value, 'id');
+  const id = requireString(value, "id");
   const project = getProject(id);
-  if (!project) throw new Error('No such project');
+  if (!project) throw new Error("No such project");
 
   const availability = await checkAvailability([id]);
-  if (availability[id] !== 'available') {
+  if (availability[id] !== "available") {
     throw new Error(`"${project.name}" is not reachable right now.`);
   }
   return project;
@@ -49,9 +64,9 @@ async function requireProject(value: unknown): Promise<Project> {
  * names, and a title that arrives untrimmed came from somewhere else.
  */
 function requireTitle(value: unknown): string {
-  const title = requireString(value, 'title');
-  if (title === '' || title !== title.trim()) {
-    throw new TypeError('Expected a page title');
+  const title = requireString(value, "title");
+  if (title === "" || title !== title.trim()) {
+    throw new TypeError("Expected a page title");
   }
   return title;
 }
@@ -65,7 +80,7 @@ export function registerPageIpc(): void {
    * A window closing between the fold and the send is ordinary, not an error,
    * which is the only thing the guard is for.
    */
-  onPagesChanged((projectId) => {
+  onArrival((projectId) => {
     for (const window of BrowserWindow.getAllWindows()) {
       if (!window.isDestroyed()) {
         window.webContents.send(PAGE_CHANNELS.changed, projectId);
@@ -92,7 +107,7 @@ export function registerPageIpc(): void {
   ipcMain.handle(
     PAGE_CHANNELS.locate,
     async (_event, id: unknown, blockId: unknown) =>
-      locateBlock(await requireProject(id), requireString(blockId, 'blockId')),
+      locateBlock(await requireProject(id), requireString(blockId, "blockId")),
   );
 
   ipcMain.handle(PAGE_CHANNELS.previews, async (_event, id: unknown) =>
@@ -115,10 +130,10 @@ export function registerPageIpc(): void {
       addBlock(
         await requireProject(id),
         requireTitle(title),
-        requireString(text, 'text'),
+        requireString(text, "text"),
         // Absent means the end of the page; anything else has to be a block id
         // before it reaches a log that keeps it forever.
-        after === undefined ? undefined : requireString(after, 'after'),
+        after === undefined ? undefined : requireString(after, "after"),
       ),
   );
 
@@ -126,12 +141,12 @@ export function registerPageIpc(): void {
     PAGE_CHANNELS.addImage,
     async (_event, id: unknown, bytes: unknown, mime: unknown) => {
       if (!(bytes instanceof Uint8Array)) {
-        throw new TypeError('Expected bytes to be a Uint8Array');
+        throw new TypeError("Expected bytes to be a Uint8Array");
       }
       return addImage(
         await requireProject(id),
         bytes,
-        requireString(mime, 'mime'),
+        requireString(mime, "mime"),
       );
     },
   );
@@ -161,38 +176,40 @@ export function registerPageIpc(): void {
     async (_event, id: unknown, blockId: unknown, text: unknown) =>
       editBlock(
         await requireProject(id),
-        requireString(blockId, 'blockId'),
-        requireString(text, 'text'),
+        requireString(blockId, "blockId"),
+        requireString(text, "text"),
       ),
   );
 
   ipcMain.handle(
     PAGE_CHANNELS.deleteBlock,
     async (_event, id: unknown, blockId: unknown) =>
-      deleteBlock(await requireProject(id), requireString(blockId, 'blockId')),
+      deleteBlock(await requireProject(id), requireString(blockId, "blockId")),
   );
 
   ipcMain.handle(
     PAGE_CHANNELS.indentBlock,
     async (_event, id: unknown, blockId: unknown) =>
-      indentBlock(await requireProject(id), requireString(blockId, 'blockId')),
+      indentBlock(await requireProject(id), requireString(blockId, "blockId")),
   );
 
   ipcMain.handle(
     PAGE_CHANNELS.outdentBlock,
     async (_event, id: unknown, blockId: unknown) =>
-      outdentBlock(await requireProject(id), requireString(blockId, 'blockId')),
+      outdentBlock(await requireProject(id), requireString(blockId, "blockId")),
   );
 
   // Native rather than drawn: placement at the screen edge, keyboard and
   // dismissal come with it. More items go in the template.
   ipcMain.handle(PAGE_CHANNELS.blockMenu, (event, blockId: unknown) => {
-    const id = requireString(blockId, 'blockId');
+    const id = requireString(blockId, "blockId");
     Menu.buildFromTemplate([
       {
-        label: 'Copy Block Reference',
+        label: "Copy Block Reference",
         click: () => clipboard.writeText(`((${id}))`),
       },
-    ]).popup({ window: BrowserWindow.fromWebContents(event.sender) ?? undefined });
+    ]).popup({
+      window: BrowserWindow.fromWebContents(event.sender) ?? undefined,
+    });
   });
 }
