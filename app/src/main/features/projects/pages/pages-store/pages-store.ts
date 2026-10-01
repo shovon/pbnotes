@@ -11,23 +11,17 @@
  * keeps the store runnable under `node --test`.
  */
 import { randomUUID } from "node:crypto";
-import { unified } from "unified";
-import remarkParse from "remark-parse";
-import {
-  defineFold,
-  logDirectory,
-} from "../../../ledger/project-ledger/project-ledger.ts";
+import { defineFold } from "../../../../ledger/project-ledger/project-ledger.ts";
 import type {
   ProjectRef,
   View,
-} from "../../../ledger/project-ledger/project-ledger.ts";
+} from "../../../../ledger/project-ledger/project-ledger.ts";
 import { find, HANDLES, reduce } from "./blocks/blocks.ts";
-import { findImage, saveImage } from "../images/images.ts";
+import { linking, read } from "../reading.ts";
 import type { PageEvent, Pages } from "./blocks/blocks.ts";
-import { DATE_PATTERN, locate } from "../../../../shared/pages.ts";
-import type { Block, Page } from "../../../../shared/pages.ts";
-import { remarkPlugins } from "../../../../shared/wikilink/wikilink.ts";
-import type { ViewStatus } from "../../../../shared/log.ts";
+import { DATE_PATTERN, locate } from "../../../../../shared/pages.ts";
+import type { Block, Page } from "../../../../../shared/pages.ts";
+import type { ViewStatus } from "../../../../../shared/log.ts";
 
 type PagesView = View<Pages, PageEvent["type"]>;
 
@@ -38,8 +32,8 @@ const pagesOf = defineFold<Pages, PageEvent["type"]>("pages", {
 });
 
 /** The page as it stands right now, empty if nothing has been written to it. */
-function pageOf(projection: PagesView, title: string): Page {
-  return { title, blocks: projection.state[title] ?? [] };
+function pageOf(view: PagesView, title: string): Page {
+  return { title, blocks: view.state[title] ?? [] };
 }
 
 export async function getPage(
@@ -67,109 +61,11 @@ export async function getPage(
  * dates themselves. That is the reason for the format.
  */
 export async function getPages(project: ProjectRef): Promise<Page[]> {
-  const projection = await pagesOf(project);
-  return Object.entries(projection.state)
+  const view = await pagesOf(project);
+  return Object.entries(view.state)
     .filter(([title, blocks]) => DATE_PATTERN.test(title) && blocks.length > 0)
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([title, blocks]) => ({ title, blocks }));
-}
-
-/**
- * The pages a text links to and the blocks it refers to, read with the same parser that renders it, so
- * a `#foo` in a code span is text on both sides.
- *
- * Memoised on the text, not the block: identical text links identically,
- * and the fold hands every block an event did not touch back with the text
- * it had — so a write parses the one text that changed, and a refold, which
- * rebuilds every block object from the log every half minute, parses
- * nothing it has seen. Keyed on the object, the whole project would be
- * parsed again after each of those.
- *
- * ponytail: the map keeps every text ever parsed this session, edits
- * included. Strings the log already holds, so it is small; bound it if a
- * long session ever shows it.
- *
- * Read from the `href` the plugin sets, which is the contract the renderer
- * follows a link by; a link to nothing has no `href` and is not a link.
- */
-const md = unified().use(remarkParse).use(remarkPlugins);
-
-/** What one parse of a block's text has to say, for everything that asks. */
-type Reading = {
-  /** The pages it links to. */
-  links: string[];
-  /** The blocks it refers to, by id. */
-  refs: string[];
-  /** What a ref to it shows; see `preview`. */
-  preview: string;
-};
-
-const readings = new Map<string, Reading>();
-
-type Node = {
-  type: string;
-  data?: { hProperties?: { href?: string; dataBlockRef?: string } };
-  position?: { start: { offset: number }; end: { offset: number } };
-  children?: Node[];
-};
-
-/**
- * What a ref to a block shows: the source of its first paragraph, cut out
- * of the text rather than rebuilt from the tree, so the view renders it with
- * the bold, code and links it was written with. A heading counts — it is a
- * line of prose with a sigil in front, and the cut leaves the sigil behind.
- *
- * Empty for a block that starts with anything else, and the ref shows the id.
- * ponytail: a list or a code block could show its text flattened instead;
- * `mdast-util-to-string` does it, as a dependency of our own, if ids for
- * those turn out to be common.
- *
- * Taken before the plugins run: they replace text nodes with ones that carry
- * no position.
- */
-function preview(text: string, root: Node): string {
-  const first = root.children?.[0];
-  const inline = first?.children ?? [];
-  const from = inline[0]?.position?.start.offset;
-  const to = inline.at(-1)?.position?.end.offset;
-  if (first?.type !== "paragraph" && first?.type !== "heading") return "";
-  return from === undefined || to === undefined ? "" : text.slice(from, to);
-}
-
-function read(text: string): Reading {
-  const memo = readings.get(text);
-  if (memo) return memo;
-  const root = md.parse(text);
-  const reading: Reading = {
-    links: [],
-    refs: [],
-    preview: preview(text, root as Node),
-  };
-  const walk = (node: Node): void => {
-    const { href, dataBlockRef } = node.data?.hProperties ?? {};
-    if (node.type === "wikilink" && href) reading.links.push(href.slice(1));
-    if (node.type === "blockRef" && dataBlockRef) {
-      reading.refs.push(dataBlockRef);
-    }
-    node.children?.forEach(walk);
-  };
-  walk(md.runSync(root) as Node);
-  readings.set(text, reading);
-  return reading;
-}
-
-/**
- * The blocks that link to `title`, each with its subtree intact. A block
- * that links is taken whole and not searched inside: its children are
- * already on show under it, and listing one of them again for a link of its
- * own would put the same words on the page twice.
- */
-function linking(blocks: Block[], title: string): Block[] {
-  return blocks.flatMap((block) =>
-    read(block.text).links.includes(title)
-      ? [block]
-      : linking(block.children, title),
-  );
 }
 
 /**
@@ -190,8 +86,8 @@ export async function getReferences(
   project: ProjectRef,
   title: string,
 ): Promise<Page[]> {
-  const projection = await pagesOf(project);
-  return Object.entries(projection.state)
+  const view = await pagesOf(project);
+  return Object.entries(view.state)
     .filter(([page]) => page !== title)
     .map(([page, blocks]) => ({ title: page, blocks: linking(blocks, title) }))
     .filter((page) => page.blocks.length > 0)
@@ -264,11 +160,11 @@ export async function getLogStatus(project: ProjectRef): Promise<ViewStatus> {
  * way the user's keystroke lands on disk and never comes back.
  */
 function append<T extends PageEvent["type"]>(
-  projection: PagesView,
+  view: PagesView,
   type: T,
   payload: Extract<PageEvent, { type: T }>["payload"],
 ): Promise<unknown> {
-  return projection.dispatch(type, payload);
+  return view.dispatch(type, payload);
 }
 
 /**
@@ -284,15 +180,15 @@ export async function addBlock(
   text: string,
   after?: string,
 ): Promise<Page> {
-  const projection = await pagesOf(project);
-  const blocks = projection.state[title] ?? [];
+  const view = await pagesOf(project);
+  const blocks = view.state[title] ?? [];
   if (after && !locate(blocks, after)) {
     throw new Error("No such block");
   }
 
   // dispatch appends before it folds, so this resolves only once the event is
   // durable — the page handed back can never show something a crash takes.
-  await append(projection, "block.created", {
+  await append(view, "block.created", {
     page: title,
     id: randomUUID(),
     text,
@@ -300,7 +196,7 @@ export async function addBlock(
     // bytes it always did.
     ...(after ? { after } : {}),
   });
-  return pageOf(projection, title);
+  return pageOf(view, title);
 }
 
 /**
@@ -320,12 +216,12 @@ export async function editBlock(
   blockId: string,
   text: string,
 ): Promise<Page> {
-  const projection = await pagesOf(project);
-  const found = find(projection.state, blockId);
+  const view = await pagesOf(project);
+  const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
 
-  await append(projection, "block.edited", { id: blockId, text });
-  return pageOf(projection, found.page);
+  await append(view, "block.edited", { id: blockId, text });
+  return pageOf(view, found.page);
 }
 
 /**
@@ -341,12 +237,12 @@ export async function deleteBlock(
   project: ProjectRef,
   blockId: string,
 ): Promise<Page> {
-  const projection = await pagesOf(project);
-  const found = find(projection.state, blockId);
+  const view = await pagesOf(project);
+  const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
 
-  await append(projection, "block.deleted", { id: blockId });
-  return pageOf(projection, found.page);
+  await append(view, "block.deleted", { id: blockId });
+  return pageOf(view, found.page);
 }
 
 /**
@@ -367,16 +263,16 @@ export async function indentBlock(
   project: ProjectRef,
   blockId: string,
 ): Promise<Page> {
-  const projection = await pagesOf(project);
-  const found = find(projection.state, blockId);
+  const view = await pagesOf(project);
+  const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
-  if (found.at === 0) return pageOf(projection, found.page);
+  if (found.at === 0) return pageOf(view, found.page);
 
-  await append(projection, "block.indented", {
+  await append(view, "block.indented", {
     id: blockId,
     parent: found.siblings[found.at - 1].id,
   });
-  return pageOf(projection, found.page);
+  return pageOf(view, found.page);
 }
 
 /**
@@ -394,39 +290,14 @@ export async function outdentBlock(
   project: ProjectRef,
   blockId: string,
 ): Promise<Page> {
-  const projection = await pagesOf(project);
-  const found = find(projection.state, blockId);
+  const view = await pagesOf(project);
+  const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
-  if (!found.parent) return pageOf(projection, found.page);
+  if (!found.parent) return pageOf(view, found.page);
 
-  await append(projection, "block.outdented", {
+  await append(view, "block.outdented", {
     id: blockId,
     after: found.parent.id,
   });
-  return pageOf(projection, found.page);
-}
-
-/**
- * Stores an image beside this device's log and returns the link a note holds
- * it by. Writes no event: the image is in the notes once a block's text
- * links it, and that is an ordinary edit.
- *
- * Through the projection for the device it gives, which is the one the log
- * is writing as — after a rotation, not the one this session started with.
- */
-export async function addImage(
-  project: ProjectRef,
-  bytes: Uint8Array,
-  mime: string,
-): Promise<string> {
-  const { device } = await pagesOf(project);
-  return saveImage(logDirectory(project.path), device, bytes, mime);
-}
-
-/** The file behind a note's `images/<name>`, on whichever device has it. */
-export function imageFile(
-  project: ProjectRef,
-  name: string,
-): Promise<string | undefined> {
-  return findImage(logDirectory(project.path), name);
+  return pageOf(view, found.page);
 }

@@ -2,7 +2,7 @@ import { app, BrowserWindow, nativeTheme, protocol, shell } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 import { closeDatabase, openDatabase } from "./db";
-import { registerProjectIpc } from "./projects-ipc";
+import { registerProjectIpc } from "./features/projects/projects-ipc";
 import {
   bindDevice,
   closeLedgers,
@@ -13,7 +13,7 @@ import {
   remember,
   rotateDeviceId,
 } from "./ledger/device-store";
-import { registerPageIpc } from "./features/pages/pages-ipc";
+import { registerPageIpc } from "./features/projects/pages/pages-ipc";
 import { IMAGE_SCHEME } from "../shared/pages";
 import {
   MIN_SIZE,

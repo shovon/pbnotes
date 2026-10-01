@@ -12,9 +12,9 @@
  * reason this file is readable — and the reason it runs under plain
  * `node --test` with nothing around it.
  */
-import { locate } from "../../../../../shared/pages.ts";
-import type { Block } from "../../../../../shared/pages.ts";
-import type { Reducer } from "../../../../ledger/projection/projection.ts";
+import { locate } from "../../../../../../shared/pages.ts";
+import type { Block } from "../../../../../../shared/pages.ts";
+import type { Reducer } from "../../../../../ledger/projection/projection.ts";
 
 /** Title → the blocks on it: a journal day or a page a link named. */
 export type Pages = Record<string, Block[]>;

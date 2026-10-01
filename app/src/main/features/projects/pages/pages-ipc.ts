@@ -7,12 +7,12 @@ import {
   protocol,
 } from "electron";
 import { pathToFileURL } from "node:url";
-import { IMAGE_SCHEME, PAGE_CHANNELS } from "../../../shared/pages";
-import { requireString } from "../../ipc";
-import { checkAvailability, getProject } from "../../projects-store";
+import { IMAGE_SCHEME, PAGE_CHANNELS } from "../../../../shared/pages";
+import { requireString } from "../../../ipc";
+import { requireProject } from "../projects-ipc";
+import { getProject } from "../projects-store";
 import {
   addBlock,
-  addImage,
   deleteBlock,
   editBlock,
   getLogStatus,
@@ -20,13 +20,15 @@ import {
   getPages,
   getPreviews,
   getReferences,
-  imageFile,
   indentBlock,
   locateBlock,
   outdentBlock,
 } from "./pages-store/pages-store";
-import { onArrival } from "../../ledger/project-ledger/project-ledger";
-import type { Project } from "../../../shared/projects";
+import { findImage, saveImage } from "./images/images";
+import {
+  deviceOf,
+  logDirectory,
+} from "../../../ledger/project-ledger/project-ledger";
 
 // This software is split into two components: the renderer, and the main
 // process. Neither can see each other directly, and IPC is the only way to
@@ -35,27 +37,6 @@ import type { Project } from "../../../shared/projects";
 // This file exists such that when a user event is triggered, handlers for them
 // capture them, and record them, and carry out any other domain-specific
 // activities.
-
-/**
- * The log lives in the project's directory, so a write needs both a project we
- * actually track and a directory that is actually there.
- *
- * The reachability check is not politeness: `EventLog.open` creates its parent
- * directories, so writing to an unmounted drive would invent the whole path on
- * the local disk and put the user's notes somewhere the real volume hides the
- * moment it comes back.
- */
-async function requireProject(value: unknown): Promise<Project> {
-  const id = requireString(value, "id");
-  const project = getProject(id);
-  if (!project) throw new Error("No such project");
-
-  const availability = await checkAvailability([id]);
-  if (availability[id] !== "available") {
-    throw new Error(`"${project.name}" is not reachable right now.`);
-  }
-  return project;
-}
 
 /**
  * A title is a key in a log that keeps everything forever, so it is checked
@@ -71,23 +52,27 @@ function requireTitle(value: unknown): string {
   return title;
 }
 
-export function registerPageIpc(): void {
-  /**
-   * Every window, not the one that caused it: nothing caused it. A re-fold is
-   * reported because a *file* arrived, so there is no originating window to
-   * exclude, and any window showing that project is equally behind.
-   *
-   * A window closing between the fold and the send is ordinary, not an error,
-   * which is the only thing the guard is for.
-   */
-  onArrival((projectId) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
-        window.webContents.send(PAGE_CHANNELS.changed, projectId);
-      }
+/**
+ * Tells the windows a project's pages may be behind. Fed by the parent:
+ * `projects-ipc` hears that something arrived in a project's folder and calls
+ * this, so pages never subscribes to the ledger itself.
+ *
+ * Every window, not the one that caused it: nothing caused it. A re-fold is
+ * reported because a *file* arrived, so there is no originating window to
+ * exclude, and any window showing that project is equally behind.
+ *
+ * A window closing between the fold and the send is ordinary, not an error,
+ * which is the only thing the guard is for.
+ */
+export function pagesArrived(projectId: string): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send(PAGE_CHANNELS.changed, projectId);
     }
-  });
+  }
+}
 
+export function registerPageIpc(): void {
   ipcMain.handle(
     PAGE_CHANNELS.open,
     async (_event, id: unknown, title: unknown) =>
@@ -143,8 +128,12 @@ export function registerPageIpc(): void {
       if (!(bytes instanceof Uint8Array)) {
         throw new TypeError("Expected bytes to be a Uint8Array");
       }
-      return addImage(
-        await requireProject(id),
+      const project = await requireProject(id);
+      // No event: the image is in the notes once a block's text links it, and
+      // that is an ordinary edit.
+      return saveImage(
+        logDirectory(project.path),
+        await deviceOf(project),
         bytes,
         requireString(mime, "mime"),
       );
@@ -156,6 +145,10 @@ export function registerPageIpc(): void {
    * `images/<name>`. The URL is built from note text, so nothing in it is
    * trusted — the project has to be one we track, and the name is checked by
    * `findImage` before it is anywhere near a path.
+   *
+   * `getProject`, not `requireProject`: this only reads. `findImage` lists
+   * directories and creates none, so an unmounted drive is a 404, not a path
+   * invented on the local disk.
    */
   protocol.handle(IMAGE_SCHEME, async (request) => {
     const url = new URL(request.url);
@@ -163,7 +156,7 @@ export function registerPageIpc(): void {
     const file =
       project &&
       // Not decoded: a name that needed escaping is not one `findImage` takes.
-      (await imageFile(project, url.pathname.slice(1)));
+      (await findImage(logDirectory(project.path), url.pathname.slice(1)));
     return file
       ? net.fetch(pathToFileURL(file).toString())
       : new Response(null, { status: 404 });

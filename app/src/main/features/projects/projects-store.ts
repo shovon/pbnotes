@@ -1,12 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { getDatabase } from './db';
+import { getDatabase } from '../../db';
 import type {
   AddOutcome,
   Availability,
   Project,
-} from '../shared/projects';
+} from '../../../shared/projects';
 
 type ProjectRow = {
   id: string;
