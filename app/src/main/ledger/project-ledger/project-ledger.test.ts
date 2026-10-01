@@ -11,7 +11,12 @@ import { mkdtemp, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { closeLedgers, defineFold, logDirectory } from './project-ledger.ts';
+import {
+  closeLedgers,
+  defineFold,
+  deviceOf,
+  logDirectory,
+} from './project-ledger.ts';
 import type { Fold } from './project-ledger.ts';
 
 /** Collects the payloads of one event type, in order. */
@@ -42,7 +47,9 @@ test('two folds share one log, one writer, and one status', async () => {
   assert.deepEqual(written.state, ['a', 'b']);
   assert.deepEqual(said.state, ['hello']);
   assert.deepEqual(written.status.unhandled, []);
-  assert.equal((await readdir(logDirectory(project.path))).length, 1);
+  assert.deepEqual(await readdir(logDirectory(project.path)), [
+    await deviceOf(project),
+  ]);
 
   await closeLedgers();
   assert.deepEqual((await chat(project)).state, ['hello']);

@@ -1,9 +1,13 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
-import { requireString, requireStringArray } from './ipc';
-import { PROJECT_CHANNELS } from '../shared/projects';
-import type { AddOutcome, PickResult } from '../shared/projects';
+import { requireString, requireStringArray } from '../../ipc';
+import { PROJECT_CHANNELS } from '../../../shared/projects';
+import type {
+  AddOutcome,
+  PickResult,
+  Project,
+} from '../../../shared/projects';
 import {
   addProjects,
   checkAvailability,
@@ -15,6 +19,30 @@ import {
   setPinned,
   touchProject,
 } from './projects-store';
+import { onArrival } from '../../ledger/project-ledger/project-ledger';
+import { pagesArrived } from './pages/pages-ipc';
+
+/**
+ * The one door into a project for anything that opens its ledger. The log
+ * lives in the project's directory, so that needs both a project we actually
+ * track and a directory that is actually there.
+ *
+ * The reachability check is not politeness: `EventLog.open` creates its parent
+ * directories, so writing to an unmounted drive would invent the whole path on
+ * the local disk and put the user's notes somewhere the real volume hides the
+ * moment it comes back.
+ */
+export async function requireProject(value: unknown): Promise<Project> {
+  const id = requireString(value, 'id');
+  const project = getProject(id);
+  if (!project) throw new Error('No such project');
+
+  const availability = await checkAvailability([id]);
+  if (availability[id] !== 'available') {
+    throw new Error(`"${project.name}" is not reachable right now.`);
+  }
+  return project;
+}
 
 function parentWindow(event: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -47,6 +75,12 @@ async function showDirectoryPicker(
 }
 
 export function registerProjectIpc(): void {
+  // Another device's events landed in a project's folder. The ledger says so
+  // once, here, and each sub-feature is told through the function it exposes.
+  onArrival((projectId) => {
+    pagesArrived(projectId);
+  });
+
   ipcMain.handle(PROJECT_CHANNELS.list, () => listProjects());
 
   ipcMain.handle(PROJECT_CHANNELS.pick, async (event): Promise<PickResult> => {

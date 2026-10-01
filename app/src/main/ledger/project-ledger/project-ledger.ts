@@ -4,18 +4,18 @@
  *
  * The log lives *inside the project's own directory*, and that location is
  * the point of the whole app. A project folder is where the user's work
- * already lives, so the notes about it belong beside it: they get backed up
- * with it, sync with it, travel with it to another machine, and outlive
- * pbnotes itself. Put them in `userData` instead and wiping an OS support
+ * already lives, so what they write about it belongs beside it: it gets backed
+ * up with it, syncs with it, travels with it to another machine, and outlives
+ * pbnotes itself. Put it in `userData` instead and wiping an OS support
  * folder — or losing the registry that maps a UUID back to a path — takes the
  * writing with it. The content is the user's, not the app's.
  *
- * A slice sees none of how that is kept true. It hands `defineFold` a reducer
+ * A feature sees none of how that is kept true. It hands `defineFold` a reducer
  * and gets back a function from a project to its view; which device this is,
  * which logs are open, and when a file arrived from elsewhere all stay here.
  *
  * Deliberately free of `electron` imports, like `projection.ts`: callers hand
- * in the project, which also keeps a slice runnable under `node --test`.
+ * in the project, which also keeps a feature runnable under `node --test`.
  */
 import path from 'node:path';
 import { Projection } from '../projection/projection.ts';
@@ -32,11 +32,11 @@ export type ProjectRef = {
 /**
  * `<project>/gnotes/`, holding the numbered segments. Visible, not behind a
  * dot: a dot-directory tells the user "you can safely ignore this", which is
- * true of a tool's bookkeeping and a lie about the only copy of their notes.
+ * true of a tool's bookkeeping and a lie about the only copy of their work.
  *
  * A folder rather than a loose file because the log is segmented and there
  * will be more than one of them, and because the things that come later —
- * images and whatever else a page can hold — get their own folders beside it.
+ * images and whatever else a feature keeps — get their own folders beside it.
  */
 export function logDirectory(projectPath: string): string {
   return path.join(projectPath, 'gnotes');
@@ -95,8 +95,6 @@ export type Fold<S, T extends string = string> = {
 /** A fold's slice of one project's ledger. */
 export type View<S, T extends string = string> = {
   readonly state: S;
-  /** The device the log writes as — after a rotation, the new one. */
-  readonly device: string;
   /**
    * The whole ledger's, not this fold's: an event is unhandled only when no
    * fold in the app claims it.
@@ -176,12 +174,12 @@ function projectionFor(project: ProjectRef): Promise<Projection<Slices>> {
         },
       },
     ).then((projection) => {
-      // The folder is shared, so another machine's notes can land at any
+      // The folder is shared, so another machine's events can land at any
       // moment. Without this they would not appear until the app restarts.
       projection.watch();
       // And without this the fold would hold them while the window went on
       // showing what it read before them — a refresh nobody can ask for,
-      // because there is nothing on screen to say the page is behind.
+      // because there is nothing on screen to say it is behind.
       //
       // Only a re-fold. This device's own writes already hand the folded
       // state back to the caller that asked for them.
@@ -228,9 +226,6 @@ export function defineFold<S, T extends string>(
       get state() {
         return projection.state[name] as S;
       },
-      get device() {
-        return projection.device;
-      },
       get status() {
         return projection.status;
       },
@@ -238,6 +233,19 @@ export function defineFold<S, T extends string>(
         projection.dispatch(type, payload, fold.handles[type]),
     };
   };
+}
+
+/**
+ * The device this project's log writes as, for what a feature keeps beside the
+ * segments without an event — an image, say. Whatever it is goes inside
+ * `logDirectory(project.path)/<device>/`, the one place this machine may write.
+ *
+ * Asked of the open log rather than the binding: a rotation is decided when
+ * the log opens, and this is the id it settled on, not the one the session
+ * started with.
+ */
+export async function deviceOf(project: ProjectRef): Promise<string> {
+  return (await projectionFor(project)).device;
 }
 
 export async function closeLedgers(): Promise<void> {

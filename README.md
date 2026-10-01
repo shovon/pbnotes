@@ -1,4 +1,4 @@
-# gnotes
+# pbnotes
 
 Notes attached to project directories, kept locally.
 
@@ -6,7 +6,7 @@ Notes attached to project directories, kept locally.
 
 **Do not delete it.** It has been mistaken for dead code once already.
 
-The app lets the user track directories they care about. The filesystem cannot store that choice — a directory has no way of knowing a user pointed an app at it — so if gnotes does not persist the list itself, there is no list. Nothing recovers it on next launch. That registry is the entire reason there is a database at all.
+The app lets the user track directories they care about. The filesystem cannot store that choice — a directory has no way of knowing a user pointed an app at it — so if pbnotes does not persist the list itself, there is no list. Nothing recovers it on next launch. That registry is the entire reason there is a database at all.
 
 It stores user intent, never filesystem contents:
 
@@ -35,7 +35,7 @@ An unreachable directory reports `unknown` rather than `missing` and is never pr
 
 The log is written **inside the directory the user chose**, one log per project, in a plain `gnotes/` folder. That is the reason project folders exist: the notes are about the work that is already there, so they back up with it, sync with it, and travel with it to another machine. Nuking `~/Library/Application Support/gnotes` must cost the user nothing but the registry — a list they can rebuild by picking the folders again. It must never cost them a word they wrote.
 
-Not behind a dot. A dot-directory means *you can safely ignore this*, which is what `.git` or `.venv` earns by being bookkeeping the user's work survives without. This log is the system of record: it is the only copy of what they wrote, and marking it ignorable is how it gets excluded from a backup or swept out as tool debris. Other content gets its own folders beside it — images and so on — as the app grows.
+Not behind a dot. A dot-directory means *you can safely ignore this*, which is what `.git` or `.venv` earns by being bookkeeping the user's work survives without. This log is the system of record: it is the only copy of what they wrote, and marking it ignorable is how it gets excluded from a backup or swept out as tool debris. Other content follows the same rule and sits in the same folder: a pasted image goes in the writing device's directory, beside its segments.
 
 ### Segments
 
@@ -53,9 +53,9 @@ Rolling happens before the write that would breach the limit, so no segment ever
 
 A device's own torn tail is repaired on load, because only its own crash can cause one. **A file belonging to another device is never written to**: under a sync tool "the tail has not arrived yet" is an ordinary state, and truncating it would turn something transient into permanent loss. Such a log stalls — it folds as far as it is intact, reports itself, and tries again on the next change. One stalled device can never stop a project opening.
 
-The corollary is that an unreachable project cannot be written to, and says so. `EventLog.open` creates its parent directories, so writing to an unmounted drive would invent the path on the local disk and hide the notes behind the real volume the moment it mounts. `pages-ipc.ts` checks reachability before it opens a log.
+The corollary is that an unreachable project cannot be written to, and says so. `EventLog.open` creates its parent directories, so writing to an unmounted drive would invent the path on the local disk and hide the notes behind the real volume the moment it mounts. `requireProject` in `projects-ipc.ts` checks reachability before any handler opens a log.
 
-Content is event-sourced: appended as immutable facts and replayed into in-memory projections at boot. **Folding happens in main and nowhere else** — the renderer is handed the resulting view and never replays events itself. One folder means one place for the view to be wrong, and it leaves room to move the fold onto a worker thread. Which is why a reducer must stay pure, over state that survives a structured clone.
+Content is event-sourced: appended as immutable facts and replayed into an in-memory projection when a project opens. A project has one log and one projection; each feature defines a fold over it and sees only its own slice of the state. **Folding happens in main and nowhere else** — the renderer is handed the resulting view and never replays events itself. One folder means one place for the view to be wrong, and it leaves room to move the fold onto a worker thread. Which is why a reducer must stay pure, over state that survives a structured clone.
 
 `Projection.dispatch` appends first and folds only once the write is durable, so the view can never show something a crash would take back. Nothing is folded away on disk — events persist forever. When boot cost eventually matters, the fix is to cache a *projection* alongside the log ("valid through seq N") and replay only the tail; the log itself stays untouched.
 
@@ -71,30 +71,33 @@ Plumbing, and only plumbing. How the append-only log is written, how it recovers
 | --- | --- | --- |
 | `app/src/main/ledger/event-log/event-log.ts` | plumbing | Framing, fsync, crash recovery, segment rollover, the HLC, the merge across devices. `verdict` is the one rule that deletes bytes |
 | `app/src/main/ledger/projection/projection.ts` | plumbing | Folds the log into an in-memory view through a `Reducer<S>`. Knows nothing about pages. Main process only |
-| `app/src/main/ledger/project-ledger/project-ledger.ts` | plumbing | One open log per project, at `<project>/gnotes/`, with every fold a slice defines through `defineFold` riding on it. Owns the device binding, the watch for other devices' events, and reopening a project that moved |
+| `app/src/main/ledger/project-ledger/project-ledger.ts` | plumbing | One open log per project, at `<project>/gnotes/`, with every fold a feature defines through `defineFold` riding on it. Owns the device binding, the watch for other devices' events, and reopening a project that moved. `deviceOf` names the directory this machine may write in, for content kept beside the log |
 | `app/src/main/ledger/device-store.ts` | adapter | This machine's id and what it remembers per project (clock floor, tip). The one file here that touches SQLite |
 
-`event-log`, `projection` and `project-ledger` import nothing but `app/src/shared/log.ts` — no Electron, no SQLite, no pages. That is worth keeping true, and the folder's shape is what keeps it honest: the dependency runs one way, from a feature down into the ledger, never back. `device-store` is the folder's only edge outward, to `db.ts`.
+`event-log`, `projection` and `project-ledger` import nothing but `app/src/shared/log.ts` — no Electron, no SQLite, no pages. `device-store` is the folder's only edge outward, to `db.ts`.
 
 ### Features — `app/src/main/features/`
 
-One folder per subject. `pages` is the one that keeps events: what page events mean, and the door the renderer reaches them through. It sits on the ledger the way any feature would, and the ledger does not know it exists.
+One folder per subject. `projects` is the top one: the registry of tracked directories, with everything a project contains nested under it. `pages` is the part that keeps events: what page events mean, and the door the renderer reaches them through. It sits on the ledger the way any feature would, and the ledger does not know it exists.
 
 | Path | Tier | Role |
 | --- | --- | --- |
-| `app/src/main/features/pages/pages-store/pages-store.ts` | domain | What the events *mean*: the commands that author events, the journal and back-reference queries, over the `pages` fold it defines on the project's ledger |
-| `app/src/main/features/pages/pages-store/blocks/blocks.ts` | domain | The `reduce` over the block tree — the pure `Reducer<Pages>` the ledger is handed |
-| `app/src/main/features/pages/pages-ipc.ts` | door | The `pages:*` channels. Checks the project against the registry, and its directory for reachability, before opening a log. Also broadcasts `pages:changed` to every window when a fold moved because a file arrived |
-| `app/src/main/features/pages/images/images.ts` | domain | Images pasted into a block, stored by hash in the writing device's folder beside its log |
-| `app/src/main/features/window-state/` | shell | Where the main window was last time, and the maths that fits it back onto a display |
+| `app/src/main/features/projects/projects-store.ts` | registry | All registry SQL. Path canonicalisation and case-folded dedupe live here |
+| `app/src/main/features/projects/projects-ipc.ts` | door | The ten `projects:*` channels, and `requireProject`: the check against the registry and for reachability that every sub-feature passes before opening a log. Hears the ledger's `onArrival` and fans it out to each sub-feature |
+| `app/src/main/features/projects/pages/pages-store/pages-store.ts` | domain | What the events *mean*: the commands that author events, the journal and back-reference queries, over the `pages` fold it defines on the project's ledger |
+| `app/src/main/features/projects/pages/pages-store/blocks/blocks.ts` | domain | The `reduce` over the block tree — the pure `Reducer<Pages>` the ledger is handed |
+| `app/src/main/features/projects/pages/reading.ts` | domain | A block's text read as markdown: the pages it links to, the blocks it refers to, and what a ref to it shows. Text in, data out; `pages-store.ts` asks it about the blocks in the fold |
+| `app/src/main/features/projects/pages/pages-ipc.ts` | door | The `pages:*` channels. Takes its project from `requireProject` before opening a log. Also exposes `pagesArrived`, which sends `pages:changed` to every window; `projects-ipc.ts` calls it when a fold moved because a file arrived. Images go from here straight to `images.ts`: the `pages:add-image` channel and the `pbnotes-image://` scheme |
+| `app/src/main/features/projects/pages/images/images.ts` | domain | Images pasted into a block, stored by hash in the writing device's folder beside its log |
+| `app/src/main/features/window-state/` | convenience | Where the main window was last time, and the maths that fits it back onto a display |
 
-### Registry and shell
+### Shell
+
+Not features: what every feature stands on.
 
 | Path | Role |
 | --- | --- |
 | `app/src/main/db.ts` | SQLite (`node:sqlite`) at `userData/notes.db`, WAL, append-only migrations keyed on `PRAGMA user_version` |
-| `app/src/main/projects-store.ts` | All registry SQL. Path canonicalisation and case-folded dedupe live here |
-| `app/src/main/projects-ipc.ts` | The ten `projects:*` channels |
 | `app/src/main/ipc.ts` | The `unknown` → string argument guards both IPC files use |
 | `app/src/main/index.ts` | Composition root: opens the database, binds the device, registers both IPC surfaces, makes the window |
 
