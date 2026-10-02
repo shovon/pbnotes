@@ -1,6 +1,12 @@
-# pbnotes
+<p align="center">
+  <img src="logo.svg" alt="Pb Notes logo" width="160" />
+</p>
 
-Local-first knowledge sharing and management, safe for many writers.
+<h1 align="center">Pb Notes</h1>
+
+<p align="center">
+  Local-first knowledge sharing and management, safe for many writers.
+</p>
 
 ## Why the `projects` table exists
 
