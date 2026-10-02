@@ -155,10 +155,15 @@ export default function App() {
           and Linux right. `env(titlebar-area-*)` is the box they leave free,
           which is the whole point of `titleBarOverlay` — the fallbacks are
           macOS's own inset, for the moment before Chromium has measured the
-          frame. */}
+          frame.
+
+          That box is measured against the window, not the page, and docked
+          DevTools makes the page the narrower of the two — so the strip is
+          capped to the page, or it lies over the inspector's own toolbar and
+          takes its clicks as drags. */}
       <header
         id="titlebar"
-        className="app-region-drag fixed top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,5rem)] flex h-[env(titlebar-area-height,var(--spacing-titlebar))] w-[env(titlebar-area-width,calc(100%-5rem))] items-center"
+        className="app-region-drag fixed top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,5rem)] flex h-[env(titlebar-area-height,var(--spacing-titlebar))] w-[env(titlebar-area-width,calc(100%-5rem))] max-w-[calc(100%-env(titlebar-area-x,5rem))] items-center"
       >
         {project && (
           <ProjectPicker
