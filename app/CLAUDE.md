@@ -6,6 +6,16 @@ Electron + React + TypeScript, built with Electron Forge and Vite.
 
 The app's display name is **Pb Notes**: `productName`, the window title, and anything else a user reads. Its identifier is `pbnotes`: the package `name`, the executable, the `window.pbnotes` bridge, the `pbnotes-image://` scheme, the repo, and the `userData` directory, which `src/main/index.ts` pins so that it does not follow the display name. The one place `gnotes` is the correct name is the content folder inside a user's project, `<project>/gnotes/`: it is on-disk format, and it stays.
 
+## Positioning
+
+The slogan is **"Local-first knowledge sharing and management, safe for many writers."** It is the same line in `description` in `package.json`, the first line of `../README.md`, and the GitHub repo description; change all three together or none.
+
+What sets Pb Notes apart is that it is local-first, that many writers can share one folder through any sync tool without a conflicted copy, and that it is for knowledge sharing and management. "Project" is table stakes: it is the name of the primitive in the code and in the UI, but user-facing copy never leads with it or pitches the app as "notes for projects".
+
+- Do not call it an outliner, a note-taking app or a project notebook. It can be used for outlining, but like Logseq and Roam it is a tool for thinking out loud, and a narrower noun undersells it.
+- "Many writers" means many machines writing to one folder. Several people sharing a folder is where this is heading and already works that way, but it is not a front-and-centre feature: do not write copy that promises collaboration, authorship or presence.
+- Do not claim "conflict-free" or "never loses an edit". There are no conflicted copies, but text is last-writer-wins per block (see "Deferred" in `docs/multi-writer.md`).
+
 ## Before removing anything
 
 The `projects` table and the `projects:*` IPC surface are **not** dead code, however little UI currently sits on top of them. They are the only record of which directories the user asked pbnotes to track; the filesystem cannot hold that choice, so deleting them loses it permanently. See the "Why the `projects` table exists" section of `../README.md` before touching `src/main/features/projects/projects-*.ts`, `src/shared/projects.ts`, or the `projects` migration in `src/main/db.ts`.
