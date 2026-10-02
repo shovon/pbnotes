@@ -1,6 +1,6 @@
 # pbnotes
 
-Notes attached to project directories, kept locally.
+Local-first knowledge sharing and management, safe for many writers.
 
 ## Why the `projects` table exists
 
