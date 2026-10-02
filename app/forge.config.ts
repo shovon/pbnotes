@@ -10,13 +10,20 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // No extension: the packager takes icon.icns on macOS and icon.ico on
+    // Windows. All three files come from assets/make-icons.sh.
+    icon: 'assets/icon',
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      setupIcon: 'assets/icon.ico',
+      // Add/Remove Programs fetches its icon, so this has to be a URL.
+      iconUrl: 'https://raw.githubusercontent.com/shovon/pbnotes/main/app/assets/icon.ico',
+    }),
     new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerRpm({ options: { icon: 'assets/icon.png' } }),
+    new MakerDeb({ options: { icon: 'assets/icon.png' } }),
   ],
   plugins: [
     new VitePlugin({
