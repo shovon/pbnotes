@@ -1,7 +1,7 @@
 {
   "name": "pbnotes",
   "productName": "Pb Notes",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Local-first knowledge sharing and management, safe for many writers.",
   "main": ".vite/build/main.js",
   "private": true,

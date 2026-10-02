@@ -21,6 +21,9 @@ const config: ForgeConfig = {
     // No extension: the packager takes icon.icns on macOS and icon.ico on
     // Windows. All three files come from assets/make-icons.sh.
     icon: 'assets/icon',
+    // NSHumanReadableCopyright on macOS, where the About panel shows it, and
+    // the .exe properties on Windows.
+    appCopyright: 'Copyright © 2026 Sal Rahman',
   },
   rebuildConfig: {},
   makers: [
