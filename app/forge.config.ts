@@ -10,6 +10,14 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // The binary would otherwise be named after `productName`, "Pb Notes". The
+    // Linux makers look for one matching the package `name`. Not on macOS:
+    // there the packager also writes this into CFBundleDisplayName, after
+    // `extendInfo` has had its say, and the Dock would read "pbnotes".
+    executableName: process.platform === 'darwin' ? undefined : 'pbnotes',
+    // Also derived from `productName` unless said, and it would have become
+    // `com.electron.pb-notes`.
+    appBundleId: 'com.electron.pbnotes',
     // No extension: the packager takes icon.icns on macOS and icon.ico on
     // Windows. All three files come from assets/make-icons.sh.
     icon: 'assets/icon',

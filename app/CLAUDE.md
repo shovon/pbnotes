@@ -4,7 +4,7 @@ Electron + React + TypeScript, built with Electron Forge and Vite.
 
 ## Naming
 
-The app is called **pbnotes**. The one place `gnotes` is the correct name is the content folder inside a user's project, `<project>/gnotes/`: it is on-disk format, and it stays. Name everything else `pbnotes`.
+The app's display name is **Pb Notes**: `productName`, the window title, and anything else a user reads. Its identifier is `pbnotes`: the package `name`, the executable, the `window.pbnotes` bridge, the `pbnotes-image://` scheme, the repo, and the `userData` directory, which `src/main/index.ts` pins so that it does not follow the display name. The one place `gnotes` is the correct name is the content folder inside a user's project, `<project>/gnotes/`: it is on-disk format, and it stays.
 
 ## Before removing anything
 

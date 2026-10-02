@@ -26,6 +26,15 @@ if (started) {
   app.quit();
 }
 
+// Electron names `userData` after `productName`, which is the display name,
+// "Pb Notes". The directory stays `pbnotes`: `notes.db` is already there, and
+// a display name that changes again must not strand the registry a second
+// time. An explicit `--user-data-dir` still wins, so a scratch profile stays
+// a scratch profile.
+if (!app.commandLine.hasSwitch("user-data-dir")) {
+  app.setPath("userData", path.join(app.getPath("appData"), "pbnotes"));
+}
+
 // Before the app is ready, or it is too late. `standard` gives the URL a
 // host, which is where the project id goes; the handler is in `pages-ipc`.
 protocol.registerSchemesAsPrivileged([
