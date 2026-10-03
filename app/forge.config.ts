@@ -15,9 +15,10 @@ const config: ForgeConfig = {
     // there the packager also writes this into CFBundleDisplayName, after
     // `extendInfo` has had its say, and the Dock would read "pbnotes".
     executableName: process.platform === 'darwin' ? undefined : 'pbnotes',
-    // Also derived from `productName` unless said, and it would have become
-    // `com.electron.pb-notes`.
-    appBundleId: 'com.electron.pbnotes',
+    // macOS keys preferences, saved state and granted folder permissions to
+    // this, so changing it once people have installed the app orphans all of
+    // that. Unset, the packager would derive `com.electron.pb-notes`.
+    appBundleId: 'com.salrahman.pbnotes',
     // No extension: the packager takes icon.icns on macOS and icon.ico on
     // Windows. All three files come from assets/make-icons.sh.
     icon: 'assets/icon',
