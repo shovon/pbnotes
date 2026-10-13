@@ -39,8 +39,8 @@ export type LedgerRef = {
  * true of a tool's bookkeeping and a lie about the only copy of their work.
  *
  * A folder rather than a loose file because the log is segmented and there
- * will be more than one of them, and because the things that come later —
- * images and whatever else a feature keeps — get their own folders beside it.
+ * will be more than one of them, and because whatever a feature keeps without
+ * an event gets a folder of its own beside the segments.
  */
 export function logDirectory(projectPath: string): string {
   return path.join(projectPath, 'gnotes');
@@ -241,7 +241,7 @@ export function defineFold<S, T extends string>(
 
 /**
  * The device this project's log writes as, for what a feature keeps beside the
- * segments without an event — an image, say. Whatever it is goes inside
+ * segments without an event. Whatever it is goes in a subdirectory of
  * `logDirectory(project.path)/<device>/`, the one place this machine may write.
  *
  * Asked of the open log rather than the binding: a rotation is decided when

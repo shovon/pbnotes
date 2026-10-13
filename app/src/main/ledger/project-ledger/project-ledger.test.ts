@@ -1,8 +1,8 @@
 /**
  * Run with: npm test
  *
- * The one property this file adds to what `pages-store.test.ts` already
- * covers through it: two folds on one project are one log and one writer, and
+ * The one property this file adds to what a feature's own tests already
+ * cover through it: two folds on one project are one log and one writer, and
  * neither mistakes the other's events for something it cannot read.
  */
 import { test } from 'node:test';

@@ -1,6 +1,6 @@
 # Design
 
-Why pbnotes stores things the way it does. [multi-writer.md](multi-writer.md) is the companion to this: the design of the shared folder in full.
+Why pbnotes stores things the way it does. It has two companions: [multi-writer.md](multi-writer.md) is the design of the shared folder in full, and [block-sync.md](block-sync.md) is what sharing it does to blocks and pages.
 
 ## Why the `projects` table exists
 
@@ -41,7 +41,7 @@ Not behind a dot. A dot-directory means *you can safely ignore this*, which is w
 
 `gnotes/` holds **one directory per device**, each holding numbered segments, `0000000000000001.log` upward. Only the newest is written to; the rest are sealed, and `seq` keeps counting across them within that device.
 
-The directory per device is what makes the folder safe to leave in Dropbox: **one writer per file, forever**, so two machines never touch the same path and a sync tool never has a divergence to resolve. `seq` therefore counts within a device rather than across the folder — it detects damage, and ordering is the hybrid logical clock's job. See [multi-writer.md](multi-writer.md), which is the design in full: what a foreign log may and may not be repaired to, how the clock is floored and bounded, and what the reducer still gets wrong when two machines edit the same page at once.
+The directory per device is what makes the folder safe to leave in Dropbox: **one writer per file, forever**, so two machines never touch the same path and a sync tool never has a divergence to resolve. `seq` therefore counts within a device rather than across the folder — it detects damage, and ordering is the hybrid logical clock's job. See [multi-writer.md](multi-writer.md), which is the design in full: what a foreign log may and may not be repaired to, and how the clock is floored and bounded. What the reducer still gets wrong when two machines edit the same page at once is in [block-sync.md](block-sync.md).
 
 Nothing is written at the top of `gnotes/`, and files found there are reported rather than folded.
 

@@ -14,7 +14,7 @@ What sets Pb Notes apart is that it is local-first, that many writers can share 
 
 - Do not call it an outliner, a note-taking app or a project notebook. It can be used for outlining, but like Logseq and Roam it is a tool for thinking out loud, and a narrower noun undersells it.
 - "Many writers" means many machines writing to one folder. Several people sharing a folder is where this is heading and already works that way, but it is not a front-and-centre feature: do not write copy that promises collaboration, authorship or presence.
-- Do not claim "conflict-free" or "never loses an edit". There are no conflicted copies, but text is last-writer-wins per block (see "Deferred" in `docs/multi-writer.md`).
+- Do not claim "conflict-free" or "never loses an edit". There are no conflicted copies, but text is last-writer-wins per block (see "Deferred" in `docs/block-sync.md`).
 
 ## Before removing anything
 
@@ -44,7 +44,7 @@ Two stores, and they do not swap. SQLite holds the projects registry and config;
 - **One writer per file, forever.** A device appends only inside its own directory; nothing is written at the top of `gnotes/`. This is what makes the folder safe in Dropbox, and it is not negotiable — two machines on one path is how the folder loses notes silently.
 - Images are stored per device and linked without one: a paste writes `gnotes/<device-id>/images/<sha256>.png`, the block says `![](images/<sha256>.png)`, and main looks in every device's `images/` for the name (`src/main/features/projects/pages/images/images.ts`). The hash name is what makes that safe — the same name is the same bytes — so never store an image under a name that is not its hash, and never in a shared folder at the top of `gnotes/`.
 - `seq` detects damage within a device. Ordering across devices is the hybrid logical clock (`hlc`), floored by what has been seen and bounded against a clock set to the wrong year. Never order by `at`; it is for display.
-- Never truncate, rewrite or repair a file belonging to another device. A half-arrived foreign log stalls and retries; it must never stop a project from opening. See `docs/multi-writer.md`.
+- Never truncate, rewrite or repair a file belonging to another device. A half-arrived foreign log stalls and retries; it must never stop a project from opening. See `docs/multi-writer.md`, the ledger's spec; what sync does to blocks and pages is `docs/block-sync.md`.
 - The renderer reaches main only through `window.pbnotes`; keep new surface behind the context bridge in `src/preload/index.ts`.
 - Each component should have an associated story in Storybook.
 - Encapsulate by folder

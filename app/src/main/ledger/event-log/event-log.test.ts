@@ -35,7 +35,7 @@ import type { LogEvent, LogOptions, Stop } from './event-log.ts';
 /**
  * The machine under test. Pinned because a device writes only inside its own
  * directory, so the id decides where the bytes land; in the app it comes from
- * `notes.db` and is just as stable.
+ * the device binding and is just as stable.
  */
 const DEVICE = "device-a";
 
@@ -364,14 +364,18 @@ test("files that are not a device's segments are reported, not swallowed", async
     "someone else\n",
   );
 
-  // A device's images are its own, beside its segments, and are not junk.
-  await mkdir(path.join(dir, "device-b", "images"));
+  // A subdirectory of a device directory is whoever's put it there, whatever
+  // it is called and whatever it holds. A stray file beside it is still junk.
+  await mkdir(path.join(dir, "device-b", "kept-beside"));
+  await writeFile(path.join(dir, "device-b", "kept-beside", "anything"), "x");
+  await writeFile(path.join(dir, "device-b", "stray"), "x");
 
   const log = await openLog(dir);
   const names = log.status.ignored.map((it) => path.basename(it)).sort();
   assert.deepEqual(names, [
     "0000000000000001 (conflicted copy).log",
     "0000000000000001.log",
+    "stray",
   ]);
   await log.close();
 });
