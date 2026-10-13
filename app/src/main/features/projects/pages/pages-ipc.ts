@@ -135,12 +135,13 @@ function publish(): Promise<void> {
 }
 
 /**
- * A ledger's pages may be behind: something arrived in its folder. Fed from
- * outside, so pages never subscribes to the ledger itself. Only the open one
- * is on screen.
+ * The pages may be behind: something arrived in the open ledger's folder. Fed
+ * from outside, so pages never subscribes to the ledger itself, and never
+ * asks which ledger moved — whoever calls this has already settled that it is
+ * the one on screen.
  */
-export function refreshPages(ledgerId: string): void {
-  if (open.peek()?.id === ledgerId) void publish();
+export function refreshPages(): void {
+  void publish();
 }
 
 /**

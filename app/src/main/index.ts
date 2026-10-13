@@ -10,6 +10,7 @@ import {
 import {
   bindDevice,
   closeLedgers,
+  onArrival,
 } from "./ledger/project-ledger/project-ledger";
 import {
   deviceId,
@@ -17,7 +18,10 @@ import {
   remember,
   rotateDeviceId,
 } from "./ledger/device-store";
-import { registerPageIpc } from "./features/projects/pages/pages-ipc";
+import {
+  refreshPages,
+  registerPageIpc,
+} from "./features/projects/pages/pages-ipc";
 import { IMAGE_SCHEME } from "../shared/pages";
 import {
   MIN_SIZE,
@@ -126,6 +130,15 @@ app.on("ready", () => {
   // Pages are handed the ledger that is open and never ask whose it is. This
   // is the one place that says it is the open project's.
   registerPageIpc({ require: requireProject, peek: currentProject });
+  // Another device's events landed in a project's folder. Every fold has taken
+  // them in by now, so nothing is fed to a feature here: each one is only told
+  // to draw again, and only when the project is the one on screen — which is
+  // settled here, so no feature has to ask. The ledger holds one listener, and
+  // this is it — a new feature adds its line here.
+  onArrival((projectId) => {
+    if (currentProject()?.id !== projectId) return;
+    refreshPages();
+  });
   createWindow();
 });
 

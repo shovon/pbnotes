@@ -19,8 +19,6 @@ import {
   setPinned,
   touchProject,
 } from './projects-store';
-import { onArrival } from '../../ledger/project-ledger/project-ledger';
-import { refreshPages } from './pages/pages-ipc';
 
 /**
  * Which project is open is main's to hold. The renderer says so once, on
@@ -105,12 +103,6 @@ async function showDirectoryPicker(
 }
 
 export function registerProjectIpc(): void {
-  // Another device's events landed in a project's folder. The ledger says so
-  // once, here, and each sub-feature is told through the function it exposes.
-  onArrival((projectId) => {
-    refreshPages(projectId);
-  });
-
   ipcMain.handle(PROJECT_CHANNELS.list, () => listProjects());
 
   ipcMain.handle(PROJECT_CHANNELS.pick, async (event): Promise<PickResult> => {
