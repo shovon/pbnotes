@@ -20,13 +20,8 @@ import {
   locateBlock,
   outdentBlock,
 } from "./pages-store/pages-store";
+import type { PagesView } from "./pages-store/pages-store";
 import { back, go, rezoom } from "./trail/trail";
-import { findImage, saveImage } from "./images/images";
-import {
-  deviceOf,
-  logDirectory,
-} from "../../../ledger/project-ledger/project-ledger";
-import type { LedgerRef } from "../../../ledger/project-ledger/project-ledger";
 
 // This software is split into two components: the renderer, and the main
 // process. Neither can see each other directly, and IPC is the only way to
@@ -64,41 +59,49 @@ function requireBlockId(value: unknown): string {
 }
 
 /**
- * The ledger the pages are kept in, as whoever registers this hands it over.
- * Pages are told where they are kept and nothing else: not what decides which
- * ledger is open, and not what it is a ledger of.
+ * What is open, as whoever registers this hands it over: the pages of it, and
+ * the images kept beside them. Pages are told nothing else — not what decides
+ * what is open, not what it is, and not where it is kept.
  *
- * `require` is the one to write through. It refuses a ledger that cannot be
- * reached — opening one creates its directory, and that must not happen on a
- * drive that is not there — and it settles which ledger before its first
- * `await`, so a handler calls it first: a write sent just before the open
- * ledger changed still lands where it was typed. `peek` only says which one
- * is open, for what reads without opening anything.
+ * `require` is the one to read and write through. It refuses what cannot be
+ * reached — opening a ledger creates its directory, and that must not happen
+ * on a drive that is not there — and it settles what is open before its
+ * first `await`, so a handler calls it first: a write sent just before that
+ * changed still lands where it was typed. `saveImage` settles it the same
+ * way.
+ *
+ * `findImage` only reads, and opens nothing: with nothing open, or a drive
+ * that is not there, it finds nothing.
  */
 export type Open = {
-  require(): Promise<LedgerRef>;
-  peek(): LedgerRef | null;
+  require(): Promise<PagesView>;
+  /** Stores an image and returns what a note links it by. */
+  saveImage(bytes: Uint8Array, mime: string): Promise<string>;
+  /** The file a note's `images/<name>` is, or undefined. */
+  findImage(name: string): Promise<string | undefined>;
 };
 
 let open: Open;
 
 /**
- * Where the view is, and the ledger that is a trail through. Main's to hold:
- * the renderer asks for a step and draws what comes back. A trail through
- * another ledger is nobody's, so it reads as the journal — which is all the
- * open ledger changing has to do to start over.
+ * Where the view is. Main's to hold: the renderer asks for a step and draws
+ * what comes back. Empty reads as the journal.
  */
-let route: { ledger: string; trail: Place[] } | undefined;
+let trail: Place[] = [];
 
-function trailOf(ledger: LedgerRef): Place[] {
-  return route?.ledger === ledger.id ? route.trail : [];
+/**
+ * What is open changed, so the trail starts over at the journal: a trail is
+ * a way through one set of pages and means nothing in another. Fed from
+ * outside, like `refreshPages` — pages are never told what is open, only
+ * that it is not what it was.
+ */
+export function resetTrail(): void {
+  trail = [];
 }
 
 /** Takes one step along the trail and sends where it led. */
 function step(take: (trail: Place[]) => Place[]): Promise<void> {
-  const ledger = open.peek();
-  if (!ledger) throw new Error("Nothing is open");
-  route = { ledger: ledger.id, trail: take(trailOf(ledger)) };
+  trail = take(trail);
   return publish();
 }
 
@@ -122,8 +125,7 @@ let sending: Promise<void> = Promise.resolve();
 function publish(): Promise<void> {
   sending = sending
     .then(async () => {
-      const ledger = await open.require();
-      const state = await getState(ledger, trailOf(ledger), today());
+      const state = getState(await open.require(), trail, today());
       for (const window of BrowserWindow.getAllWindows()) {
         if (!window.isDestroyed()) {
           window.webContents.send(PAGE_CHANNELS.changed, state);
@@ -146,8 +148,8 @@ export function refreshPages(): void {
 
 /**
  * A write: `run` appends, and the state it led to is sent before the reply.
- * `open.require` is called as the call arrives, so which ledger it goes to is
- * settled then.
+ * `open.require` is called as the call arrives, so where it goes is settled
+ * then.
  *
  * One at a time, in the order they arrived. Each is checked against the fold
  * before it is appended, and the renderer draws a write before it is recorded
@@ -159,14 +161,14 @@ let writing: Promise<unknown> = Promise.resolve();
 
 function writes(
   channel: string,
-  run: (ledger: LedgerRef, ...args: unknown[]) => Promise<unknown>,
+  run: (view: PagesView, ...args: unknown[]) => Promise<unknown>,
 ): void {
   ipcMain.handle(channel, (_event, ...args: unknown[]) => {
-    const ledger = open.require();
+    const view = open.require();
     // Waited on in turn, which may be later than it fails.
-    ledger.catch((): void => undefined);
+    view.catch((): void => undefined);
     const turn = writing.then(async () => {
-      await run(await ledger, ...args);
+      await run(await view, ...args);
       await publish();
     });
     writing = turn.catch((): void => undefined);
@@ -208,9 +210,9 @@ export function registerPageIpc(from: Open): void {
     getLogStatus(await open.require()),
   );
 
-  writes(PAGE_CHANNELS.addBlock, (ledger, id, title, text, after) =>
+  writes(PAGE_CHANNELS.addBlock, (view, id, title, text, after) =>
     addBlock(
-      ledger,
+      view,
       requireTitle(title),
       requireString(text, "text"),
       // Absent means the end of the page; anything else has to be a block id
@@ -223,42 +225,26 @@ export function registerPageIpc(from: Open): void {
   ipcMain.handle(
     PAGE_CHANNELS.addImage,
     async (_event, bytes: unknown, mime: unknown) => {
-      const ledger = await open.require();
       if (!(bytes instanceof Uint8Array)) {
         throw new TypeError("Expected bytes to be a Uint8Array");
       }
       // No event: the image is in the notes once a block's text links it, and
       // that is an ordinary edit.
-      return saveImage(
-        logDirectory(ledger.path),
-        await deviceOf(ledger),
-        bytes,
-        requireString(mime, "mime"),
-      );
+      return open.saveImage(bytes, requireString(mime, "mime"));
     },
   );
 
   /**
    * `pbnotes-image://images/<name>`: the image a note links as
-   * `images/<name>`, out of the ledger that is open. The URL is built from
-   * note text, so the name is checked by `findImage` before it is anywhere
-   * near a path. The same name is the same bytes in any ledger — it is their
-   * hash — so a URL that outlives a change of ledger cannot show the wrong
-   * picture.
-   *
-   * `peek`, not `require`: this only reads. `findImage` lists
-   * directories and creates none, so an unmounted drive is a 404, not a path
-   * invented on the local disk.
+   * `images/<name>`, out of whatever is open. The URL is built from note
+   * text, so the name is checked by `findImage` before it is anywhere near a
+   * path. The same name is the same bytes wherever it is kept — it is their
+   * hash — so a URL that outlives a change of what is open cannot show the
+   * wrong picture.
    */
   protocol.handle(IMAGE_SCHEME, async (request) => {
-    const ledger = open.peek();
-    const file =
-      ledger &&
-      // Not decoded: a name that needed escaping is not one `findImage` takes.
-      (await findImage(
-        logDirectory(ledger.path),
-        new URL(request.url).pathname.slice(1),
-      ));
+    // Not decoded: a name that needed escaping is not one `findImage` takes.
+    const file = await open.findImage(new URL(request.url).pathname.slice(1));
     return file
       ? net.fetch(pathToFileURL(file).toString())
       : new Response(null, { status: 404 });
@@ -266,24 +252,24 @@ export function registerPageIpc(from: Open): void {
 
   // No title on any of these four. The block id is the whole address, so
   // there is nothing to check a title against and nothing to write one into.
-  writes(PAGE_CHANNELS.editBlock, (ledger, blockId, text) =>
+  writes(PAGE_CHANNELS.editBlock, (view, blockId, text) =>
     editBlock(
-      ledger,
+      view,
       requireString(blockId, "blockId"),
       requireString(text, "text"),
     ),
   );
 
-  writes(PAGE_CHANNELS.deleteBlock, (ledger, blockId) =>
-    deleteBlock(ledger, requireString(blockId, "blockId")),
+  writes(PAGE_CHANNELS.deleteBlock, (view, blockId) =>
+    deleteBlock(view, requireString(blockId, "blockId")),
   );
 
-  writes(PAGE_CHANNELS.indentBlock, (ledger, blockId) =>
-    indentBlock(ledger, requireString(blockId, "blockId")),
+  writes(PAGE_CHANNELS.indentBlock, (view, blockId) =>
+    indentBlock(view, requireString(blockId, "blockId")),
   );
 
-  writes(PAGE_CHANNELS.outdentBlock, (ledger, blockId) =>
-    outdentBlock(ledger, requireString(blockId, "blockId")),
+  writes(PAGE_CHANNELS.outdentBlock, (view, blockId) =>
+    outdentBlock(view, requireString(blockId, "blockId")),
   );
 
   // Native rather than drawn: placement at the screen edge, keyboard and
