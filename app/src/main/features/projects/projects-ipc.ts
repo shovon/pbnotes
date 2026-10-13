@@ -102,7 +102,24 @@ async function showDirectoryPicker(
   return result.canceled ? [] : result.filePaths;
 }
 
-export function registerProjectIpc(): void {
+/**
+ * Runs `change`, and says so if a different project is open after it. Asked
+ * of `currentProject` on both sides rather than of `openId`: removing the
+ * open project changes which one is open without anything being opened.
+ */
+function moving<T>(change: () => T, onMoved: () => void): T {
+  const before = currentProject()?.id;
+  const result = change();
+  if (currentProject()?.id !== before) onMoved();
+  return result;
+}
+
+/**
+ * `onMoved` is told that the open project is now a different one, and not
+ * which: whoever wires this to what a project contains already knows how to
+ * ask, and nothing here imports what it would be telling.
+ */
+export function registerProjectIpc(onMoved: () => void): void {
   ipcMain.handle(PROJECT_CHANNELS.list, () => listProjects());
 
   ipcMain.handle(PROJECT_CHANNELS.pick, async (event): Promise<PickResult> => {
@@ -121,7 +138,7 @@ export function registerProjectIpc(): void {
   );
 
   ipcMain.handle(PROJECT_CHANNELS.remove, (_event, id: unknown) => {
-    removeProject(requireString(id, 'id'));
+    moving(() => removeProject(requireString(id, 'id')), onMoved);
   });
 
   ipcMain.handle(PROJECT_CHANNELS.rename, (_event, id: unknown, name: unknown) =>
@@ -138,10 +155,12 @@ export function registerProjectIpc(): void {
     // Kept only if it is one we track: `currentProject` would fall through
     // an unknown id anyway, and silently showing some other project is worse
     // than saying so.
-    if (!touchProject(requireString(id, 'id'))) {
-      throw new Error('No such project');
-    }
-    openId = id as string;
+    moving(() => {
+      if (!touchProject(requireString(id, 'id'))) {
+        throw new Error('No such project');
+      }
+      openId = id as string;
+    }, onMoved);
   });
 
   ipcMain.handle(PROJECT_CHANNELS.current, () => currentProject());

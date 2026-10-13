@@ -12,26 +12,41 @@ import { mkdtemp, readdir, rename } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  addBlock,
-  deleteBlock,
-  editBlock,
-  getPage,
-  getPages,
-  getPreviews,
-  getReferences,
-  getState,
-  indentBlock,
-  outdentBlock,
-} from "./pages-store.ts";
+import * as store from "./pages-store.ts";
+import type { PagesView } from "./pages-store.ts";
 import {
   closeLedgers,
+  defineFold,
   logDirectory,
 } from "../../../../ledger/project-ledger/project-ledger.ts";
 import type { LedgerRef } from "../../../../ledger/project-ledger/project-ledger.ts";
 import { logSize, segmentName } from "../../../../ledger/event-log/event-log.ts";
 import { lastLeaf, locate } from "../../../../../shared/pages.ts";
 import type { Block } from "../../../../../shared/pages.ts";
+
+/**
+ * The glue, as `index.ts` is for the app: the store exports a fold and is
+ * handed a view, and never learns that either came from a ledger. Each call
+ * asks for the view again, because a test closes the ledgers part way through
+ * to stand in for a restart, and a view of a closed one is of nothing.
+ */
+const pagesOf = defineFold("pages", store.pagesFold);
+
+const on =
+  <A extends unknown[], R>(run: (view: PagesView, ...args: A) => R) =>
+  async (project: LedgerRef, ...args: A): Promise<Awaited<R>> =>
+    await run(await pagesOf(project), ...args);
+
+const addBlock = on(store.addBlock);
+const deleteBlock = on(store.deleteBlock);
+const editBlock = on(store.editBlock);
+const getPage = on(store.getPage);
+const getPages = on(store.getPages);
+const getPreviews = on(store.getPreviews);
+const getReferences = on(store.getReferences);
+const getState = on(store.getState);
+const indentBlock = on(store.indentBlock);
+const outdentBlock = on(store.outdentBlock);
 
 const TODAY = "2026-09-21";
 const TOMORROW = "2026-09-22";

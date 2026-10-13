@@ -1,21 +1,18 @@
 /**
- * Pages: what page events mean, read and written through the pages fold of
- * whichever ledger a caller hands in. Nothing here knows whose ledger that is.
+ * Pages: what page events mean, read and written through whichever view of
+ * the pages fold a caller hands in. Nothing here knows what that is a view
+ * of: not a ledger, not its id, not where it is kept.
  *
- * No plumbing. Where the log lives, which device this is and which logs are
- * open belong to `ledger/project-ledger`; what a block *is* — the event schema
- * and the fold over it — is `shared/blocks/blocks.ts`. What is left here is the
+ * No plumbing, and no import of any. Where the log lives, which device this
+ * is and which logs are open belong to `ledger/project-ledger`; what a block
+ * *is* — the event schema and the fold over it — is `shared/blocks/blocks.ts`.
+ * What is left here is the fold as it is handed to whoever registers it, the
  * commands that author events and the queries over what they fold to.
  *
- * Deliberately free of `electron` imports: callers hand in the ledger, which
+ * Deliberately free of `electron` imports: callers hand in the view, which
  * keeps the store runnable under `node --test`.
  */
 import { randomUUID } from "node:crypto";
-import { defineFold } from "../../../../ledger/project-ledger/project-ledger.ts";
-import type {
-  LedgerRef,
-  View,
-} from "../../../../ledger/project-ledger/project-ledger.ts";
 import {
   find,
   HANDLES,
@@ -37,24 +34,36 @@ import type {
 } from "../../../../../shared/pages.ts";
 import type { ViewStatus } from "../../../../../shared/log.ts";
 
-type PagesView = View<Pages, PageEvent["type"]>;
+/**
+ * The pages fold, for whoever wires the app together to register with the
+ * ledger. Not registered here: that would take a ledger to register it with.
+ */
+export const pagesFold: {
+  reduce: typeof reduce;
+  initial: Pages;
+  handles: typeof HANDLES;
+} = { reduce, initial: {}, handles: HANDLES };
 
-const pagesOf = defineFold<Pages, PageEvent["type"]>("pages", {
-  reduce,
-  initial: {},
-  handles: HANDLES,
-});
+/**
+ * What the store is handed: the pages as they stand, how much of the log
+ * could be read, and the way to append one of this fold's events. The shape
+ * of what registering `pagesFold` gives back, written out so that nothing
+ * here imports it.
+ */
+export type PagesView = {
+  readonly state: Pages;
+  readonly status: ViewStatus;
+  /** Resolves once the event is durable and folded. */
+  dispatch(type: PageEvent["type"], payload: unknown): Promise<unknown>;
+};
 
 /** The page as it stands right now, empty if nothing has been written to it. */
 function pageOf(view: PagesView, title: string): Page {
   return { title, blocks: view.state[title] ?? [] };
 }
 
-export async function getPage(
-  ledger: LedgerRef,
-  title: string,
-): Promise<Page> {
-  return pageOf(await pagesOf(ledger), title);
+export function getPage(view: PagesView, title: string): Page {
+  return pageOf(view, title);
 }
 
 /**
@@ -74,8 +83,7 @@ export async function getPage(
  * Sorted on the date string, which for `YYYY-MM-DD` is the same order as the
  * dates themselves. That is the reason for the format.
  */
-export async function getPages(ledger: LedgerRef): Promise<Page[]> {
-  const view = await pagesOf(ledger);
+export function getPages(view: PagesView): Page[] {
   return Object.entries(view.state)
     .filter(([title, blocks]) => DATE_PATTERN.test(title) && blocks.length > 0)
     .sort(([a], [b]) => b.localeCompare(a))
@@ -96,11 +104,7 @@ export async function getPages(ledger: LedgerRef): Promise<Page[]> {
  * this into a single reverse index per call if a ledger ever has enough
  * days for that to show.
  */
-export async function getReferences(
-  ledger: LedgerRef,
-  title: string,
-): Promise<Page[]> {
-  const view = await pagesOf(ledger);
+export function getReferences(view: PagesView, title: string): Page[] {
   return Object.entries(view.state)
     .filter(([page]) => page !== title)
     .map(([page, blocks]) => ({ title: page, blocks: linking(blocks, title) }))
@@ -127,10 +131,7 @@ export async function getReferences(
  * Pairs, not an object: an id is whatever was typed between the parentheses,
  * and `((__proto__))` is a key an object does not hold.
  */
-export async function getPreviews(
-  ledger: LedgerRef,
-): Promise<[string, string | null][]> {
-  const { state } = await pagesOf(ledger);
+export function getPreviews({ state }: PagesView): [string, string | null][] {
   const ids = new Set<string>();
   const collect = (blocks: Block[]): void => {
     for (const block of blocks) {
@@ -162,17 +163,17 @@ export async function getPreviews(
  * ponytail: the whole history, on every change. Send only the days in view
  * when someone has enough years in one ledger for that to show.
  */
-export async function getState(
-  ledger: LedgerRef,
+export function getState(
+  view: PagesView,
   trail: Place[],
   today: string,
-): Promise<PagesState> {
+): PagesState {
   const at = trail.at(-1);
   let pages: Page[];
   if (at) {
-    pages = [await getPage(ledger, at.page)];
+    pages = [getPage(view, at.page)];
   } else {
-    pages = await getPages(ledger);
+    pages = getPages(view);
     if (!pages.some((page) => page.title === today)) {
       pages = [{ title: today, blocks: [] }, ...pages].sort((a, b) =>
         b.title.localeCompare(a.title),
@@ -181,22 +182,20 @@ export async function getState(
   }
   return {
     trail,
-    showing: await Promise.all(
-      pages.map(async (page) => ({
-        page,
-        references: at?.block ? [] : await getReferences(ledger, page.title),
-      })),
-    ),
-    previews: await getPreviews(ledger),
+    showing: pages.map((page) => ({
+      page,
+      references: at?.block ? [] : getReferences(view, page.title),
+    })),
+    previews: getPreviews(view),
   };
 }
 
 /** The page a block is on, or undefined for a block the ledger lacks. */
-export async function locateBlock(
-  ledger: LedgerRef,
+export function locateBlock(
+  view: PagesView,
   blockId: string,
-): Promise<{ page: string } | undefined> {
-  const found = find((await pagesOf(ledger)).state, blockId);
+): { page: string } | undefined {
+  const found = find(view.state, blockId);
   return found && { page: found.page };
 }
 
@@ -206,8 +205,8 @@ export async function locateBlock(
  * syncing is a normal state that usually heals itself — but none of it may be
  * skipped without the user being able to find out.
  */
-export async function getLogStatus(ledger: LedgerRef): Promise<ViewStatus> {
-  return (await pagesOf(ledger)).status;
+export function getLogStatus(view: PagesView): ViewStatus {
+  return view.status;
 }
 
 /**
@@ -240,13 +239,12 @@ function append<T extends PageEvent["type"]>(
  * that every later event about either of them folds wrongly.
  */
 export async function addBlock(
-  ledger: LedgerRef,
+  view: PagesView,
   title: string,
   text: string,
   after?: string,
   id: string = randomUUID(),
 ): Promise<Page> {
-  const view = await pagesOf(ledger);
   const blocks = view.state[title] ?? [];
   if (after && !locate(blocks, after)) {
     throw new Error("No such block");
@@ -279,11 +277,10 @@ export async function addBlock(
  * write.
  */
 export async function editBlock(
-  ledger: LedgerRef,
+  view: PagesView,
   blockId: string,
   text: string,
 ): Promise<Page> {
-  const view = await pagesOf(ledger);
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
 
@@ -301,10 +298,9 @@ export async function editBlock(
  * "this was never written".
  */
 export async function deleteBlock(
-  ledger: LedgerRef,
+  view: PagesView,
   blockId: string,
 ): Promise<Page> {
-  const view = await pagesOf(ledger);
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
 
@@ -327,10 +323,9 @@ export async function deleteBlock(
  * record of a keystroke that did nothing.
  */
 export async function indentBlock(
-  ledger: LedgerRef,
+  view: PagesView,
   blockId: string,
 ): Promise<Page> {
-  const view = await pagesOf(ledger);
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
   const payload = indented(found.blocks, blockId);
@@ -350,10 +345,9 @@ export async function indentBlock(
  * above it.
  */
 export async function outdentBlock(
-  ledger: LedgerRef,
+  view: PagesView,
   blockId: string,
 ): Promise<Page> {
-  const view = await pagesOf(ledger);
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
   const payload = outdented(found.blocks, blockId);

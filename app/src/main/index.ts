@@ -10,6 +10,9 @@ import {
 import {
   bindDevice,
   closeLedgers,
+  defineFold,
+  deviceOf,
+  logDirectory,
   onArrival,
 } from "./ledger/project-ledger/project-ledger";
 import {
@@ -21,7 +24,10 @@ import {
 import {
   refreshPages,
   registerPageIpc,
+  resetTrail,
 } from "./features/projects/pages/pages-ipc";
+import { pagesFold } from "./features/projects/pages/pages-store/pages-store";
+import { findImage, saveImage } from "./features/projects/pages/images/images";
 import { IMAGE_SCHEME } from "../shared/pages";
 import {
   MIN_SIZE,
@@ -42,6 +48,12 @@ if (started) {
 if (!app.commandLine.hasSwitch("user-data-dir")) {
   app.setPath("userData", path.join(app.getPath("appData"), "pbnotes"));
 }
+
+// Every fold the app has, registered here and nowhere else: a feature exports
+// its fold and never learns what it was registered with. At module load,
+// because a ledger that is already open has replayed without a fold that
+// arrives after it.
+const pagesOf = defineFold("pages", pagesFold);
 
 // Before the app is ready, or it is too late. `standard` gives the URL a
 // host, which is always `images`; the handler is in `pages-ipc`.
@@ -126,10 +138,36 @@ app.on("ready", () => {
     remember,
     rotate: rotateDeviceId,
   });
-  registerProjectIpc();
-  // Pages are handed the ledger that is open and never ask whose it is. This
-  // is the one place that says it is the open project's.
-  registerPageIpc({ require: requireProject, peek: currentProject });
+  // A different project is open, so a trail through the last one is over.
+  registerProjectIpc(resetTrail);
+  // Pages are handed their view of what is open, and the images beside it,
+  // and never ask what that is. This is the one place that says it is the
+  // open project's, and the one place that turns a project into a path.
+  //
+  // `requireProject` settles which project before its first `await`, and is
+  // the first thing each of these calls: a write or an image sent just before
+  // the project changed lands where it was sent.
+  registerPageIpc({
+    require: async () => pagesOf(await requireProject()),
+    saveImage: async (bytes, mime) => {
+      const project = await requireProject();
+      return saveImage(
+        logDirectory(project.path),
+        await deviceOf(project),
+        bytes,
+        mime,
+      );
+    },
+    // `currentProject`, not `requireProject`: this only reads. `findImage`
+    // lists directories and creates none, so an unmounted drive is an image
+    // that is not found, not a path invented on the local disk.
+    findImage: async (name) => {
+      const project = currentProject();
+      return project
+        ? findImage(logDirectory(project.path), name)
+        : undefined;
+    },
+  });
   // Another device's events landed in a project's folder. Every fold has taken
   // them in by now, so nothing is fed to a feature here: each one is only told
   // to draw again, and only when the project is the one on screen — which is
