@@ -16,7 +16,7 @@ const rehypePlugins: [typeof rehypeKatex, { throwOnError: boolean }][] = [
 ];
 
 /**
- * Block id → what a `((id))` shows, as `pages.previews` answers it. A
+ * Block id → what a `((id))` shows, as main's state answers it. A
  * context rather than a prop, because a ref points at any block in the
  * project and the block holding it is several components down from the one
  * view that can ask. Its consumers re-render when the answer changes, which
@@ -30,22 +30,16 @@ export const Previews = createContext<ReadonlyMap<string, string | null>>(
 );
 
 /**
- * The id of the project whose images a block shows. A context for the reason
- * `Previews` is one: the view that knows is several components up.
- */
-export const ImageProject = createContext('');
-
-/**
  * `![](images/<name>)` is a file in the project's folder, which the page
- * cannot reach by that path — main serves it, by project and name. Any other
- * source is left as written: an image on the web is an image on the web.
+ * cannot reach by that path — main serves it by name, out of the project
+ * that is open. Any other source is left as written: an image on the web is
+ * an image on the web.
  */
 function Image({ src, alt, title }: { src?: string; alt?: string; title?: string }) {
-  const project = useContext(ImageProject);
   const name = /^images\/([^/]+)$/.exec(src ?? '')?.[1];
   return (
     <img
-      src={name && project ? `${IMAGE_SCHEME}://${project}/${name}` : src}
+      src={name ? `${IMAGE_SCHEME}://images/${name}` : src}
       alt={alt}
       title={title}
     />

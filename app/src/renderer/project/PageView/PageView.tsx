@@ -1,12 +1,9 @@
 import { Fragment, useState } from 'react';
-import type { Project } from '../../../shared/projects';
 import { lastLeaf, locate } from '../../../shared/pages';
-import type { Block as BlockType, Page } from '../../../shared/pages';
+import type { Block as BlockType, Page, PagesApi } from '../../../shared/pages';
 import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
-
-const { pages } = window.pbnotes;
 
 /**
  * Where an unwritten block is waiting to be typed. `after` is the block it
@@ -16,34 +13,15 @@ const { pages } = window.pbnotes;
  */
 type Writing = { after?: string } | null;
 
-/**
- * The block `addBlock` just wrote, found by where it must have landed: the
- * fold splices it directly beneath `after` as its next sibling — wherever in
- * the tree that is — or pushes it last. Saves widening the IPC result to
- * carry an id back for the one caller that wants it.
- *
- * `locate`, not a scan of the top level: `after` is just as often a child,
- * and a miss there does not read as a miss — it reads as index 0, which is
- * the first block on the page.
- */
-export function created(page: Page, after?: string): string | undefined {
-  if (!after) return page.blocks.at(-1)?.id;
-  const found = locate(page.blocks, after);
-  return found && found.siblings[found.at + 1]?.id;
-}
-
 type Props = {
-  project: Project;
-  /** The page as the project view holds it: as read, or as the last write
-      to it handed it back. */
+  pages: PagesApi;
+  /** The page as main last sent it. */
   page: Page;
-  /** Every write hands the folded page back up through this. */
-  onPage: (page: Page) => void;
   /** What links here. Left off for a page that is itself shown as one. */
   references?: Page[];
   /**
    * Shown under another page as what links to it: a cut of this page — the
-   * blocks that link, not all of them — decided outside and handed in again
+   * blocks that link, not all of them — decided in main and sent again
    * after every write. The title is a link to the whole page. Nothing can be
    * added here, and a block cannot be moved: the siblings that would decide
    * where it goes are not in the cut. Editing and deleting are what they are
@@ -66,20 +44,20 @@ type Props = {
  * here can tell the two apart — its blocks, and the editing that appends to
  * them.
  *
- * The page is the project view's, not this one's: it arrives folded from the
- * read that fills the stack, and every write hands the folded page back up
- * through `onPage` rather than keeping it here. A block is on screen in more
- * than one place — on its day, and under every page it links to — and only
- * the view above all of them can show a write everywhere it shows the block.
+ * The page is main's, not this one's: it arrives folded, and a write sends
+ * nothing back here — main sends the state it led to, and the page comes down
+ * again from the project view. A block is on screen in more than one place —
+ * on its day, and under every page it links to — and one state for all of
+ * them is what shows a write everywhere it shows the block. A write resolves
+ * after that state has arrived, so what follows one can count on the page.
  * What is held here is the editing: which box is open, and where the caret
  * is in it. Nothing here is aware that there are other pages above and below
  * it, which is what keeps a stack of days the same component as a single
  * named page, and a page the same component as a cut of one.
  */
 export default function PageView({
-  project,
+  pages,
   page,
-  onPage,
   references,
   reference = false,
   zoom,
@@ -112,9 +90,7 @@ export default function PageView({
   const commitEdit = (block: BlockType, text: string) => {
     setEditingId(null);
     if (text === block.text) return;
-    act(async () => {
-      onPage(await pages.editBlock(project.id, block.id, text));
-    });
+    act(() => pages.editBlock(block.id, text));
   };
 
   /**
@@ -170,9 +146,7 @@ export default function PageView({
     // The zoomed block itself: out to what it hung under, or to the page,
     // before the delete lands and leaves the view rooted on nothing.
     if (block.id === root?.id) onZoom?.(found?.parent?.id);
-    act(async () => {
-      onPage(await pages.deleteBlock(project.id, block.id));
-    });
+    act(() => pages.deleteBlock(block.id));
   };
 
   /**
@@ -216,9 +190,9 @@ export default function PageView({
       // Tab is not a commit, but the box has to close to move and the text in
       // it would go with it. Unchanged text appends nothing, as ever.
       if (text !== block.text) {
-        await pages.editBlock(project.id, block.id, text);
+        await pages.editBlock(block.id, text);
       }
-      onPage(await move(project.id, block.id));
+      await move(block.id);
       setEditingId(block.id);
     });
   };
@@ -277,23 +251,21 @@ export default function PageView({
     // ever typed into is a click that landed elsewhere, and writes nothing.
     if (!text && then === 'stop') return;
     act(async () => {
-      let next = await pages.addBlock(project.id, title, text, after);
-      const id = created(next, after);
-      if (first && id) next = await pages.indentBlock(project.id, id);
-      onPage(next);
+      const id = await pages.addBlock(title, text, after);
+      if (first) await pages.indentBlock(id);
       if (then === 'again') setWriting({ after: id });
       // Out of the top level of a zoom is out of the view: the box reopens
       // where it was, like any move with nowhere to go.
       if (then === 'outdent' && top) {
         setCaret(caret);
-        setEditingId(id ?? null);
-      } else if ((then === 'indent' || then === 'outdent') && id) {
+        setEditingId(id);
+      } else if (then === 'indent' || then === 'outdent') {
         setCaret(caret);
         // Nowhere to go — the first block of an empty page going in, a
         // top-level one coming out — comes back unchanged, and the box simply
         // reopens where it was.
         const move = then === 'indent' ? pages.indentBlock : pages.outdentBlock;
-        onPage(await move(project.id, id));
+        await move(id);
         setEditingId(id);
       }
     });
@@ -495,10 +467,9 @@ export default function PageView({
           click-to-write, and these are other pages' blocks. */}
       {references && (
         <LinkedReferences
-          project={project}
+          pages={pages}
           references={references}
           act={act}
-          onPage={onPage}
         />
       )}
     </>

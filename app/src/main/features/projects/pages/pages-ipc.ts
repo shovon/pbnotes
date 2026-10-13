@@ -7,28 +7,31 @@ import {
   protocol,
 } from "electron";
 import { pathToFileURL } from "node:url";
-import { IMAGE_SCHEME, PAGE_CHANNELS } from "../../../../shared/pages";
+import {
+  IMAGE_SCHEME,
+  PAGE_CHANNELS,
+  created,
+  today,
+} from "../../../../shared/pages";
+import type { Place } from "../../../../shared/pages";
 import { requireString } from "../../../ipc";
-import { requireProject } from "../projects-ipc";
-import { getProject } from "../projects-store";
 import {
   addBlock,
   deleteBlock,
   editBlock,
   getLogStatus,
-  getPage,
-  getPages,
-  getPreviews,
-  getReferences,
+  getState,
   indentBlock,
   locateBlock,
   outdentBlock,
 } from "./pages-store/pages-store";
+import { back, go, rezoom } from "./trail/trail";
 import { findImage, saveImage } from "./images/images";
 import {
   deviceOf,
   logDirectory,
 } from "../../../ledger/project-ledger/project-ledger";
+import type { LedgerRef } from "../../../ledger/project-ledger/project-ledger";
 
 // This software is split into two components: the renderer, and the main
 // process. Neither can see each other directly, and IPC is the only way to
@@ -53,87 +56,165 @@ function requireTitle(value: unknown): string {
 }
 
 /**
- * Tells the windows a project's pages may be behind. Fed by the parent:
- * `projects-ipc` hears that something arrived in a project's folder and calls
- * this, so pages never subscribes to the ledger itself.
+ * The ledger the pages are kept in, as whoever registers this hands it over.
+ * Pages are told where they are kept and nothing else: not what decides which
+ * ledger is open, and not what it is a ledger of.
  *
- * Every window, not the one that caused it: nothing caused it. A re-fold is
- * reported because a *file* arrived, so there is no originating window to
- * exclude, and any window showing that project is equally behind.
- *
- * A window closing between the fold and the send is ordinary, not an error,
- * which is the only thing the guard is for.
+ * `require` is the one to write through. It refuses a ledger that cannot be
+ * reached — opening one creates its directory, and that must not happen on a
+ * drive that is not there — and it settles which ledger before its first
+ * `await`, so a handler calls it first: a write sent just before the open
+ * ledger changed still lands where it was typed. `peek` only says which one
+ * is open, for what reads without opening anything.
  */
-export function pagesArrived(projectId: string): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) {
-      window.webContents.send(PAGE_CHANNELS.changed, projectId);
-    }
-  }
+export type Open = {
+  require(): Promise<LedgerRef>;
+  peek(): LedgerRef | null;
+};
+
+let open: Open;
+
+/**
+ * Where the view is, and the ledger that is a trail through. Main's to hold:
+ * the renderer asks for a step and draws what comes back. A trail through
+ * another ledger is nobody's, so it reads as the journal — which is all the
+ * open ledger changing has to do to start over.
+ */
+let route: { ledger: string; trail: Place[] } | undefined;
+
+function trailOf(ledger: LedgerRef): Place[] {
+  return route?.ledger === ledger.id ? route.trail : [];
 }
 
-export function registerPageIpc(): void {
-  ipcMain.handle(
-    PAGE_CHANNELS.open,
-    async (_event, id: unknown, title: unknown) =>
-      getPage(await requireProject(id), requireTitle(title)),
+/** Takes one step along the trail and sends where it led. */
+function step(take: (trail: Place[]) => Place[]): Promise<void> {
+  const ledger = open.peek();
+  if (!ledger) throw new Error("Nothing is open");
+  route = { ledger: ledger.id, trail: take(trailOf(ledger)) };
+  return publish();
+}
+
+/**
+ * Sends every window what is showing now. The one way state reaches the
+ * renderer: after a write, after a step along the trail, and after another
+ * device's events are folded in.
+ *
+ * One at a time, in the order they were asked for. Reading the state takes
+ * several turns, and two of them overlapping could send the older one last.
+ * Each resolves once its own state is sent, which is what lets a handler
+ * promise that the state arrives before its reply does.
+ *
+ * A ledger that cannot be read sends nothing: the windows keep what they
+ * have, and the call that asked — `show`, or a write — has already said why.
+ * A window closing between the read and the send is ordinary, which is the
+ * only thing the guard is for.
+ */
+let sending: Promise<void> = Promise.resolve();
+
+function publish(): Promise<void> {
+  sending = sending
+    .then(async () => {
+      const ledger = await open.require();
+      const state = await getState(ledger, trailOf(ledger), today());
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send(PAGE_CHANNELS.changed, state);
+        }
+      }
+    })
+    .catch((): void => undefined);
+  return sending;
+}
+
+/**
+ * A ledger's pages may be behind: something arrived in its folder. Fed from
+ * outside, so pages never subscribes to the ledger itself. Only the open one
+ * is on screen.
+ */
+export function pagesArrived(ledgerId: string): void {
+  if (open.peek()?.id === ledgerId) void publish();
+}
+
+/**
+ * A write: `run` appends, and the state it led to is sent before the reply.
+ * `open.require` is called first, so which ledger it goes to was settled when
+ * the call arrived.
+ */
+function writes(
+  channel: string,
+  run: (ledger: LedgerRef, ...args: unknown[]) => Promise<unknown>,
+): void {
+  ipcMain.handle(channel, async (_event, ...args: unknown[]) => {
+    await run(await open.require(), ...args);
+    await publish();
+  });
+}
+
+export function registerPageIpc(from: Open): void {
+  open = from;
+
+  ipcMain.handle(PAGE_CHANNELS.show, async () => {
+    // Asked for here as well as in `publish`, which swallows it: a view that
+    // has just mounted is the one caller with nothing on screen to keep.
+    await open.require();
+    await publish();
+  });
+
+  ipcMain.handle(PAGE_CHANNELS.go, (_event, place: unknown) => {
+    const { page, block } = (place ?? {}) as Record<string, unknown>;
+    const next: Place = {
+      page: requireTitle(page),
+      ...(block === undefined ? {} : { block: requireString(block, "block") }),
+    };
+    return step((trail) => go(trail, next));
+  });
+
+  ipcMain.handle(PAGE_CHANNELS.back, () => step(back));
+
+  ipcMain.handle(PAGE_CHANNELS.rezoom, (_event, block: unknown) => {
+    const to = block === undefined ? undefined : requireString(block, "block");
+    return step((trail) => rezoom(trail, to));
+  });
+
+  ipcMain.handle(PAGE_CHANNELS.locate, async (_event, blockId: unknown) =>
+    locateBlock(await open.require(), requireString(blockId, "blockId")),
   );
 
-  ipcMain.handle(PAGE_CHANNELS.openAll, async (_event, id: unknown) =>
-    getPages(await requireProject(id)),
-  );
-
-  ipcMain.handle(
-    PAGE_CHANNELS.references,
-    async (_event, id: unknown, title: unknown) =>
-      getReferences(await requireProject(id), requireTitle(title)),
-  );
-
-  ipcMain.handle(
-    PAGE_CHANNELS.locate,
-    async (_event, id: unknown, blockId: unknown) =>
-      locateBlock(await requireProject(id), requireString(blockId, "blockId")),
-  );
-
-  ipcMain.handle(PAGE_CHANNELS.previews, async (_event, id: unknown) =>
-    getPreviews(await requireProject(id)),
-  );
-
-  ipcMain.handle(PAGE_CHANNELS.status, async (_event, id: unknown) =>
-    getLogStatus(await requireProject(id)),
+  ipcMain.handle(PAGE_CHANNELS.status, async () =>
+    getLogStatus(await open.require()),
   );
 
   ipcMain.handle(
     PAGE_CHANNELS.addBlock,
-    async (
-      _event,
-      id: unknown,
-      title: unknown,
-      text: unknown,
-      after: unknown,
-    ) =>
-      addBlock(
-        await requireProject(id),
+    async (_event, title: unknown, text: unknown, after: unknown) => {
+      const ledger = await open.require();
+      // Absent means the end of the page; anything else has to be a block id
+      // before it reaches a log that keeps it forever.
+      const beneath =
+        after === undefined ? undefined : requireString(after, "after");
+      const page = await addBlock(
+        ledger,
         requireTitle(title),
         requireString(text, "text"),
-        // Absent means the end of the page; anything else has to be a block id
-        // before it reaches a log that keeps it forever.
-        after === undefined ? undefined : requireString(after, "after"),
-      ),
+        beneath,
+      );
+      await publish();
+      return created(page, beneath);
+    },
   );
 
   ipcMain.handle(
     PAGE_CHANNELS.addImage,
-    async (_event, id: unknown, bytes: unknown, mime: unknown) => {
+    async (_event, bytes: unknown, mime: unknown) => {
+      const ledger = await open.require();
       if (!(bytes instanceof Uint8Array)) {
         throw new TypeError("Expected bytes to be a Uint8Array");
       }
-      const project = await requireProject(id);
       // No event: the image is in the notes once a block's text links it, and
       // that is an ordinary edit.
       return saveImage(
-        logDirectory(project.path),
-        await deviceOf(project),
+        logDirectory(ledger.path),
+        await deviceOf(ledger),
         bytes,
         requireString(mime, "mime"),
       );
@@ -141,22 +222,26 @@ export function registerPageIpc(): void {
   );
 
   /**
-   * `pbnotes-image://<project id>/<name>`: the image a note links as
-   * `images/<name>`. The URL is built from note text, so nothing in it is
-   * trusted — the project has to be one we track, and the name is checked by
-   * `findImage` before it is anywhere near a path.
+   * `pbnotes-image://images/<name>`: the image a note links as
+   * `images/<name>`, out of the ledger that is open. The URL is built from
+   * note text, so the name is checked by `findImage` before it is anywhere
+   * near a path. The same name is the same bytes in any ledger — it is their
+   * hash — so a URL that outlives a change of ledger cannot show the wrong
+   * picture.
    *
-   * `getProject`, not `requireProject`: this only reads. `findImage` lists
+   * `peek`, not `require`: this only reads. `findImage` lists
    * directories and creates none, so an unmounted drive is a 404, not a path
    * invented on the local disk.
    */
   protocol.handle(IMAGE_SCHEME, async (request) => {
-    const url = new URL(request.url);
-    const project = getProject(url.hostname);
+    const ledger = open.peek();
     const file =
-      project &&
+      ledger &&
       // Not decoded: a name that needed escaping is not one `findImage` takes.
-      (await findImage(logDirectory(project.path), url.pathname.slice(1)));
+      (await findImage(
+        logDirectory(ledger.path),
+        new URL(request.url).pathname.slice(1),
+      ));
     return file
       ? net.fetch(pathToFileURL(file).toString())
       : new Response(null, { status: 404 });
@@ -164,32 +249,24 @@ export function registerPageIpc(): void {
 
   // No title on any of these four. The block id is the whole address, so
   // there is nothing to check a title against and nothing to write one into.
-  ipcMain.handle(
-    PAGE_CHANNELS.editBlock,
-    async (_event, id: unknown, blockId: unknown, text: unknown) =>
-      editBlock(
-        await requireProject(id),
-        requireString(blockId, "blockId"),
-        requireString(text, "text"),
-      ),
+  writes(PAGE_CHANNELS.editBlock, (ledger, blockId, text) =>
+    editBlock(
+      ledger,
+      requireString(blockId, "blockId"),
+      requireString(text, "text"),
+    ),
   );
 
-  ipcMain.handle(
-    PAGE_CHANNELS.deleteBlock,
-    async (_event, id: unknown, blockId: unknown) =>
-      deleteBlock(await requireProject(id), requireString(blockId, "blockId")),
+  writes(PAGE_CHANNELS.deleteBlock, (ledger, blockId) =>
+    deleteBlock(ledger, requireString(blockId, "blockId")),
   );
 
-  ipcMain.handle(
-    PAGE_CHANNELS.indentBlock,
-    async (_event, id: unknown, blockId: unknown) =>
-      indentBlock(await requireProject(id), requireString(blockId, "blockId")),
+  writes(PAGE_CHANNELS.indentBlock, (ledger, blockId) =>
+    indentBlock(ledger, requireString(blockId, "blockId")),
   );
 
-  ipcMain.handle(
-    PAGE_CHANNELS.outdentBlock,
-    async (_event, id: unknown, blockId: unknown) =>
-      outdentBlock(await requireProject(id), requireString(blockId, "blockId")),
+  writes(PAGE_CHANNELS.outdentBlock, (ledger, blockId) =>
+    outdentBlock(ledger, requireString(blockId, "blockId")),
   );
 
   // Native rather than drawn: placement at the screen edge, keyboard and
