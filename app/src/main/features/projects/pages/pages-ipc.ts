@@ -139,7 +139,7 @@ function publish(): Promise<void> {
  * outside, so pages never subscribes to the ledger itself. Only the open one
  * is on screen.
  */
-export function pagesArrived(ledgerId: string): void {
+export function refreshPages(ledgerId: string): void {
   if (open.peek()?.id === ledgerId) void publish();
 }
 
