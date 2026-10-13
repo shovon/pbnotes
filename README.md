@@ -115,7 +115,7 @@ Not features: what every feature stands on.
 | `app/src/shared/pages.ts` | The pages contract. A page is a title; a journal day is the page titled with its local `YYYY-MM-DD` |
 | `app/src/shared/projects.ts` | Types and channel names shared by all three processes — keep it free of `node:` imports |
 | `app/src/shared/wikilink/wikilink.ts` | The remark plugin that makes `[[Mira]]`, `#Mira` and `#[[Mira]]` links. Shared because main reads a block with the same parser to find what it links to |
-| `app/src/preload/index.ts` | Exposes `window.pbnotes.projects` and `window.pbnotes.pages` across the context bridge |
+| `app/src/preload/index.ts` | Exposes `window.pbnotes.projects` and `window.pbnotes.pagesFor` across the context bridge |
 | `app/src/renderer/App/App.tsx` | Owns the project data and switches between the two views |
 | `app/src/renderer/ProjectPicker/ProjectPicker.tsx` | The project list UI |
 | `app/src/renderer/project/ProjectView.tsx` | One project: the journal, or the one page a link led to |

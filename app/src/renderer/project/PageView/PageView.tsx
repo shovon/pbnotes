@@ -1,12 +1,9 @@
 import { Fragment, useState } from 'react';
-import type { Project } from '../../../shared/projects';
 import { lastLeaf, locate } from '../../../shared/pages';
-import type { Block as BlockType, Page } from '../../../shared/pages';
+import type { Block as BlockType, Page, PagesApi } from '../../../shared/pages';
 import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
-
-const { pages } = window.pbnotes;
 
 /**
  * Where an unwritten block is waiting to be typed. `after` is the block it
@@ -33,7 +30,7 @@ export function created(page: Page, after?: string): string | undefined {
 }
 
 type Props = {
-  project: Project;
+  pages: PagesApi;
   /** The page as the project view holds it: as read, or as the last write
       to it handed it back. */
   page: Page;
@@ -77,7 +74,7 @@ type Props = {
  * named page, and a page the same component as a cut of one.
  */
 export default function PageView({
-  project,
+  pages,
   page,
   onPage,
   references,
@@ -113,7 +110,7 @@ export default function PageView({
     setEditingId(null);
     if (text === block.text) return;
     act(async () => {
-      onPage(await pages.editBlock(project.id, block.id, text));
+      onPage(await pages.editBlock(block.id, text));
     });
   };
 
@@ -171,7 +168,7 @@ export default function PageView({
     // before the delete lands and leaves the view rooted on nothing.
     if (block.id === root?.id) onZoom?.(found?.parent?.id);
     act(async () => {
-      onPage(await pages.deleteBlock(project.id, block.id));
+      onPage(await pages.deleteBlock(block.id));
     });
   };
 
@@ -216,9 +213,9 @@ export default function PageView({
       // Tab is not a commit, but the box has to close to move and the text in
       // it would go with it. Unchanged text appends nothing, as ever.
       if (text !== block.text) {
-        await pages.editBlock(project.id, block.id, text);
+        await pages.editBlock(block.id, text);
       }
-      onPage(await move(project.id, block.id));
+      onPage(await move(block.id));
       setEditingId(block.id);
     });
   };
@@ -277,9 +274,9 @@ export default function PageView({
     // ever typed into is a click that landed elsewhere, and writes nothing.
     if (!text && then === 'stop') return;
     act(async () => {
-      let next = await pages.addBlock(project.id, title, text, after);
+      let next = await pages.addBlock(title, text, after);
       const id = created(next, after);
-      if (first && id) next = await pages.indentBlock(project.id, id);
+      if (first && id) next = await pages.indentBlock(id);
       onPage(next);
       if (then === 'again') setWriting({ after: id });
       // Out of the top level of a zoom is out of the view: the box reopens
@@ -293,7 +290,7 @@ export default function PageView({
         // top-level one coming out — comes back unchanged, and the box simply
         // reopens where it was.
         const move = then === 'indent' ? pages.indentBlock : pages.outdentBlock;
-        onPage(await move(project.id, id));
+        onPage(await move(id));
         setEditingId(id);
       }
     });
@@ -495,7 +492,7 @@ export default function PageView({
           click-to-write, and these are other pages' blocks. */}
       {references && (
         <LinkedReferences
-          project={project}
+          pages={pages}
           references={references}
           act={act}
           onPage={onPage}

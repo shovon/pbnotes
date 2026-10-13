@@ -1,16 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import type { Block, Page } from '../../../../shared/pages';
-import type { Project } from '../../../../shared/projects';
+import type { Block, Page, PagesApi } from '../../../../shared/pages';
 import LinkedReferences from './LinkedReferences';
 
-const project: Project = {
-  id: 'a',
-  name: 'pbnotes',
-  path: '/Users/sal/projects/pbnotes',
-  addedAt: '2026-01-01T00:00:00.000Z',
-  lastOpenedAt: null,
-  pinned: false,
-};
+/** Every call resolves `undefined`, like the preview's stub bridge. */
+const pages = new Proxy({}, { get: () => async (): Promise<undefined> => undefined }) as PagesApi;
 
 const block = (id: string, text: string, children: Block[] = []): Block => ({
   id,
@@ -21,12 +14,12 @@ const block = (id: string, text: string, children: Block[] = []): Block => ({
 const page = (title: string, blocks: Block[]): Page => ({ title, blocks });
 
 /**
- * Writes resolve `undefined` through the preview's stub bridge, so these
+ * Writes resolve `undefined` through the stub above, so these
  * stories are for reading: the count, the cuts, and their headings.
  */
 const meta = {
   component: LinkedReferences,
-  args: { project, act: () => undefined, onPage: () => undefined },
+  args: { pages, act: () => undefined, onPage: () => undefined },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: '36rem' }}>

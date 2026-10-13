@@ -5,10 +5,8 @@ import { locate } from '../../shared/pages';
 import type { Page } from '../../shared/pages';
 import { today } from '../ui';
 import type { Act } from '../ui';
-import { ImageProject, Previews } from './Block/Block';
+import { ImageSrc, Previews } from './Block/Block';
 import PageView, { created } from './PageView/PageView';
-
-const { pages } = window.pbnotes;
 
 type Props = {
   project: Project;
@@ -51,6 +49,9 @@ const images = (data: DataTransfer): File[] =>
   [...data.files].filter((file) => file.type.startsWith('image/'));
 
 export default function ProjectView({ project, act: outer }: Props) {
+  // The one line below `App` that knows there is a project. Once per mount:
+  // the view is remounted per project.
+  const [pages] = useState(() => window.pbnotes.pagesFor(project.id));
   // ponytail: read once per render, so a window left open across midnight
   // keeps yesterday at the top until something re-renders it. Add a timer to
   // the next local midnight if that ever bites.
@@ -199,7 +200,7 @@ export default function ProjectView({ project, act: outer }: Props) {
    */
   const goToBlock = (id: string) =>
     outer(async () => {
-      const found = await pages.locate(project.id, id);
+      const found = await pages.locate(id);
       if (!found) throw new Error('That block no longer exists.');
       go({ page: found.page });
       setTarget(id);
@@ -212,7 +213,7 @@ export default function ProjectView({ project, act: outer }: Props) {
    */
   const zoomTo = (id: string) =>
     outer(async () => {
-      const found = await pages.locate(project.id, id);
+      const found = await pages.locate(id);
       if (!found) throw new Error('That block no longer exists.');
       go({ page: found.page, block: id });
     });
@@ -247,15 +248,13 @@ export default function ProjectView({ project, act: outer }: Props) {
    * Nothing local caused it, so nothing local would have read it back.
    */
   useEffect(() => {
-    const off = pages.onChanged((id) => {
-      if (id === project.id) setArrived((seen) => seen + 1);
-    });
+    const off = pages.onChanged(() => setArrived((seen) => seen + 1));
     // A stubbed bridge — Storybook's — answers with something that is not an
     // unsubscribe, and a cleanup that is not a function throws.
     return () => {
       if (typeof off === 'function') off();
     };
-  }, [project.id]);
+  }, [pages]);
 
   /**
    * To the top on navigation only. A day rolling over mid-session, or another
@@ -265,14 +264,14 @@ export default function ProjectView({ project, act: outer }: Props) {
    */
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [project.id, title, zoom]);
+  }, [title, zoom]);
 
   useEffect(() => {
     let current = true;
     const read =
       title === null
-        ? pages.openAll(project.id)
-        : pages.open(project.id, title).then((page) => [page]);
+        ? pages.openAll()
+        : pages.open(title).then((page) => [page]);
     // A rejected read must not strand the view on "Loading…". The only title
     // main refuses is one the link plugin never produces, so there is nothing
     // to tell the user beyond an empty page.
@@ -289,7 +288,7 @@ export default function ProjectView({ project, act: outer }: Props) {
     return () => {
       current = false;
     };
-  }, [project.id, date, title, arrived]);
+  }, [pages, date, title, arrived]);
 
   /**
    * The zoomed block is not on its page: another device deleted it, or back
@@ -341,7 +340,7 @@ export default function ProjectView({ project, act: outer }: Props) {
     void Promise.all(
       shown.map(async (page): Promise<[string, Page[]]> => [
         page.title,
-        await pages.references(project.id, page.title),
+        await pages.references(page.title),
       ]),
     )
       .then((entries) => {
@@ -357,7 +356,7 @@ export default function ProjectView({ project, act: outer }: Props) {
     return () => {
       current = false;
     };
-  }, [project.id, stack, written]);
+  }, [pages, stack, written]);
 
   /**
    * What every `((id))` shows, for the whole project in one read: a ref
@@ -370,7 +369,7 @@ export default function ProjectView({ project, act: outer }: Props) {
   useEffect(() => {
     let current = true;
     void pages
-      .previews(project.id)
+      .previews()
       .then((entries) => {
         if (current) setPreviews(new Map(entries));
       })
@@ -378,7 +377,7 @@ export default function ProjectView({ project, act: outer }: Props) {
     return () => {
       current = false;
     };
-  }, [project.id, written, arrived]);
+  }, [pages, written, arrived]);
 
   /**
    * Every wikilink in every block lands here, in the capture phase, before
@@ -443,7 +442,6 @@ export default function ProjectView({ project, act: outer }: Props) {
     act(async () => {
       for (const file of files) {
         const link = await pages.addImage(
-          project.id,
           new Uint8Array(await file.arrayBuffer()),
           file.type,
         );
@@ -456,11 +454,11 @@ export default function ProjectView({ project, act: outer }: Props) {
           zoom && to === title && page ? locate(page.blocks, zoom) : undefined;
         const root = found?.siblings[found.at];
         const after = root ? (root.children.at(-1)?.id ?? root.id) : undefined;
-        page = await pages.addBlock(project.id, to, text, after);
+        page = await pages.addBlock(to, text, after);
         // The first under a root with no children: written beside it, then
         // filed under it, like the box in `PageView`.
         const id = root?.children.length === 0 && created(page, after);
-        if (id) page = await pages.indentBlock(project.id, id);
+        if (id) page = await pages.indentBlock(id);
         onPage(page);
       }
     });
@@ -509,7 +507,7 @@ export default function ProjectView({ project, act: outer }: Props) {
       ?.getAttribute('data-block-ref');
     if (!ref) return;
     event.preventDefault();
-    void window.pbnotes.pages.blockMenu(ref);
+    void pages.blockMenu(ref);
   };
 
   return (
@@ -544,7 +542,7 @@ export default function ProjectView({ project, act: outer }: Props) {
           titlebar,
         )}
 
-      <ImageProject value={project.id}>
+      <ImageSrc value={pages.imageSrc}>
         <Previews value={previews}>
           {shown === null ? (
             <p className="mt-1 text-sm text-muted">Loading…</p>
@@ -556,7 +554,7 @@ export default function ProjectView({ project, act: outer }: Props) {
               // everything the page shows, for a drop to read; it has no box.
               <div key={page.title} data-page={page.title} className="contents">
                 <PageView
-                  project={project}
+                  pages={pages}
                   page={latest.get(page.title) ?? page}
                   onPage={onPage}
                   // Not under a zoom: what links to one block is #2's.
@@ -569,7 +567,7 @@ export default function ProjectView({ project, act: outer }: Props) {
             ))
           )}
         </Previews>
-      </ImageProject>
+      </ImageSrc>
     </div>
   );
 }

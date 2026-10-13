@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
-import { IMAGE_SCHEME } from '../../../shared/pages';
 import { remarkPlugins } from '../../../shared/wikilink/wikilink';
 
 /**
@@ -30,22 +29,22 @@ export const Previews = createContext<ReadonlyMap<string, string | null>>(
 );
 
 /**
- * The id of the project whose images a block shows. A context for the reason
- * `Previews` is one: the view that knows is several components up.
+ * `pages.imageSrc`: where an image a block links loads from. A context for
+ * the reason `Previews` is one: the view that knows is several components up.
  */
-export const ImageProject = createContext('');
+export const ImageSrc = createContext<((name: string) => string) | null>(null);
 
 /**
  * `![](images/<name>)` is a file in the project's folder, which the page
- * cannot reach by that path — main serves it, by project and name. Any other
+ * cannot reach by that path — main serves it, by name. Any other
  * source is left as written: an image on the web is an image on the web.
  */
 function Image({ src, alt, title }: { src?: string; alt?: string; title?: string }) {
-  const project = useContext(ImageProject);
+  const imageSrc = useContext(ImageSrc);
   const name = /^images\/([^/]+)$/.exec(src ?? '')?.[1];
   return (
     <img
-      src={name && project ? `${IMAGE_SCHEME}://${project}/${name}` : src}
+      src={name && imageSrc ? imageSrc(name) : src}
       alt={alt}
       title={title}
     />

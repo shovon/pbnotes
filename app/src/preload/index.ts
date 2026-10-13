@@ -4,7 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import { PROJECT_CHANNELS } from '../shared/projects';
 import type { ProjectsApi } from '../shared/projects';
-import { PAGE_CHANNELS } from '../shared/pages';
+import { IMAGE_SCHEME, PAGE_CHANNELS } from '../shared/pages';
 import type { PagesApi } from '../shared/pages';
 
 const projects: ProjectsApi = {
@@ -21,42 +21,47 @@ const projects: ProjectsApi = {
   reveal: (id) => ipcRenderer.invoke(PROJECT_CHANNELS.reveal, id),
 };
 
-const pages: PagesApi = {
-  open: (projectId, title) =>
+/**
+ * The wire carries a project id on every call; this is the one place on the
+ * renderer's side that puts it there.
+ */
+const pagesFor = (projectId: string): PagesApi => ({
+  open: (title) =>
     ipcRenderer.invoke(PAGE_CHANNELS.open, projectId, title),
-  openAll: (projectId) => ipcRenderer.invoke(PAGE_CHANNELS.openAll, projectId),
-  references: (projectId, title) =>
+  openAll: () => ipcRenderer.invoke(PAGE_CHANNELS.openAll, projectId),
+  references: (title) =>
     ipcRenderer.invoke(PAGE_CHANNELS.references, projectId, title),
-  locate: (projectId, blockId) =>
+  locate: (blockId) =>
     ipcRenderer.invoke(PAGE_CHANNELS.locate, projectId, blockId),
-  previews: (projectId) =>
+  previews: () =>
     ipcRenderer.invoke(PAGE_CHANNELS.previews, projectId),
-  status: (projectId) => ipcRenderer.invoke(PAGE_CHANNELS.status, projectId),
+  status: () => ipcRenderer.invoke(PAGE_CHANNELS.status, projectId),
   onChanged: (listener) => {
     // Wrapped rather than handed to `ipcRenderer.on` directly: the first
     // argument of an IPC event is the event itself, which carries `sender`,
     // and the whole point of the bridge is that the renderer never gets that.
-    const forward = (_event: IpcRendererEvent, projectId: unknown): void => {
-      if (typeof projectId === 'string') listener(projectId);
+    const forward = (_event: IpcRendererEvent, id: unknown): void => {
+      if (id === projectId) listener();
     };
     ipcRenderer.on(PAGE_CHANNELS.changed, forward);
     return () => ipcRenderer.off(PAGE_CHANNELS.changed, forward);
   },
-  addBlock: (projectId, title, text, after) =>
+  addBlock: (title, text, after) =>
     ipcRenderer.invoke(PAGE_CHANNELS.addBlock, projectId, title, text, after),
-  addImage: (projectId, bytes, mime) =>
+  addImage: (bytes, mime) =>
     ipcRenderer.invoke(PAGE_CHANNELS.addImage, projectId, bytes, mime),
-  editBlock: (projectId, blockId, text) =>
+  imageSrc: (name) => `${IMAGE_SCHEME}://${projectId}/${name}`,
+  editBlock: (blockId, text) =>
     ipcRenderer.invoke(PAGE_CHANNELS.editBlock, projectId, blockId, text),
-  deleteBlock: (projectId, blockId) =>
+  deleteBlock: (blockId) =>
     ipcRenderer.invoke(PAGE_CHANNELS.deleteBlock, projectId, blockId),
-  indentBlock: (projectId, blockId) =>
+  indentBlock: (blockId) =>
     ipcRenderer.invoke(PAGE_CHANNELS.indentBlock, projectId, blockId),
-  outdentBlock: (projectId, blockId) =>
+  outdentBlock: (blockId) =>
     ipcRenderer.invoke(PAGE_CHANNELS.outdentBlock, projectId, blockId),
   blockMenu: (blockId) => ipcRenderer.invoke(PAGE_CHANNELS.blockMenu, blockId),
-};
+});
 
 // Only this explicit surface crosses the context bridge; the renderer never
 // sees `ipcRenderer` itself.
-contextBridge.exposeInMainWorld('pbnotes', { projects, pages });
+contextBridge.exposeInMainWorld('pbnotes', { projects, pagesFor });

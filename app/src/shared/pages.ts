@@ -102,10 +102,14 @@ export const PAGE_CHANNELS = {
   changed: 'pages:changed',
 } as const;
 
-/** The surface exposed on `window.pbnotes.pages` by the preload bridge. */
+/**
+ * One project's pages, as `window.pbnotes.pagesFor` hands them over. Which
+ * project is settled there, once, and nothing here names it: a view that
+ * holds one of these can only reach the project it was made for.
+ */
 export type PagesApi = {
   /** The page with that title, empty if nothing has been written to it yet. */
-  open(projectId: string, title: string): Promise<Page>;
+  open(title: string): Promise<Page>;
   /**
    * The journal: every day that has blocks on it, newest first — the default
    * view of a project, which is all of its days stacked rather than one of
@@ -116,7 +120,7 @@ export type PagesApi = {
    * something has been written there: main does not know which day today is,
    * so the view puts it at the top itself.
    */
-  openAll(projectId: string): Promise<Page[]>;
+  openAll(): Promise<Page[]>;
   /**
    * What links here: every page with a block that names `title` — by any of
    * `[[Mira]]`, `#Mira` or `#[[Mira]]` — cut down to the blocks that do.
@@ -127,13 +131,13 @@ export type PagesApi = {
    * Journal days first, newest first, then the named pages in alphabetical
    * order: the same order the journal reads in, then the rest.
    */
-  references(projectId: string, title: string): Promise<Page[]>;
+  references(title: string): Promise<Page[]>;
   /**
    * The page a block is on, found by its id alone — an id is unique across
    * the project. Undefined for an id the project does not have, including
    * one whose block was deleted: that is an answer, not an error.
    */
-  locate(projectId: string, blockId: string): Promise<{ page: string } | undefined>;
+  locate(blockId: string): Promise<{ page: string } | undefined>;
   /**
    * What each `((id))` in the project shows: a pair per block anything
    * refers to, the id and the Markdown of that block's first paragraph.
@@ -143,7 +147,7 @@ export type PagesApi = {
    * The whole project's in one answer, since a ref on this page points at
    * any other. Read again after a write or an arrival, like `references`.
    */
-  previews(projectId: string): Promise<[string, string | null][]>;
+  previews(): Promise<[string, string | null][]>;
   /**
    * How much of the project's log folder could be read, and what the fold
    * could not use.
@@ -154,9 +158,9 @@ export type PagesApi = {
    * They must be visible all the same: skipping something without a word is
    * how a single-writer log loses a machine's notes silently.
    */
-  status(projectId: string): Promise<ViewStatus>;
+  status(): Promise<ViewStatus>;
   /**
-   * Calls `listener` with a project id whenever that project's fold changed
+   * Calls `listener` whenever the project's fold changed
    * because something arrived in its folder — another device's segment
    * landing under a sync tool, most of the time. Returns an unsubscribe.
    *
@@ -168,29 +172,29 @@ export type PagesApi = {
    * page back to whoever asked for them, and re-reading on top of that would
    * throw away the page a write just returned.
    *
-   * The id is passed rather than the pages themselves: what a view needs out
+   * Nothing is passed, least of all the pages themselves: what a view needs out
    * of a fold is its own question — one page, the journal, or what links
    * here — and main answers each of those already. This says only that the
    * answers changed.
    */
-  onChanged(listener: (projectId: string) => void): () => void;
+  onChanged(listener: () => void): () => void;
   /**
    * Appends a `block.created` event and returns the page it folded into.
    * `after` puts the new block directly beneath that one; without it the block
    * goes at the end of the page.
    */
-  addBlock(
-    projectId: string,
-    title: string,
-    text: string,
-    after?: string,
-  ): Promise<Page>;
+  addBlock(title: string, text: string, after?: string): Promise<Page>;
   /**
    * Stores an image in the project's folder and returns the link a block
    * holds it by, `images/<sha256>.png`. Appends nothing: the caller puts the
    * link in a block, and that write is what the log records.
    */
-  addImage(projectId: string, bytes: Uint8Array, mime: string): Promise<string>;
+  addImage(bytes: Uint8Array, mime: string): Promise<string>;
+  /**
+   * Where an image stored by `addImage` loads from: the `<name>` of its
+   * `images/<name>` link, as a URL under `IMAGE_SCHEME`.
+   */
+  imageSrc(name: string): string;
   /**
    * Appends a `block.edited` event. The earlier text is not replaced on disk —
    * the log keeps both facts, and the fold shows the later one.
@@ -202,13 +206,13 @@ export type PagesApi = {
    * like a references cut, can write to any of them without tracking a title
    * per block.
    */
-  editBlock(projectId: string, blockId: string, text: string): Promise<Page>;
+  editBlock(blockId: string, text: string): Promise<Page>;
   /**
    * Appends a `block.deleted` event. The block leaves the fold; everything
    * ever written into it stays on disk, because the log records that the user
    * deleted it, not that it never existed.
    */
-  deleteBlock(projectId: string, blockId: string): Promise<Page>;
+  deleteBlock(blockId: string): Promise<Page>;
   /**
    * Appends a `block.indented` event: the block becomes the last child of the
    * sibling above it, bringing its own children along.
@@ -218,7 +222,7 @@ export type PagesApi = {
    * pressed a key and the outline did not change, which is not an error and
    * not a fact the log has any use for.
    */
-  indentBlock(projectId: string, blockId: string): Promise<Page>;
+  indentBlock(blockId: string): Promise<Page>;
   /**
    * Appends a `block.outdented` event: the block comes out a level and lands
    * directly beneath the block it used to be filed under.
@@ -231,7 +235,7 @@ export type PagesApi = {
    * A block already at the top level has nothing to come out of, and returns
    * the page untouched rather than throwing, like `indentBlock`.
    */
-  outdentBlock(projectId: string, blockId: string): Promise<Page>;
+  outdentBlock(blockId: string): Promise<Page>;
   /**
    * Pops the native menu for a block's dot at the pointer. Its one item puts
    * `((blockId))` on the clipboard. Resolves once the menu is shown, not when

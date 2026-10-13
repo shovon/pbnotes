@@ -1,5 +1,4 @@
-import type { Page } from '../../../../shared/pages';
-import type { Project } from '../../../../shared/projects';
+import type { Page, PagesApi } from '../../../../shared/pages';
 import type { Act } from '../../../ui';
 import PageView from '../PageView';
 
@@ -13,12 +12,12 @@ import PageView from '../PageView';
  * and an empty heading under each would be noise.
  */
 export default function LinkedReferences({
-  project,
+  pages,
   references,
   act,
   onPage,
 }: {
-  project: Project;
+  pages: PagesApi;
   references: Page[];
   act: Act;
   /** A write in a cut hands back the whole page it was cut from. */
@@ -36,7 +35,7 @@ export default function LinkedReferences({
       {references.map((page) => (
         <PageView
           key={page.title}
-          project={project}
+          pages={pages}
           page={page}
           onPage={onPage}
           act={act}
