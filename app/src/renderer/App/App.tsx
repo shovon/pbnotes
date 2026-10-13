@@ -27,7 +27,13 @@ export default function App() {
   );
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  /**
+   * Which project is open is main's to say, and this is its answer as last
+   * read. There is no address bar and nobody reloads the window, so there is
+   * no URL for a router to own; when there is an external `pbnotes://` link
+   * to honour, main is where it lands.
+   */
+  const [project, setProject] = useState<Project | null>(null);
 
   /**
    * The view renders from the database immediately; reachability is filled in
@@ -37,8 +43,11 @@ export default function App() {
    */
   const refresh = useCallback(async (): Promise<Project[]> => {
     try {
-      const next = await api.list();
+      // Together, so a rename shows through in the picker and the page at
+      // once, and a project removed from under the view takes it along.
+      const [next, current] = await Promise.all([api.list(), api.current()]);
       setProjects(next);
+      setProject(current);
       setLoading(false);
       setAvailability(
         next.length > 0 ? await api.availability(next.map((p) => p.id)) : {},
@@ -84,10 +93,7 @@ export default function App() {
   );
 
   const openProject = useCallback(
-    (id: string) => {
-      setOpenId(id);
-      act(() => api.touch(id));
-    },
+    (id: string) => act(() => api.open(id)),
     [act],
   );
 
@@ -123,25 +129,6 @@ export default function App() {
       }),
     [run, refresh, openProject],
   );
-
-  /**
-   * Which project is showing is ordinary state. The window has no address bar
-   * and nobody reloads it, so there is no URL for a router to own; when there
-   * is an external `pbnotes://` link to honour, this becomes the route.
-   *
-   * Held as an id resolved against the current list, not as a captured
-   * project: a rename then shows through, and a project removed from under the
-   * view falls through to whichever was open most recently — on the assumption
-   * that someone who was working in a project on Friday is still working in it
-   * on Monday. `last_opened_at` is the only record of that, so it doubles as
-   * the restored session; nothing separate is persisted.
-   */
-  const project =
-    projects.find((p) => p.id === openId) ??
-    [...projects].sort((a, b) =>
-      (b.lastOpenedAt ?? '').localeCompare(a.lastOpenedAt ?? ''),
-    )[0] ??
-    null;
 
   return (
     <>
@@ -186,11 +173,11 @@ export default function App() {
 
         {project ? (
           <ProjectView
-            // Remounted per project, so nothing survives the switch: the page,
-            // the open editor and the block id it is editing all belong to the
-            // project that was showing a moment ago.
+            // Remounted per project, so nothing survives the switch: the
+            // state, the open editor and the block id it is editing all
+            // belong to the project that was showing a moment ago. The key is
+            // all the view is told about which project that is.
             key={project.id}
-            project={project}
             availability={availability[project.id] ?? 'available'}
             act={act}
           />

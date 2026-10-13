@@ -1,7 +1,8 @@
 /**
  * The pages contract: types and channel names shared by main, preload and
- * renderer. Like `projects.ts`, this file is bundled into the renderer too, so
- * it stays free of `node:` imports.
+ * renderer, and the state main sends the renderer to draw. Like
+ * `projects.ts`, this file is bundled into the renderer too, so it stays free
+ * of `node:` imports.
  *
  * A page *is* its title. Its contents are whatever blocks carry that title —
  * there is no page record anywhere, so a page is never created: naming one,
@@ -81,16 +82,83 @@ export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 /**
  * The scheme an image in a note is loaded through. The page is served from a
  * dev server or a `file:` URL, neither of which can reach into a project
- * folder, so main answers `pbnotes-image://<project id>/<name>` itself.
+ * folder, so main answers `pbnotes-image://images/<name>` itself, out of the
+ * project that is open.
  */
 export const IMAGE_SCHEME = 'pbnotes-image';
 
+/**
+ * Today as `YYYY-MM-DD`, in the user's local time. Not `toISOString()`, which
+ * is UTC and hands the wrong page to anyone whose evening is already
+ * tomorrow in Greenwich — or whose morning is still yesterday.
+ *
+ * A function in `shared` for the reason `locate` is: main puts today at the
+ * top of the journal, and the renderer writes a dropped image there.
+ */
+export function today(now = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * The block `block.created` just wrote, found by where it must have landed:
+ * the fold splices it directly beneath `after` as its next sibling — wherever
+ * in the tree that is — or pushes it last.
+ *
+ * `locate`, not a scan of the top level: `after` is just as often a child,
+ * and a miss there does not read as a miss — it reads as index 0, which is
+ * the first block on the page.
+ */
+export function created(page: Page, after?: string): string | undefined {
+  if (!after) return page.blocks.at(-1)?.id;
+  const found = locate(page.blocks, after);
+  return found && found.siblings[found.at + 1]?.id;
+}
+
+/**
+ * A stop on the trail: a page, or one block of a page as the root of the
+ * view. Both are places you go back to, so they share the one history.
+ */
+export type Place = { page: string; block?: string };
+
+/**
+ * What main has in mind for the project that is open: where the view is, and
+ * everything that shows there. The renderer draws this and holds no copy of
+ * its own — a write, a step along the trail and another device's notes
+ * landing all reach the screen as the next one of these.
+ */
+export type PagesState = {
+  /**
+   * Where the view is, as the trail that got it there rather than one title:
+   * the journal is an empty trail, and every link followed is one more on the
+   * end. Back takes the last one off, so A → B → C comes back through B.
+   */
+  trail: Place[];
+  /**
+   * What is showing: the one page the trail ends on, or the journal — every
+   * day with something on it, newest first, and today whether or not it has.
+   * Each with what links to it, cut down to the blocks that do; none under a
+   * zoom, where what links to one block is not what links to its page.
+   */
+  showing: { page: Page; references: Page[] }[];
+  /**
+   * What each `((id))` in the project shows: the id and the Markdown of that
+   * block's first paragraph, or null for an id the project does not have.
+   * Pairs, not an object: an id is whatever was typed between the
+   * parentheses, and `((__proto__))` is a key an object does not hold.
+   */
+  previews: [string, string | null][];
+};
+
+
 export const PAGE_CHANNELS = {
-  open: 'pages:open',
-  openAll: 'pages:open-all',
-  references: 'pages:references',
+  show: 'pages:show',
+  changed: 'pages:changed',
+  go: 'pages:go',
+  back: 'pages:back',
+  rezoom: 'pages:rezoom',
   locate: 'pages:locate',
-  previews: 'pages:previews',
   addBlock: 'pages:add-block',
   addImage: 'pages:add-image',
   editBlock: 'pages:edit-block',
@@ -99,55 +167,51 @@ export const PAGE_CHANNELS = {
   outdentBlock: 'pages:outdent-block',
   blockMenu: 'pages:block-menu',
   status: 'pages:status',
-  changed: 'pages:changed',
 } as const;
 
 /**
- * One project's pages, as `window.pbnotes.pagesFor` hands them over. Which
- * project is settled there, once, and nothing here names it: a view that
- * holds one of these can only reach the project it was made for.
+ * The surface exposed on `window.pbnotes.pages` by the preload bridge. No
+ * call names a project: main holds which one is open, and everything here is
+ * about that one.
+ *
+ * Nothing but `locate` and `status` answers with content. A write or a step
+ * along the trail resolves once main has sent the state it led to, so by the
+ * time a caller carries on, `onChanged` has already heard it.
  */
 export type PagesApi = {
-  /** The page with that title, empty if nothing has been written to it yet. */
-  open(title: string): Promise<Page>;
   /**
-   * The journal: every day that has blocks on it, newest first — the default
-   * view of a project, which is all of its days stacked rather than one of
-   * them. Pages that links name are not days and are not in it; they are
-   * reached through `open`.
-   *
-   * Days that fold to nothing are not in it, and neither is today unless
-   * something has been written there: main does not know which day today is,
-   * so the view puts it at the top itself.
+   * Asks main to send what is showing, for a view that has just mounted and
+   * has heard nothing yet. It arrives through `onChanged` like every other
+   * state, so there is one way in and no second copy to keep in step.
+   * Rejects when the project cannot be reached.
    */
-  openAll(): Promise<Page[]>;
+  show(): Promise<void>;
   /**
-   * What links here: every page with a block that names `title` — by any of
-   * `[[Mira]]`, `#Mira` or `#[[Mira]]` — cut down to the blocks that do.
-   * Each of those comes with its own children, for the context they give,
-   * and a block filed under one is not listed again for a link of its own.
-   * The page's own blocks are not references to it.
-   *
-   * Journal days first, newest first, then the named pages in alphabetical
-   * order: the same order the journal reads in, then the rest.
+   * Calls `listener` with every state main sends: after a write from this
+   * window, after a step along the trail, and after another device's segment
+   * lands in the folder under a sync tool. Returns an unsubscribe.
    */
-  references(title: string): Promise<Page[]>;
+  onChanged(listener: (state: PagesState) => void): () => void;
+  /**
+   * Follows a link: `place` goes on the end of the trail. A link to where the
+   * view already is goes nowhere, and adds nothing.
+   */
+  go(place: Place): Promise<void>;
+  /** One step back along the trail; from the first page that is the journal. */
+  back(): Promise<void>;
+  /**
+   * The zoom moved rather than followed: the zoomed block is gone, and the
+   * view lands on `block` — what it was under — or on the whole page. In
+   * place of the last stop, not after it, so back does not return to a block
+   * that is not there.
+   */
+  rezoom(block?: string): Promise<void>;
   /**
    * The page a block is on, found by its id alone — an id is unique across
    * the project. Undefined for an id the project does not have, including
    * one whose block was deleted: that is an answer, not an error.
    */
   locate(blockId: string): Promise<{ page: string } | undefined>;
-  /**
-   * What each `((id))` in the project shows: a pair per block anything
-   * refers to, the id and the Markdown of that block's first paragraph.
-   * Empty for a block with no paragraph to show; null for an id the project
-   * does not have, which is a ref to a deleted block as often as a typo.
-   *
-   * The whole project's in one answer, since a ref on this page points at
-   * any other. Read again after a write or an arrival, like `references`.
-   */
-  previews(): Promise<[string, string | null][]>;
   /**
    * How much of the project's log folder could be read, and what the fold
    * could not use.
@@ -160,30 +224,12 @@ export type PagesApi = {
    */
   status(): Promise<ViewStatus>;
   /**
-   * Calls `listener` whenever the project's fold changed
-   * because something arrived in its folder — another device's segment
-   * landing under a sync tool, most of the time. Returns an unsubscribe.
-   *
-   * Push, unlike everything else here, because there is nothing for the view
-   * to poll on: it cannot know a second machine wrote something, and a folder
-   * that is read once at open is a folder whose other devices never show up.
-   *
-   * Not called for this window's own writes. Those already hand the folded
-   * page back to whoever asked for them, and re-reading on top of that would
-   * throw away the page a write just returned.
-   *
-   * Nothing is passed, least of all the pages themselves: what a view needs out
-   * of a fold is its own question — one page, the journal, or what links
-   * here — and main answers each of those already. This says only that the
-   * answers changed.
+   * Appends a `block.created` event and answers with the new block's id,
+   * which is what the caller needs to put a caret in it or a block beneath
+   * it. `after` puts the new block directly beneath that one; without it the
+   * block goes at the end of the page.
    */
-  onChanged(listener: () => void): () => void;
-  /**
-   * Appends a `block.created` event and returns the page it folded into.
-   * `after` puts the new block directly beneath that one; without it the block
-   * goes at the end of the page.
-   */
-  addBlock(title: string, text: string, after?: string): Promise<Page>;
+  addBlock(title: string, text: string, after?: string): Promise<string>;
   /**
    * Stores an image in the project's folder and returns the link a block
    * holds it by, `images/<sha256>.png`. Appends nothing: the caller puts the
@@ -191,38 +237,32 @@ export type PagesApi = {
    */
   addImage(bytes: Uint8Array, mime: string): Promise<string>;
   /**
-   * Where an image stored by `addImage` loads from: the `<name>` of its
-   * `images/<name>` link, as a URL under `IMAGE_SCHEME`.
-   */
-  imageSrc(name: string): string;
-  /**
    * Appends a `block.edited` event. The earlier text is not replaced on disk —
    * the log keeps both facts, and the fold shows the later one.
    *
    * No title, here or on the three below: a block id identifies a block across
    * the whole project, so the page is main's to look up rather than the
-   * caller's to remember. What comes back is the page the block turned out to
-   * be on — which is why a view showing blocks from several pages at once,
-   * like a references cut, can write to any of them without tracking a title
-   * per block.
+   * caller's to remember — which is why a view showing blocks from several
+   * pages at once, like a references cut, can write to any of them without
+   * tracking a title per block.
    */
-  editBlock(blockId: string, text: string): Promise<Page>;
+  editBlock(blockId: string, text: string): Promise<void>;
   /**
    * Appends a `block.deleted` event. The block leaves the fold; everything
    * ever written into it stays on disk, because the log records that the user
    * deleted it, not that it never existed.
    */
-  deleteBlock(blockId: string): Promise<Page>;
+  deleteBlock(blockId: string): Promise<void>;
   /**
    * Appends a `block.indented` event: the block becomes the last child of the
    * sibling above it, bringing its own children along.
    *
    * A block that is already first among its siblings has nothing to move
-   * under. That returns the page untouched rather than throwing — the user
+   * under. That resolves with nothing changed rather than throwing — the user
    * pressed a key and the outline did not change, which is not an error and
    * not a fact the log has any use for.
    */
-  indentBlock(blockId: string): Promise<Page>;
+  indentBlock(blockId: string): Promise<void>;
   /**
    * Appends a `block.outdented` event: the block comes out a level and lands
    * directly beneath the block it used to be filed under.
@@ -232,10 +272,10 @@ export type PagesApi = {
    * it did before — leaving them behind would put them above the block that
    * just moved, which is a reordering nobody asked for.
    *
-   * A block already at the top level has nothing to come out of, and returns
-   * the page untouched rather than throwing, like `indentBlock`.
+   * A block already at the top level has nothing to come out of, and resolves
+   * with nothing changed rather than throwing, like `indentBlock`.
    */
-  outdentBlock(blockId: string): Promise<Page>;
+  outdentBlock(blockId: string): Promise<void>;
   /**
    * Pops the native menu for a block's dot at the pointer. Its one item puts
    * `((blockId))` on the clipboard. Resolves once the menu is shown, not when

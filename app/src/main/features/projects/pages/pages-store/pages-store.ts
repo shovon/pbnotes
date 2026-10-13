@@ -1,26 +1,31 @@
 /**
- * Project content: what page events mean, read and written through the pages
- * fold of a project's ledger.
+ * Pages: what page events mean, read and written through the pages fold of
+ * whichever ledger a caller hands in. Nothing here knows whose ledger that is.
  *
  * No plumbing. Where the log lives, which device this is and which logs are
  * open belong to `ledger/project-ledger`; what a block *is* — the event schema
  * and the fold over it — is `blocks/blocks.ts`. What is left here is the
  * commands that author events and the queries over what they fold to.
  *
- * Deliberately free of `electron` imports: callers hand in the project, which
+ * Deliberately free of `electron` imports: callers hand in the ledger, which
  * keeps the store runnable under `node --test`.
  */
 import { randomUUID } from "node:crypto";
 import { defineFold } from "../../../../ledger/project-ledger/project-ledger.ts";
 import type {
-  ProjectRef,
+  LedgerRef,
   View,
 } from "../../../../ledger/project-ledger/project-ledger.ts";
 import { find, HANDLES, reduce } from "./blocks/blocks.ts";
 import { linking, read } from "../reading.ts";
 import type { PageEvent, Pages } from "./blocks/blocks.ts";
 import { DATE_PATTERN, locate } from "../../../../../shared/pages.ts";
-import type { Block, Page } from "../../../../../shared/pages.ts";
+import type {
+  Block,
+  Page,
+  PagesState,
+  Place,
+} from "../../../../../shared/pages.ts";
 import type { ViewStatus } from "../../../../../shared/log.ts";
 
 type PagesView = View<Pages, PageEvent["type"]>;
@@ -37,10 +42,10 @@ function pageOf(view: PagesView, title: string): Page {
 }
 
 export async function getPage(
-  project: ProjectRef,
+  ledger: LedgerRef,
   title: string,
 ): Promise<Page> {
-  return pageOf(await pagesOf(project), title);
+  return pageOf(await pagesOf(ledger), title);
 }
 
 /**
@@ -53,15 +58,15 @@ export async function getPage(
  * deleted is not a page the user wrote on any more, and a heading with
  * nothing under it reads like something went missing.
  *
- * Today is not added here. Which day that is depends on the user's timezone,
- * and main holds no opinion about that — the renderer puts today at the top
- * of the stack whether or not it is in this list.
+ * Today is not added here. Which day that is depends on the clock, and this
+ * is a reading of the log — `getState` is handed today and puts it at the top
+ * whether or not it is in this list.
  *
  * Sorted on the date string, which for `YYYY-MM-DD` is the same order as the
  * dates themselves. That is the reason for the format.
  */
-export async function getPages(project: ProjectRef): Promise<Page[]> {
-  const view = await pagesOf(project);
+export async function getPages(ledger: LedgerRef): Promise<Page[]> {
+  const view = await pagesOf(ledger);
   return Object.entries(view.state)
     .filter(([title, blocks]) => DATE_PATTERN.test(title) && blocks.length > 0)
     .sort(([a], [b]) => b.localeCompare(a))
@@ -79,14 +84,14 @@ export async function getPages(project: ProjectRef): Promise<Page[]> {
  * sorts between two dates.
  *
  * ponytail: one call per page shown, so the journal makes one per day. Fold
- * this into a single reverse index per call if a project ever has enough
+ * this into a single reverse index per call if a ledger ever has enough
  * days for that to show.
  */
 export async function getReferences(
-  project: ProjectRef,
+  ledger: LedgerRef,
   title: string,
 ): Promise<Page[]> {
-  const view = await pagesOf(project);
+  const view = await pagesOf(ledger);
   return Object.entries(view.state)
     .filter(([page]) => page !== title)
     .map(([page, blocks]) => ({ title: page, blocks: linking(blocks, title) }))
@@ -101,11 +106,11 @@ export async function getReferences(
 }
 
 /**
- * Every block the project refers to with `((id))`, and what a ref to it
- * shows: the target's first paragraph, or null for an id the project does
+ * Every block the pages refer to with `((id))`, and what a ref to it
+ * shows: the target's first paragraph, or null for an id the ledger does
  * not have — deleted, or never there.
  *
- * For the whole project rather than per page, and resolved here rather than
+ * For the whole ledger rather than per page, and resolved here rather than
  * in the view: a ref points anywhere, the view holds only the pages on
  * screen, and main has all of them. The answer is as big as the number of
  * blocks anyone has referred to, which is small.
@@ -114,9 +119,9 @@ export async function getReferences(
  * and `((__proto__))` is a key an object does not hold.
  */
 export async function getPreviews(
-  project: ProjectRef,
+  ledger: LedgerRef,
 ): Promise<[string, string | null][]> {
-  const { state } = await pagesOf(project);
+  const { state } = await pagesOf(ledger);
   const ids = new Set<string>();
   const collect = (blocks: Block[]): void => {
     for (const block of blocks) {
@@ -131,23 +136,69 @@ export async function getPreviews(
   });
 }
 
-/** The page a block is on, or undefined for a block the project lacks. */
+/**
+ * Everything that shows at the end of `trail`: the one page it ends on, or
+ * the journal, each with what links to it, and what every ref quotes.
+ *
+ * Today is in the journal whether or not it has been written on: it is the
+ * day the user is about to type in. Handed in, because which day that is
+ * belongs to the clock and not to the log. Sorted again only when it is
+ * added, and only because a day dated later than today can exist — another
+ * machine with a fast clock, or a folder that travelled backwards across a
+ * date line.
+ *
+ * An empty today is asked what links to it too: other days can name it. Not
+ * under a zoom, where what links to the page is not about the block showing.
+ *
+ * ponytail: the whole history, on every change. Send only the days in view
+ * when someone has enough years in one ledger for that to show.
+ */
+export async function getState(
+  ledger: LedgerRef,
+  trail: Place[],
+  today: string,
+): Promise<PagesState> {
+  const at = trail.at(-1);
+  let pages: Page[];
+  if (at) {
+    pages = [await getPage(ledger, at.page)];
+  } else {
+    pages = await getPages(ledger);
+    if (!pages.some((page) => page.title === today)) {
+      pages = [{ title: today, blocks: [] }, ...pages].sort((a, b) =>
+        b.title.localeCompare(a.title),
+      );
+    }
+  }
+  return {
+    trail,
+    showing: await Promise.all(
+      pages.map(async (page) => ({
+        page,
+        references: at?.block ? [] : await getReferences(ledger, page.title),
+      })),
+    ),
+    previews: await getPreviews(ledger),
+  };
+}
+
+/** The page a block is on, or undefined for a block the ledger lacks. */
 export async function locateBlock(
-  project: ProjectRef,
+  ledger: LedgerRef,
   blockId: string,
 ): Promise<{ page: string } | undefined> {
-  const found = find((await pagesOf(project)).state, blockId);
+  const found = find((await pagesOf(ledger)).state, blockId);
   return found && { page: found.page };
 }
 
 /**
- * How much of the folder this project's log could be read, and what the fold
+ * How much of the folder this ledger is kept in could be read, and what the fold
  * could not use. Nothing here is an error to clear — a device that is still
  * syncing is a normal state that usually heals itself — but none of it may be
  * skipped without the user being able to find out.
  */
-export async function getLogStatus(project: ProjectRef): Promise<ViewStatus> {
-  return (await pagesOf(project)).status;
+export async function getLogStatus(ledger: LedgerRef): Promise<ViewStatus> {
+  return (await pagesOf(ledger)).status;
 }
 
 /**
@@ -175,12 +226,12 @@ function append<T extends PageEvent["type"]>(
  * everything forever should not be collecting events that mean nothing.
  */
 export async function addBlock(
-  project: ProjectRef,
+  ledger: LedgerRef,
   title: string,
   text: string,
   after?: string,
 ): Promise<Page> {
-  const view = await pagesOf(project);
+  const view = await pagesOf(ledger);
   const blocks = view.state[title] ?? [];
   if (after && !locate(blocks, after)) {
     throw new Error("No such block");
@@ -201,7 +252,7 @@ export async function addBlock(
 
 /**
  * Rewrites a block's text by appending the fact that it changed. Refuses a
- * block the project does not have: the fold would ignore the event, and a log
+ * block the ledger does not have: the fold would ignore the event, and a log
  * that keeps everything forever should not be collecting events that mean
  * nothing.
  *
@@ -212,11 +263,11 @@ export async function addBlock(
  * write.
  */
 export async function editBlock(
-  project: ProjectRef,
+  ledger: LedgerRef,
   blockId: string,
   text: string,
 ): Promise<Page> {
-  const view = await pagesOf(project);
+  const view = await pagesOf(ledger);
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
 
@@ -234,10 +285,10 @@ export async function editBlock(
  * "this was never written".
  */
 export async function deleteBlock(
-  project: ProjectRef,
+  ledger: LedgerRef,
   blockId: string,
 ): Promise<Page> {
-  const view = await pagesOf(project);
+  const view = await pagesOf(ledger);
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
 
@@ -260,10 +311,10 @@ export async function deleteBlock(
  * record of a keystroke that did nothing.
  */
 export async function indentBlock(
-  project: ProjectRef,
+  ledger: LedgerRef,
   blockId: string,
 ): Promise<Page> {
-  const view = await pagesOf(project);
+  const view = await pagesOf(ledger);
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
   if (found.at === 0) return pageOf(view, found.page);
@@ -287,10 +338,10 @@ export async function indentBlock(
  * above it.
  */
 export async function outdentBlock(
-  project: ProjectRef,
+  ledger: LedgerRef,
   blockId: string,
 ): Promise<Page> {
-  const view = await pagesOf(project);
+  const view = await pagesOf(ledger);
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
   if (!found.parent) return pageOf(view, found.page);

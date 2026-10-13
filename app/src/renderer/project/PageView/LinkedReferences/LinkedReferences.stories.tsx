@@ -19,7 +19,7 @@ const page = (title: string, blocks: Block[]): Page => ({ title, blocks });
  */
 const meta = {
   component: LinkedReferences,
-  args: { pages, act: () => undefined, onPage: () => undefined },
+  args: { pages, act: () => undefined },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: '36rem' }}>

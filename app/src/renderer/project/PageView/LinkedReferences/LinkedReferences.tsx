@@ -15,13 +15,10 @@ export default function LinkedReferences({
   pages,
   references,
   act,
-  onPage,
 }: {
   pages: PagesApi;
   references: Page[];
   act: Act;
-  /** A write in a cut hands back the whole page it was cut from. */
-  onPage: (page: Page) => void;
 }) {
   if (references.length === 0) return null;
   const count = references.reduce((n, page) => n + page.blocks.length, 0);
@@ -37,7 +34,6 @@ export default function LinkedReferences({
           key={page.title}
           pages={pages}
           page={page}
-          onPage={onPage}
           act={act}
           reference
         />

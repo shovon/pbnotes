@@ -23,22 +23,52 @@ import { onArrival } from '../../ledger/project-ledger/project-ledger';
 import { pagesArrived } from './pages/pages-ipc';
 
 /**
- * The one door into a project for anything that opens its ledger. The log
- * lives in the project's directory, so that needs both a project we actually
- * track and a directory that is actually there.
+ * Which project is open is main's to hold. The renderer says so once, on
+ * `projects:open`, and after that no call names a project: `index.ts` hands
+ * what is below to `pages` as the ledger that is open, and pages never learn
+ * what it is a ledger of.
+ *
+ * Only the session's choice is kept here. Null falls through to whichever was
+ * opened most recently — on the assumption that someone who was working in a
+ * project on Friday is still working in it on Monday — and so does a project
+ * removed from under the view. `last_opened_at` is the only record of that,
+ * so it doubles as the restored session; nothing separate is persisted.
+ *
+ * ponytail: one for the whole process, which is right for the one window the
+ * app creates. Key it by `webContents` if a second window ever shows another
+ * project.
+ */
+let openId: string | null = null;
+
+export function currentProject(): Project | null {
+  return (
+    (openId && getProject(openId)) ||
+    listProjects().sort((a, b) =>
+      (b.lastOpenedAt ?? '').localeCompare(a.lastOpenedAt ?? ''),
+    )[0] ||
+    null
+  );
+}
+
+/**
+ * The one door to the open project's ledger. The log lives in the project's
+ * directory, so that needs a directory that is actually there.
  *
  * The reachability check is not politeness: `EventLog.open` creates its parent
  * directories, so writing to an unmounted drive would invent the whole path on
  * the local disk and put the user's notes somewhere the real volume hides the
  * moment it comes back.
+ *
+ * Which project is read before the first `await`, so it is settled the moment
+ * this is called. Whatever writes calls it first for that reason: a write
+ * sent just before the project changed still lands where it was typed.
  */
-export async function requireProject(value: unknown): Promise<Project> {
-  const id = requireString(value, 'id');
-  const project = getProject(id);
-  if (!project) throw new Error('No such project');
+export async function requireProject(): Promise<Project> {
+  const project = currentProject();
+  if (!project) throw new Error('No project is open');
 
-  const availability = await checkAvailability([id]);
-  if (availability[id] !== 'available') {
+  const availability = await checkAvailability([project.id]);
+  if (availability[project.id] !== 'available') {
     throw new Error(`"${project.name}" is not reachable right now.`);
   }
   return project;
@@ -112,9 +142,17 @@ export function registerProjectIpc(): void {
       setPinned(requireString(id, 'id'), Boolean(pinned)),
   );
 
-  ipcMain.handle(PROJECT_CHANNELS.touch, (_event, id: unknown) =>
-    touchProject(requireString(id, 'id')),
-  );
+  ipcMain.handle(PROJECT_CHANNELS.open, (_event, id: unknown) => {
+    // Kept only if it is one we track: `currentProject` would fall through
+    // an unknown id anyway, and silently showing some other project is worse
+    // than saying so.
+    if (!touchProject(requireString(id, 'id'))) {
+      throw new Error('No such project');
+    }
+    openId = id as string;
+  });
+
+  ipcMain.handle(PROJECT_CHANNELS.current, () => currentProject());
 
   ipcMain.handle(PROJECT_CHANNELS.relocate, async (event, id: unknown) => {
     const projectId = requireString(id, 'id');

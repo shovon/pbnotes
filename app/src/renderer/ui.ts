@@ -27,14 +27,3 @@ export function formatLastOpened(iso: string | null): string {
  * the user exactly like a click that did nothing.
  */
 export type Act = (action: () => Promise<unknown>) => void;
-
-/**
- * Today as `YYYY-MM-DD`, in the user's local time. Not `toISOString()`, which
- * is UTC and hands the wrong page to anyone whose evening is already
- * tomorrow in Greenwich — or whose morning is still yesterday.
- */
-export function today(now = new Date()): string {
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
-}
