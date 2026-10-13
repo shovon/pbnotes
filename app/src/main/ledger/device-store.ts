@@ -8,7 +8,7 @@
  *
  * Losing this file costs the machine its identity and nothing else. It mints a
  * new id, starts a new directory, and goes on reading every log already in the
- * folder — which is the same promise `README.md` makes about the registry.
+ * folder — which is the same promise `docs/design.md` makes about the registry.
  */
 import { randomUUID } from 'node:crypto';
 import { getDatabase } from '../db';

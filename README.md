@@ -8,125 +8,17 @@
   Local-first knowledge sharing and management, safe for many writers.
 </p>
 
-## Why the `projects` table exists
+## What it is
 
-**Do not delete it.** It has been mistaken for dead code once already.
+Pb Notes is a place to think out loud and keep what you learn: daily journal pages, pages that exist as soon as you link to them (`[[Mira]]`, `#Mira`), and under every page, everything that links back to it.
 
-The app lets the user track directories they care about. The filesystem cannot store that choice — a directory has no way of knowing a user pointed an app at it — so if pbnotes does not persist the list itself, there is no list. Nothing recovers it on next launch. That registry is the entire reason there is a database at all.
+## Why
 
-It stores user intent, never filesystem contents:
+- **Your notes stay with your work.** Point Pb Notes at a folder and what you write goes into a plain `gnotes/` folder inside it. It backs up, syncs and moves with everything else in there.
+- **Safe for many writers.** Leave the folder in Dropbox, iCloud or any other sync tool and write from several machines. Each one writes only its own files, so there is never a conflicted copy, and an edit made elsewhere shows up on screen when it arrives.
+- **Nothing is lost if the app's own data is wiped.** The app remembers only which folders you picked. Pick them again and every note is still there.
 
-- **which** directories the user chose (nothing is copied or indexed)
-- **what** they call them (`name` defaults to the basename, but is editable)
-- **which** are pinned, and when each was last opened
-
-Anything derivable is deliberately *not* stored: reachability is probed live each render, and ordering is computed in `ORDER BY` rather than kept as a rank column.
-
-### Why a project's id is not its path
-
-`Project.id` is a UUID, and `relocateProject` repoints a moved directory while keeping that id. Users move and rename directories; anything keyed on the path would orphan itself when they do. The path is mutable metadata, the id is not, so the id is what a rename, a pin or a last-opened time hangs off.
-
-Notes do **not** hang off it. They live in the project's own directory and travel with it (see below), which is why a project can move without the app's help and still be whole when it arrives.
-
-An unreachable directory reports `unknown` rather than `missing` and is never pruned — an unmounted drive, a sleeping network share and a deleted folder are indistinguishable at the syscall level, and dropping the row would make the user re-add a project whose notes are sitting safely on the other end of it.
-
-## Two stores, on purpose
-
-| | Holds | Why |
-| --- | --- | --- |
-| SQLite (`notes.db`) | The projects registry, config, and local conveniences | Generic bookkeeping the user never authored. Losing a row is an annoyance |
-| Event log (`<project>/gnotes/`) | **Project content** | The user's own work. A domain-specific record of what they did, which later folds into whatever views the app needs |
-
-### Content lives in the project, not in `userData`
-
-The log is written **inside the directory the user chose**, one log per project, in a plain `gnotes/` folder. That is the reason project folders exist: the notes are about the work that is already there, so they back up with it, sync with it, and travel with it to another machine. Nuking `~/Library/Application Support/pbnotes` must cost the user nothing but the registry — a list they can rebuild by picking the folders again. It must never cost them a word they wrote.
-
-Not behind a dot. A dot-directory means *you can safely ignore this*, which is what `.git` or `.venv` earns by being bookkeeping the user's work survives without. This log is the system of record: it is the only copy of what they wrote, and marking it ignorable is how it gets excluded from a backup or swept out as tool debris. Other content follows the same rule and sits in the same folder: a pasted image goes in the writing device's directory, beside its segments.
-
-### Segments
-
-`gnotes/` holds **one directory per device**, each holding numbered segments, `0000000000000001.log` upward. Only the newest is written to; the rest are sealed, and `seq` keeps counting across them within that device.
-
-The directory per device is what makes the folder safe to leave in Dropbox: **one writer per file, forever**, so two machines never touch the same path and a sync tool never has a divergence to resolve. `seq` therefore counts within a device rather than across the folder — it detects damage, and ordering is the hybrid logical clock's job. See `app/docs/multi-writer.md`, which is the design in full: what a foreign log may and may not be repaired to, how the clock is floored and bounded, and what the reducer still gets wrong when two machines edit the same page at once.
-
-Nothing is written at the top of `gnotes/`, and files found there are reported rather than folded.
-
-The numbers are zero-padded to sixteen digits because `ls`, `readdir` and every archive tool sort names as text, and a fixed width makes text order and numeric order the same thing forever. Sixteen digits already runs past `Number.MAX_SAFE_INTEGER`; going wider would only buy digits the code could not do arithmetic on.
-
-A segment is sealed at **16 MiB or at the local midnight, whichever comes first**. Size keeps any one file small enough to copy, read or lose on its own. The daily cut means a segment is a day's work, which is the unit a person reaches for when they go looking. Local midnight, not UTC: a day means the user's day.
-
-Rolling happens before the write that would breach the limit, so no segment ever exceeds it, and an empty segment is never rolled — a record larger than 16 MiB gets a file to itself rather than a fresh file that starts over budget.
-
-A device's own torn tail is repaired on load, because only its own crash can cause one. **A file belonging to another device is never written to**: under a sync tool "the tail has not arrived yet" is an ordinary state, and truncating it would turn something transient into permanent loss. Such a log stalls — it folds as far as it is intact, reports itself, and tries again on the next change. One stalled device can never stop a project opening.
-
-The corollary is that an unreachable project cannot be written to, and says so. `EventLog.open` creates its parent directories, so writing to an unmounted drive would invent the path on the local disk and hide the notes behind the real volume the moment it mounts. `requireProject` in `projects-ipc.ts` checks reachability before any handler opens a log.
-
-Content is event-sourced: appended as immutable facts and replayed into an in-memory projection when a project opens. A project has one log and one projection; each feature defines a fold over it and sees only its own slice of the state. **Folding happens in main and nowhere else** — the renderer is handed the resulting view and never replays events itself. One folder means one place for the view to be wrong, and it leaves room to move the fold onto a worker thread. Which is why a reducer must stay pure, over state that survives a structured clone.
-
-`Projection.dispatch` appends first and folds only once the write is durable, so the view can never show something a crash would take back. Nothing is folded away on disk — events persist forever. When boot cost eventually matters, the fix is to cache a *projection* alongside the log ("valid through seq N") and replay only the tail; the log itself stays untouched.
-
-**Do not move content into SQLite**, and do not move the registry onto the log. A relational store as the system of record fixes the shape of the truth forever, and content will not stay tabular. Conversely, the registry is generic bookkeeping that earns nothing from being event-sourced.
-
-## Layout
-
-### The ledger — `app/src/main/ledger/`
-
-Plumbing, and only plumbing. How the append-only log is written, how it recovers, and how a fold is driven over it. Nothing here knows what an event *means*.
-
-| Path | Tier | Role |
-| --- | --- | --- |
-| `app/src/main/ledger/event-log/event-log.ts` | plumbing | Framing, fsync, crash recovery, segment rollover, the HLC, the merge across devices. `verdict` is the one rule that deletes bytes |
-| `app/src/main/ledger/projection/projection.ts` | plumbing | Folds the log into an in-memory view through a `Reducer<S>`. Knows nothing about pages. Main process only |
-| `app/src/main/ledger/project-ledger/project-ledger.ts` | plumbing | One open log per project, at `<project>/gnotes/`, with every fold a feature defines through `defineFold` riding on it. Owns the device binding, the watch for other devices' events, and reopening a project that moved. `deviceOf` names the directory this machine may write in, for content kept beside the log |
-| `app/src/main/ledger/device-store.ts` | adapter | This machine's id and what it remembers per project (clock floor, tip). The one file here that touches SQLite |
-
-`event-log`, `projection` and `project-ledger` import nothing but `app/src/shared/log.ts` — no Electron, no SQLite, no pages. `device-store` is the folder's only edge outward, to `db.ts`.
-
-### Features — `app/src/main/features/`
-
-One folder per subject. `projects` is the top one: the registry of tracked directories, with everything a project contains nested under it. `pages` is the part that keeps events: what page events mean, and the door the renderer reaches them through. It sits on the ledger the way any feature would, and the ledger does not know it exists.
-
-| Path | Tier | Role |
-| --- | --- | --- |
-| `app/src/main/features/projects/projects-store.ts` | registry | All registry SQL. Path canonicalisation and case-folded dedupe live here |
-| `app/src/main/features/projects/projects-ipc.ts` | door | The eleven `projects:*` channels, and which project is open: `projects:open` is the one call that names it. `requireProject` is the reachability check that has to pass before a log is opened; `index.ts` hands it to `pages` as the way to the open ledger. Hears the ledger's `onArrival` and fans it out to each sub-feature |
-| `app/src/main/features/projects/pages/pages-store/pages-store.ts` | domain | What the events *mean*: the commands that author events, the journal and back-reference queries, over the `pages` fold it defines on the project's ledger |
-| `app/src/main/features/projects/pages/reading.ts` | domain | A block's text read as markdown: the pages it links to, the blocks it refers to, and what a ref to it shows. Text in, data out; `pages-store.ts` asks it about the blocks in the fold |
-| `app/src/main/features/projects/pages/pages-ipc.ts` | door | The `pages:*` channels, none of which names a project. Imports nothing from the registry: it is handed the ledger that is open by `index.ts`, and reads and writes whichever one that is. Holds the trail — where the view is — and `publish`, which sends everything showing there to every window over `pages:changed` after a write, a step along the trail, or `pagesArrived`, which `projects-ipc.ts` calls when a fold moved because a file arrived. Images go from here straight to `images.ts`: the `pages:add-image` channel and the `pbnotes-image://` scheme |
-| `app/src/main/features/projects/pages/trail/trail.ts` | domain | The steps along a trail: follow a link, go back, move a zoom. Pure; `pages-ipc.ts` holds the trail they apply to |
-| `app/src/main/features/projects/pages/images/images.ts` | domain | Images pasted into a block, stored by hash in the writing device's folder beside its log |
-| `app/src/main/features/window-state/` | convenience | Where the main window was last time, and the maths that fits it back onto a display |
-
-### Shell
-
-Not features: what every feature stands on.
-
-| Path | Role |
-| --- | --- |
-| `app/src/main/db.ts` | SQLite (`node:sqlite`) at `userData/notes.db`, WAL, append-only migrations keyed on `PRAGMA user_version` |
-| `app/src/main/ipc.ts` | The `unknown` → string argument guards both IPC files use |
-| `app/src/main/index.ts` | Composition root: opens the database, binds the device, registers both IPC surfaces — handing `pages` the open project as its ledger — and makes the window |
-
-### Contracts and renderer
-
-| Path | Role |
-| --- | --- |
-| `app/src/shared/log.ts` | What the log can report about itself: devices read, files skipped, events not understood |
-| `app/src/shared/pages.ts` | The pages contract. A page is a title; a journal day is the page titled with its local `YYYY-MM-DD`. `PagesState` is what main sends the renderer to draw |
-| `app/src/shared/blocks/blocks.ts` | The block event schema and the `reduce` over the block tree — the pure fold the ledger is handed. Shared because the renderer folds its own writes in flight with it (`predict`), so a key shows its result before the disk has it; main's fold stays the truth |
-| `app/src/shared/projects.ts` | Types and channel names shared by all three processes — keep it free of `node:` imports |
-| `app/src/shared/wikilink/wikilink.ts` | The remark plugin that makes `[[Mira]]`, `#Mira` and `#[[Mira]]` links. Shared because main reads a block with the same parser to find what it links to |
-| `app/src/preload/index.ts` | Exposes `window.pbnotes.projects` and `window.pbnotes.pages` across the context bridge |
-| `app/src/renderer/App/App.tsx` | Reads the project list and which one main has open, and switches between the two views |
-| `app/src/renderer/ProjectPicker/ProjectPicker.tsx` | The project list UI |
-| `app/src/renderer/project/ProjectView.tsx` | The open project as main last sent it: the journal, or the one page a link led to |
-| `app/src/renderer/project/PageView/PageView.tsx` | One page: its blocks, and what links to it |
-
-A page is not a record anywhere. It is the set of blocks carrying its title, so opening a page appends nothing — the log holds what the user did, and reading is not one of the things they did. The first write to a page is its first event. Pages are never created: naming one is enough. The calendar names the journal days, and a link — `[[Mira]]`, `#Mira` or `#[[Mira]]`, all the same page — names everything else. Following a link opens that page, empty until something is written on it; only the days are in the journal stack. Under its own blocks, every page lists what links to it: each page that names it, cut down to the blocks that do, edited in place like any other block — a write there is a write to the page the block is on. The cuts are read from the fold in main, with the same parser the renderer draws links with, so what counts as a reference is exactly what shows as a link.
-
-Main holds the state and the renderer draws it. Which project is open, the trail of links followed, the pages at the end of it, what links to each and what every block ref quotes are all in main, and reach the window one way: the whole of it, over `pages:changed`. A write from this window, a link followed, and a step back each ask main for something and resolve once the state that came of it has been sent; none of them answers with a page. Main writes to the log first and folds second, so its state is never ahead of the disk. So that a key does not wait on that, the page draws its own writes in flight over main's state — the text just typed, the block Enter just wrote — using main's reducer, and drops each one when main answers; a write main refuses goes back to what main has. The renderer keeps only what lasts as long as a gesture — the text in an open box, the caret, where the page is scrolled — so no call names a project, and nothing below `App` knows there is more than one.
-
-The folder is shared, so the page can change without anyone here touching it. Main watches each open project's folder, re-folds when something lands, and sends the state again if that project is the one open — the same message a write produces, so another machine's edit reaches the screen the way this one's does. A re-fold that read an unchanged log is not news and sends nothing.
+Text is last-writer-wins per block: if two machines edit the same block before syncing, the later edit is the one kept.
 
 ## Development
 
@@ -137,3 +29,5 @@ npm test       # node --test, no framework
 npm run lint
 npm run make   # build distributables
 ```
+
+The reasoning behind the design is in [app/docs/](app/docs/), starting with [design.md](app/docs/design.md).
