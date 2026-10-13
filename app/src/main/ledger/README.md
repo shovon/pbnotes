@@ -36,7 +36,7 @@ await view.dispatch('chat.sent', payload); // write: durable and folded once it 
 
 The feature sees only the view. It is never given the project, its id or its path.
 
-`deviceOf(project)` and `logDirectory(project.path)` give the device directory for anything stored beside the log without an event. It goes in a subdirectory of the device directory, which the log leaves alone and does not report; a stray file there is reported as ignored. `index.ts` builds those paths and hands the feature a function that uses them. `onArrival` reports that another device's events were folded in. `closeLedgers` closes every open log at quit.
+`deviceOf(project)` and `logDirectory(project.path)` give the device directory for anything stored beside the log without an event; `@pbnotes/files` is the store the app uses for that, and it imports nothing from here. It goes in a subdirectory of the device directory, which the log leaves alone and does not report; a stray file there is reported as ignored. `index.ts` builds those paths and hands the feature a function that uses them. `onArrival` reports that another device's events were folded in. `closeLedgers` closes every open log at quit.
 
 There is no way to iterate the log from a feature. One that needs the events themselves has its reducer push each one onto an array in its own fold state.
 

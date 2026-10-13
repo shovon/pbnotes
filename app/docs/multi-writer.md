@@ -46,7 +46,7 @@ Segment naming, sealing and rollover are unchanged: sixteen digits, 16 MiB or lo
 
 **Root-level `*.log` files are ignored.** Logs written in the old single-writer layout held throwaway data and are not worth a migration path; they are listed in the status surface so the skip is visible rather than silent, and never folded. This is a deliberate one-time break, and it is what lets the envelope below require its new fields instead of treating them as optional.
 
-**A subdirectory of a device directory is left alone.** A consumer may keep things beside a device's segments that are that device's to write and that no event carries. The log does not read them and does not report them. A stray *file* in a device directory is reported: conflicted copies and junk are files.
+**A subdirectory of a device directory is left alone.** A consumer may keep things beside a device's segments that are that device's to write and that no event carries. The log does not read them and does not report them. A stray *file* in a device directory is reported: conflicted copies and junk are files. `@pbnotes/files` keeps to the same layout and claims one such subdirectory by name.
 
 ## The envelope
 
