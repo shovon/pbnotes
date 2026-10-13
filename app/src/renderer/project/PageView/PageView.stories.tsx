@@ -22,7 +22,6 @@ const meta = {
   component: PageView,
   args: {
     pages,
-    onPage: () => undefined,
     references: [] as Page[],
     act: () => undefined,
   },

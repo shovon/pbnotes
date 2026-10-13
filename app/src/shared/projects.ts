@@ -49,7 +49,8 @@ export const PROJECT_CHANNELS = {
   remove: 'projects:remove',
   rename: 'projects:rename',
   setPinned: 'projects:set-pinned',
-  touch: 'projects:touch',
+  open: 'projects:open',
+  current: 'projects:current',
   relocate: 'projects:relocate',
   availability: 'projects:availability',
   reveal: 'projects:reveal',
@@ -64,8 +65,17 @@ export type ProjectsApi = {
   remove(id: string): Promise<void>;
   rename(id: string, name: string): Promise<Project | null>;
   setPinned(id: string, pinned: boolean): Promise<Project | null>;
-  /** Records that the project was opened, for ordering the list. */
-  touch(id: string): Promise<Project | null>;
+  /**
+   * Makes this the project main has open, and records when, for ordering the
+   * list. The one call that names which project the pages are about: every
+   * `pages` call after it is about this one.
+   */
+  open(id: string): Promise<void>;
+  /**
+   * The project main has open: the last one opened this session, else the
+   * one opened most recently before it. Null with nothing tracked.
+   */
+  current(): Promise<Project | null>;
   /** Points an existing project at a new directory, preserving its id. */
   relocate(id: string): Promise<Project | null>;
   availability(ids: string[]): Promise<Record<string, Availability>>;

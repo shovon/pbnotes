@@ -20,6 +20,7 @@ import {
   getPages,
   getPreviews,
   getReferences,
+  getState,
   indentBlock,
   outdentBlock,
 } from "./pages-store.ts";
@@ -27,7 +28,7 @@ import {
   closeLedgers,
   logDirectory,
 } from "../../../../ledger/project-ledger/project-ledger.ts";
-import type { ProjectRef } from "../../../../ledger/project-ledger/project-ledger.ts";
+import type { LedgerRef } from "../../../../ledger/project-ledger/project-ledger.ts";
 import { logSize, segmentName } from "../../../../ledger/event-log/event-log.ts";
 import { lastLeaf, locate } from "../../../../../shared/pages.ts";
 import type { Block } from "../../../../../shared/pages.ts";
@@ -35,7 +36,7 @@ import type { Block } from "../../../../../shared/pages.ts";
 const TODAY = "2026-09-21";
 const TOMORROW = "2026-09-22";
 
-async function project(): Promise<ProjectRef> {
+async function project(): Promise<LedgerRef> {
   return {
     id: randomUUID(),
     path: await mkdtemp(path.join(tmpdir(), "pbnotes-project-")),
@@ -725,6 +726,33 @@ test("a block ref previews the first paragraph of its target", async () => {
 
   await editBlock(it, prose.id, "Prefers tea now.");
   assert.equal((await previews()).get(prose.id), "Prefers tea now.");
+
+  await closeLedgers();
+});
+
+test("the state is the journal with today on top, or the one page the trail ends on", async () => {
+  const it = await project();
+  await addBlock(it, TODAY, "saw [[Mira]]");
+
+  // Tomorrow has nothing on it yet, and is still where the user will type.
+  const journal = await getState(it, [], TOMORROW);
+  assert.deepEqual(
+    journal.showing.map((shown) => shown.page.title),
+    [TOMORROW, TODAY],
+  );
+
+  const page = await getState(it, [{ page: "Mira" }], TOMORROW);
+  assert.deepEqual(page.trail, [{ page: "Mira" }]);
+  assert.equal(page.showing.length, 1);
+  assert.deepEqual(
+    page.showing[0].references.map((cut) => [cut.title, cut.blocks[0].text]),
+    [[TODAY, "saw [[Mira]]"]],
+  );
+
+  // Zoomed, what links to the page is not shown.
+  const block = journal.showing[1].page.blocks[0].id;
+  const zoomed = await getState(it, [{ page: "Mira", block }], TOMORROW);
+  assert.deepEqual(zoomed.showing[0].references, []);
 
   await closeLedgers();
 });

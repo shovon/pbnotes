@@ -5,7 +5,7 @@ declare global {
   interface Window {
     pbnotes: {
       projects: ProjectsApi;
-      pagesFor(projectId: string): PagesApi;
+      pages: PagesApi;
     };
   }
 }

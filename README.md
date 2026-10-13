@@ -89,11 +89,12 @@ One folder per subject. `projects` is the top one: the registry of tracked direc
 | Path | Tier | Role |
 | --- | --- | --- |
 | `app/src/main/features/projects/projects-store.ts` | registry | All registry SQL. Path canonicalisation and case-folded dedupe live here |
-| `app/src/main/features/projects/projects-ipc.ts` | door | The ten `projects:*` channels, and `requireProject`: the check against the registry and for reachability that every sub-feature passes before opening a log. Hears the ledger's `onArrival` and fans it out to each sub-feature |
+| `app/src/main/features/projects/projects-ipc.ts` | door | The eleven `projects:*` channels, and which project is open: `projects:open` is the one call that names it. `requireProject` is the reachability check that has to pass before a log is opened; `index.ts` hands it to `pages` as the way to the open ledger. Hears the ledger's `onArrival` and fans it out to each sub-feature |
 | `app/src/main/features/projects/pages/pages-store/pages-store.ts` | domain | What the events *mean*: the commands that author events, the journal and back-reference queries, over the `pages` fold it defines on the project's ledger |
 | `app/src/main/features/projects/pages/pages-store/blocks/blocks.ts` | domain | The `reduce` over the block tree — the pure `Reducer<Pages>` the ledger is handed |
 | `app/src/main/features/projects/pages/reading.ts` | domain | A block's text read as markdown: the pages it links to, the blocks it refers to, and what a ref to it shows. Text in, data out; `pages-store.ts` asks it about the blocks in the fold |
-| `app/src/main/features/projects/pages/pages-ipc.ts` | door | The `pages:*` channels. Takes its project from `requireProject` before opening a log. Also exposes `pagesArrived`, which sends `pages:changed` to every window; `projects-ipc.ts` calls it when a fold moved because a file arrived. Images go from here straight to `images.ts`: the `pages:add-image` channel and the `pbnotes-image://` scheme |
+| `app/src/main/features/projects/pages/pages-ipc.ts` | door | The `pages:*` channels, none of which names a project. Imports nothing from the registry: it is handed the ledger that is open by `index.ts`, and reads and writes whichever one that is. Holds the trail — where the view is — and `publish`, which sends everything showing there to every window over `pages:changed` after a write, a step along the trail, or `pagesArrived`, which `projects-ipc.ts` calls when a fold moved because a file arrived. Images go from here straight to `images.ts`: the `pages:add-image` channel and the `pbnotes-image://` scheme |
+| `app/src/main/features/projects/pages/trail/trail.ts` | domain | The steps along a trail: follow a link, go back, move a zoom. Pure; `pages-ipc.ts` holds the trail they apply to |
 | `app/src/main/features/projects/pages/images/images.ts` | domain | Images pasted into a block, stored by hash in the writing device's folder beside its log |
 | `app/src/main/features/window-state/` | convenience | Where the main window was last time, and the maths that fits it back onto a display |
 
@@ -105,25 +106,27 @@ Not features: what every feature stands on.
 | --- | --- |
 | `app/src/main/db.ts` | SQLite (`node:sqlite`) at `userData/notes.db`, WAL, append-only migrations keyed on `PRAGMA user_version` |
 | `app/src/main/ipc.ts` | The `unknown` → string argument guards both IPC files use |
-| `app/src/main/index.ts` | Composition root: opens the database, binds the device, registers both IPC surfaces, makes the window |
+| `app/src/main/index.ts` | Composition root: opens the database, binds the device, registers both IPC surfaces — handing `pages` the open project as its ledger — and makes the window |
 
 ### Contracts and renderer
 
 | Path | Role |
 | --- | --- |
 | `app/src/shared/log.ts` | What the log can report about itself: devices read, files skipped, events not understood |
-| `app/src/shared/pages.ts` | The pages contract. A page is a title; a journal day is the page titled with its local `YYYY-MM-DD` |
+| `app/src/shared/pages.ts` | The pages contract. A page is a title; a journal day is the page titled with its local `YYYY-MM-DD`. `PagesState` is what main sends the renderer to draw |
 | `app/src/shared/projects.ts` | Types and channel names shared by all three processes — keep it free of `node:` imports |
 | `app/src/shared/wikilink/wikilink.ts` | The remark plugin that makes `[[Mira]]`, `#Mira` and `#[[Mira]]` links. Shared because main reads a block with the same parser to find what it links to |
-| `app/src/preload/index.ts` | Exposes `window.pbnotes.projects` and `window.pbnotes.pagesFor` across the context bridge |
-| `app/src/renderer/App/App.tsx` | Owns the project data and switches between the two views |
+| `app/src/preload/index.ts` | Exposes `window.pbnotes.projects` and `window.pbnotes.pages` across the context bridge |
+| `app/src/renderer/App/App.tsx` | Reads the project list and which one main has open, and switches between the two views |
 | `app/src/renderer/ProjectPicker/ProjectPicker.tsx` | The project list UI |
-| `app/src/renderer/project/ProjectView.tsx` | One project: the journal, or the one page a link led to |
+| `app/src/renderer/project/ProjectView.tsx` | The open project as main last sent it: the journal, or the one page a link led to |
 | `app/src/renderer/project/PageView/PageView.tsx` | One page: its blocks, and what links to it |
 
 A page is not a record anywhere. It is the set of blocks carrying its title, so opening a page appends nothing — the log holds what the user did, and reading is not one of the things they did. The first write to a page is its first event. Pages are never created: naming one is enough. The calendar names the journal days, and a link — `[[Mira]]`, `#Mira` or `#[[Mira]]`, all the same page — names everything else. Following a link opens that page, empty until something is written on it; only the days are in the journal stack. Under its own blocks, every page lists what links to it: each page that names it, cut down to the blocks that do, edited in place like any other block — a write there is a write to the page the block is on. The cuts are read from the fold in main, with the same parser the renderer draws links with, so what counts as a reference is exactly what shows as a link.
 
-The folder is shared, so the page can change without anyone here touching it. Main watches each open project's folder, re-folds when something lands, and pushes the project id over `pages:changed`; the view reads the page again on hearing it. Only that case — a write from this window already holds the page it produced, and a re-fold that read an unchanged log is not news. It is one bit over the bridge rather than the state itself, because what a view wants out of a fold is its own question (one page, the journal, or what links here) and main answers each of those already.
+Main holds the state and the renderer draws it. Which project is open, the trail of links followed, the pages at the end of it, what links to each and what every block ref quotes are all in main, and reach the window one way: the whole of it, over `pages:changed`. A write from this window, a link followed, and a step back each ask main for something and resolve once the state that came of it has been sent; none of them answers with a page. The renderer keeps only what lasts as long as a gesture — the text in an open box, the caret, where the page is scrolled — so no call names a project, and nothing below `App` knows there is more than one.
+
+The folder is shared, so the page can change without anyone here touching it. Main watches each open project's folder, re-folds when something lands, and sends the state again if that project is the one open — the same message a write produces, so another machine's edit reaches the screen the way this one's does. A re-fold that read an unchanged log is not news and sends nothing.
 
 ## Development
 

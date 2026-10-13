@@ -23,8 +23,12 @@ import type { Reducer } from '../projection/projection.ts';
 import type { DeviceMemory } from '../event-log/event-log.ts';
 import type { ViewStatus } from '../../../shared/log.ts';
 
-/** Enough of a project to find its log. */
-export type ProjectRef = {
+/**
+ * Enough to find a ledger: what to remember it by, and the directory it is
+ * kept in. A project is one of these, and a feature is handed it as this —
+ * what lives on a ledger has no use for what else a project is.
+ */
+export type LedgerRef = {
   id: string;
   path: string;
 };
@@ -143,7 +147,7 @@ async function release(entry: Entry): Promise<void> {
   }
 }
 
-function projectionFor(project: ProjectRef): Promise<Projection<Slices>> {
+function projectionFor(project: LedgerRef): Promise<Projection<Slices>> {
   const cached = projections.get(project.id);
   if (cached?.path === project.path) return cached.projection;
   // Relocated since it was last opened. The log travelled with the directory,
@@ -213,7 +217,7 @@ function projectionFor(project: ProjectRef): Promise<Projection<Slices>> {
 export function defineFold<S, T extends string>(
   name: string,
   fold: Fold<S, T>,
-): (project: ProjectRef) => Promise<View<S, T>> {
+): (project: LedgerRef) => Promise<View<S, T>> {
   if (folds.has(name)) throw new Error(`Fold "${name}" is already defined`);
   if (projections.size > 0) {
     throw new Error(`Fold "${name}" was defined after a ledger was opened`);
@@ -244,7 +248,7 @@ export function defineFold<S, T extends string>(
  * the log opens, and this is the id it settled on, not the one the session
  * started with.
  */
-export async function deviceOf(project: ProjectRef): Promise<string> {
+export async function deviceOf(project: LedgerRef): Promise<string> {
   return (await projectionFor(project)).device;
 }
 

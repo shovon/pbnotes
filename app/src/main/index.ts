@@ -2,7 +2,11 @@ import { app, BrowserWindow, nativeTheme, protocol, shell } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 import { closeDatabase, openDatabase } from "./db";
-import { registerProjectIpc } from "./features/projects/projects-ipc";
+import {
+  currentProject,
+  registerProjectIpc,
+  requireProject,
+} from "./features/projects/projects-ipc";
 import {
   bindDevice,
   closeLedgers,
@@ -36,7 +40,7 @@ if (!app.commandLine.hasSwitch("user-data-dir")) {
 }
 
 // Before the app is ready, or it is too late. `standard` gives the URL a
-// host, which is where the project id goes; the handler is in `pages-ipc`.
+// host, which is always `images`; the handler is in `pages-ipc`.
 protocol.registerSchemesAsPrivileged([
   { scheme: IMAGE_SCHEME, privileges: { standard: true, secure: true } },
 ]);
@@ -119,7 +123,9 @@ app.on("ready", () => {
     rotate: rotateDeviceId,
   });
   registerProjectIpc();
-  registerPageIpc();
+  // Pages are handed the ledger that is open and never ask whose it is. This
+  // is the one place that says it is the open project's.
+  registerPageIpc({ require: requireProject, peek: currentProject });
   createWindow();
 });
 
