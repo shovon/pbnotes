@@ -227,7 +227,9 @@ export default function ProjectView({ act }: Props) {
         const first = last === undefined && root?.children.length === 0;
         const after =
           last ?? (root ? (root.children.at(-1)?.id ?? root.id) : undefined);
-        last = await pages.addBlock(to, text, after);
+        const id = crypto.randomUUID();
+        await pages.addBlock(id, to, text, after);
+        last = id;
         // The first under a root with no children: written beside it, then
         // filed under it, like the box in `PageView`.
         if (first) await pages.indentBlock(last);

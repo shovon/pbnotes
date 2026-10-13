@@ -102,21 +102,6 @@ export function today(now = new Date()): string {
 }
 
 /**
- * The block `block.created` just wrote, found by where it must have landed:
- * the fold splices it directly beneath `after` as its next sibling — wherever
- * in the tree that is — or pushes it last.
- *
- * `locate`, not a scan of the top level: `after` is just as often a child,
- * and a miss there does not read as a miss — it reads as index 0, which is
- * the first block on the page.
- */
-export function created(page: Page, after?: string): string | undefined {
-  if (!after) return page.blocks.at(-1)?.id;
-  const found = locate(page.blocks, after);
-  return found && found.siblings[found.at + 1]?.id;
-}
-
-/**
  * A stop on the trail: a page, or one block of a page as the root of the
  * view. Both are places you go back to, so they share the one history.
  */
@@ -176,7 +161,9 @@ export const PAGE_CHANNELS = {
  *
  * Nothing but `locate` and `status` answers with content. A write or a step
  * along the trail resolves once main has sent the state it led to, so by the
- * time a caller carries on, `onChanged` has already heard it.
+ * time a caller carries on, `onChanged` has already heard it. Writes are
+ * recorded one at a time, in the order they were sent, so one may name a
+ * block an earlier one is still writing.
  */
 export type PagesApi = {
   /**
@@ -224,12 +211,19 @@ export type PagesApi = {
    */
   status(): Promise<ViewStatus>;
   /**
-   * Appends a `block.created` event and answers with the new block's id,
-   * which is what the caller needs to put a caret in it or a block beneath
-   * it. `after` puts the new block directly beneath that one; without it the
-   * block goes at the end of the page.
+   * Appends a `block.created` event for a block the caller has already named.
+   * `id` is a fresh UUID of the caller's own: the view draws the block before
+   * main has written it, so the id on screen has to be the id on disk. Main
+   * refuses one that is not a UUID or that the project already has. `after`
+   * puts the new block directly beneath that one; without it the block goes
+   * at the end of the page.
    */
-  addBlock(title: string, text: string, after?: string): Promise<string>;
+  addBlock(
+    id: string,
+    title: string,
+    text: string,
+    after?: string,
+  ): Promise<void>;
   /**
    * Stores an image in the project's folder and returns the link a block
    * holds it by, `images/<sha256>.png`. Appends nothing: the caller puts the

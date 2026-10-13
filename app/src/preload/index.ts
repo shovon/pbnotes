@@ -38,8 +38,8 @@ const pages: PagesApi = {
   rezoom: (block) => ipcRenderer.invoke(PAGE_CHANNELS.rezoom, block),
   locate: (blockId) => ipcRenderer.invoke(PAGE_CHANNELS.locate, blockId),
   status: () => ipcRenderer.invoke(PAGE_CHANNELS.status),
-  addBlock: (title, text, after) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.addBlock, title, text, after),
+  addBlock: (id, title, text, after) =>
+    ipcRenderer.invoke(PAGE_CHANNELS.addBlock, id, title, text, after),
   addImage: (bytes, mime) =>
     ipcRenderer.invoke(PAGE_CHANNELS.addImage, bytes, mime),
   editBlock: (blockId, text) =>

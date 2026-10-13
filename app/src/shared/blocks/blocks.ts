@@ -11,10 +11,16 @@
  * `pages-store.ts` is the wiring that points a log at it. The split is the
  * reason this file is readable — and the reason it runs under plain
  * `node --test` with nothing around it.
+ *
+ * In `shared`, against the convention that it holds types and constants,
+ * because both sides fold with it. Main folds the log, and its fold is the
+ * truth. The renderer folds only the writes it has sent and not yet heard
+ * back about, over what main last said, so that a key shows its result
+ * without waiting for the disk — see `predict`. Two folds that have to agree
+ * are one fold, or they drift.
  */
-import { locate } from "../../../../../../shared/pages.ts";
-import type { Block } from "../../../../../../shared/pages.ts";
-import type { Reducer } from "../../../../../ledger/projection/projection.ts";
+import { locate } from "../pages.ts";
+import type { Block, Page } from "../pages.ts";
 
 /** Title → the blocks on it: a journal day or a page a link named. */
 export type Pages = Record<string, Block[]>;
@@ -227,7 +233,10 @@ function foreign(_event: never, state: Pages): Pages {
  * *this build writes*; what arrives in a shared folder was written by
  * something else, and may be anything.
  */
-export const reduce: Reducer<Pages> = (state, event) => {
+export function reduce(
+  state: Pages,
+  event: { type: string; payload: unknown },
+): Pages {
   // The one cast in the fold: "if this is one of ours, this is its shape."
   // `foreign` below is where that turns out not to be true.
   const it = event as unknown as PageEvent;
@@ -310,4 +319,73 @@ export const reduce: Reducer<Pages> = (state, event) => {
     default:
       return foreign(it, state);
   }
-};
+}
+
+/**
+ * What indenting a block is, on the page as it stands: filed under the
+ * sibling above it. Undefined for a block that is first among its siblings —
+ * there is nothing above it to move under — or one the page does not have.
+ *
+ * Here, and not in the store, because whoever predicts a move has to resolve
+ * it exactly as whoever records it does.
+ */
+export function indented(
+  blocks: Block[],
+  id: string,
+): BlockIndented | undefined {
+  const found = locate(blocks, id);
+  return found && found.at > 0
+    ? { id, parent: found.siblings[found.at - 1].id }
+    : undefined;
+}
+
+/**
+ * What outdenting a block is: directly beneath the block it hangs under.
+ * Undefined at the top level, where there is nothing to come out of.
+ */
+export function outdented(
+  blocks: Block[],
+  id: string,
+): BlockOutdented | undefined {
+  const parent = locate(blocks, id)?.parent;
+  return parent ? { id, after: parent.id } : undefined;
+}
+
+/**
+ * Whether the page already shows what `event` did. Asked only of the events
+ * that are not safe to fold twice: a creation would put a second block on the
+ * page, and an outdent would take the siblings now below the block as its
+ * children all over again.
+ */
+function landed(state: Pages, event: PageEvent): boolean {
+  if (event.type === "block.created") return !!find(state, event.payload.id);
+  const found = find(state, event.payload.id);
+  if (event.type === "block.indented") {
+    return found?.parent?.id === event.payload.parent;
+  }
+  if (event.type === "block.outdented") {
+    return found?.siblings[found.at - 1]?.id === event.payload.after;
+  }
+  return false;
+}
+
+/**
+ * The page as it will stand once `events` have been recorded: writes the
+ * renderer has sent and not yet heard back about, folded over the page main
+ * last sent.
+ *
+ * A guess, and thrown away on purpose. The renderer drops an event when its
+ * write settles, and main sends the state a write led to before it answers —
+ * so there is a moment when the page already holds an event that is still in
+ * `events`. `landed` is what makes that moment draw the same page rather
+ * than the event twice. A write main refuses is dropped the same way, and the
+ * page goes back to what main has.
+ */
+export function predict(page: Page, events: PageEvent[]): Page {
+  if (events.length === 0) return page;
+  let state: Pages = { [page.title]: page.blocks };
+  for (const event of events) {
+    if (!landed(state, event)) state = reduce(state, event);
+  }
+  return { ...page, blocks: state[page.title] ?? [] };
+}

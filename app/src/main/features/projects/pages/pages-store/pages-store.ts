@@ -4,7 +4,7 @@
  *
  * No plumbing. Where the log lives, which device this is and which logs are
  * open belong to `ledger/project-ledger`; what a block *is* — the event schema
- * and the fold over it — is `blocks/blocks.ts`. What is left here is the
+ * and the fold over it — is `shared/blocks/blocks.ts`. What is left here is the
  * commands that author events and the queries over what they fold to.
  *
  * Deliberately free of `electron` imports: callers hand in the ledger, which
@@ -16,9 +16,18 @@ import type {
   LedgerRef,
   View,
 } from "../../../../ledger/project-ledger/project-ledger.ts";
-import { find, HANDLES, reduce } from "./blocks/blocks.ts";
+import {
+  find,
+  HANDLES,
+  indented,
+  outdented,
+  reduce,
+} from "../../../../../shared/blocks/blocks.ts";
 import { linking, read } from "../reading.ts";
-import type { PageEvent, Pages } from "./blocks/blocks.ts";
+import type {
+  PageEvent,
+  Pages,
+} from "../../../../../shared/blocks/blocks.ts";
 import { DATE_PATTERN, locate } from "../../../../../shared/pages.ts";
 import type {
   Block,
@@ -224,24 +233,31 @@ function append<T extends PageEvent["type"]>(
  * Refuses an `after` that is not on this page, for the same reason `editBlock`
  * refuses an unknown block: the fold would have to guess, and a log that keeps
  * everything forever should not be collecting events that mean nothing.
+ *
+ * The id is the caller's when it has one: the renderer draws a block before
+ * it is written, and the block on disk has to be the one on screen. One the
+ * ledger already has is refused — two blocks answering to one id is a page
+ * that every later event about either of them folds wrongly.
  */
 export async function addBlock(
   ledger: LedgerRef,
   title: string,
   text: string,
   after?: string,
+  id: string = randomUUID(),
 ): Promise<Page> {
   const view = await pagesOf(ledger);
   const blocks = view.state[title] ?? [];
   if (after && !locate(blocks, after)) {
     throw new Error("No such block");
   }
+  if (find(view.state, id)) throw new Error("That block already exists");
 
   // dispatch appends before it folds, so this resolves only once the event is
   // durable — the page handed back can never show something a crash takes.
   await append(view, "block.created", {
     page: title,
-    id: randomUUID(),
+    id,
     text,
     // Left off entirely when absent, so an appended block writes the same
     // bytes it always did.
@@ -317,12 +333,8 @@ export async function indentBlock(
   const view = await pagesOf(ledger);
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
-  if (found.at === 0) return pageOf(view, found.page);
-
-  await append(view, "block.indented", {
-    id: blockId,
-    parent: found.siblings[found.at - 1].id,
-  });
+  const payload = indented(found.blocks, blockId);
+  if (payload) await append(view, "block.indented", payload);
   return pageOf(view, found.page);
 }
 
@@ -344,11 +356,7 @@ export async function outdentBlock(
   const view = await pagesOf(ledger);
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
-  if (!found.parent) return pageOf(view, found.page);
-
-  await append(view, "block.outdented", {
-    id: blockId,
-    after: found.parent.id,
-  });
+  const payload = outdented(found.blocks, blockId);
+  if (payload) await append(view, "block.outdented", payload);
   return pageOf(view, found.page);
 }

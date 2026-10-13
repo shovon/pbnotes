@@ -1,4 +1,6 @@
 import { Fragment, useState } from 'react';
+import { indented, outdented, predict } from '../../../shared/blocks/blocks';
+import type { PageEvent } from '../../../shared/blocks/blocks';
 import { lastLeaf, locate } from '../../../shared/pages';
 import type { Block as BlockType, Page, PagesApi } from '../../../shared/pages';
 import type { Act } from '../../ui';
@@ -12,6 +14,9 @@ import LinkedReferences from './LinkedReferences/LinkedReferences';
  * different questions and a boolean can only answer the first.
  */
 type Writing = { after?: string } | null;
+
+/** An event to draw, and the call that asks main to record it. */
+type Step = [PageEvent, () => Promise<unknown>];
 
 type Props = {
   pages: PagesApi;
@@ -51,19 +56,88 @@ type Props = {
  * them is what shows a write everywhere it shows the block. A write resolves
  * after that state has arrived, so what follows one can count on the page.
  * What is held here is the editing: which box is open, and where the caret
- * is in it. Nothing here is aware that there are other pages above and below
+ * is in it — and what an edit made here is about to leave a block as, drawn
+ * until main says so itself. Nothing here is aware that there are other pages above and below
  * it, which is what keeps a stack of days the same component as a single
  * named page, and a page the same component as a cut of one.
  */
 export default function PageView({
   pages,
-  page,
+  page: sent,
   references,
   reference = false,
   zoom,
   onZoom,
   act,
 }: Props) {
+  /**
+   * The writes made here that main has not answered yet, as the events they
+   * will be recorded as. The page is drawn with them folded over what main
+   * last sent, so a key shows what it did at once: the box that closes shows
+   * the text just typed, and the block Enter wrote is there for the next box
+   * to open beneath. Without them each of those waits on the disk, and shows
+   * the page from before the key until it has.
+   *
+   * Folded with main's own reducer, and each move resolved by the function
+   * main resolves it with, so what is drawn is what will be recorded. Not
+   * what links to a page or what a ref quotes — those are main's to work
+   * out, and arrive with its state.
+   *
+   * An event is dropped when its write settles, and that is all the
+   * bookkeeping there is: main sends the state a write led to before it
+   * answers, so by then the page says the same thing — or the write was
+   * refused, and the page going back to what main has is the truth.
+   */
+  const [pending, setPending] = useState<PageEvent[]>([]);
+
+  /**
+   * Draws `steps` now and sends them one after another, as a key that is two
+   * writes always was. If one is refused the rest are not sent, and none of
+   * them stays drawn.
+   */
+  const write = async (...steps: [PageEvent, () => Promise<unknown>][]) => {
+    const events = steps.map(([event]) => event);
+    setPending((all) => [...all, ...events]);
+    try {
+      for (const [event, send] of steps) {
+        await send();
+        setPending((all) => all.filter((it) => it !== event));
+      }
+    } finally {
+      setPending((all) => all.filter((it) => !events.includes(it)));
+    }
+  };
+
+  /** The page as it is drawn, which is what everything below reads. */
+  const page = predict(sent, pending);
+
+  /**
+   * Tab or Shift+Tab on a block, as the step it is on `blocks`. Undefined at
+   * either edge — first among its siblings going in, already at the top level
+   * coming out — where there is nowhere to go and nothing is sent.
+   */
+  const moving = (
+    blocks: BlockType[],
+    id: string,
+    by: 1 | -1,
+  ): Step | undefined => {
+    if (by === 1) {
+      const payload = indented(blocks, id);
+      return (
+        payload && [
+          { type: 'block.indented', payload },
+          () => pages.indentBlock(id),
+        ]
+      );
+    }
+    const payload = outdented(blocks, id);
+    return (
+      payload && [
+        { type: 'block.outdented', payload },
+        () => pages.outdentBlock(id),
+      ]
+    );
+  };
   const title = page.title;
   const rooted = zoom ? locate(page.blocks, zoom) : undefined;
   const root = rooted?.siblings[rooted.at];
@@ -90,7 +164,12 @@ export default function PageView({
   const commitEdit = (block: BlockType, text: string) => {
     setEditingId(null);
     if (text === block.text) return;
-    act(() => pages.editBlock(block.id, text));
+    act(() =>
+      write([
+        { type: 'block.edited', payload: { id: block.id, text } },
+        () => pages.editBlock(block.id, text),
+      ]),
+    );
   };
 
   /**
@@ -146,7 +225,16 @@ export default function PageView({
     // The zoomed block itself: out to what it hung under, or to the page,
     // before the delete lands and leaves the view rooted on nothing.
     if (block.id === root?.id) onZoom?.(found?.parent?.id);
-    act(() => pages.deleteBlock(block.id));
+    // Not predicted for the zoomed block: with the root gone from the page
+    // as drawn, the view would show the whole page until the zoom has moved.
+    act(() =>
+      block.id === root?.id
+        ? pages.deleteBlock(block.id)
+        : write([
+            { type: 'block.deleted', payload: { id: block.id } },
+            () => pages.deleteBlock(block.id),
+          ]),
+    );
   };
 
   /**
@@ -154,16 +242,15 @@ export default function PageView({
    * it back out beneath what it was filed under — children and all, either
    * way — and leaves the user still writing in it.
    *
-   * The box is closed before the move and reopened after rather than left
-   * mounted: the block lands somewhere else in the rendered tree, which
-   * unmounts the editor regardless, and letting that happen on its own would
-   * fire blur on the way out and commit the same text a second time. Closing
-   * first is the escape the delete and continue paths already take.
+   * The block is drawn where it is going at once, and the box goes with it.
+   * It lands somewhere else in the rendered tree, so that is a new box in the
+   * new place rather than this one moved — opened on the text as typed, with
+   * the caret where it was. The old one is unmounted by the same render, and
+   * a box React takes away does not blur, so nothing is committed twice.
    *
    * At either edge — first among its siblings going in, already at the top
    * level coming out — there is nowhere to go, so the keystroke does nothing
-   * and nothing is sent. Main refuses both too; the check is here only to
-   * save a close-and-reopen for a move that will not happen.
+   * and nothing is sent.
    */
   const commitIndent = (
     block: BlockType,
@@ -173,7 +260,6 @@ export default function PageView({
   ) => {
     const found = locate(page.blocks, block.id);
     if (!found) return;
-    if (by === 1 ? found.at === 0 : !found.parent) return;
     // Zoomed, the root's children are the top level, and the root itself has
     // no siblings in view to move among: either move would take a block out
     // of the view it is being written in.
@@ -183,26 +269,34 @@ export default function PageView({
     ) {
       return;
     }
-    const move = by === 1 ? pages.indentBlock : pages.outdentBlock;
-    setEditingId(null);
+    const moved = moving(page.blocks, block.id, by);
+    if (!moved) return;
+    // The block is drawn where it is going in the render this key causes, so
+    // the box moves with it: a new box in the new place, on the text as typed
+    // and the caret where it was. Tab is not a commit, but the text has to be
+    // written for that — unchanged, it appends nothing, as ever.
     setCaret(at);
-    act(async () => {
-      // Tab is not a commit, but the box has to close to move and the text in
-      // it would go with it. Unchanged text appends nothing, as ever.
-      if (text !== block.text) {
-        await pages.editBlock(block.id, text);
-      }
-      await move(block.id);
-      setEditingId(block.id);
-    });
+    act(() =>
+      write(
+        ...(text === block.text
+          ? []
+          : [
+              [
+                { type: 'block.edited', payload: { id: block.id, text } },
+                () => pages.editBlock(block.id, text),
+              ] as Step,
+            ]),
+        moved,
+      ),
+    );
   };
 
   /**
    * Writes the box that is open, and then either stops, opens another beneath
    * what it just wrote — which is what makes a run of blocks typeable without
-   * reaching for the mouse between them — or indents what it wrote. Any of
-   * those can only be placed once the append has come back, because until
-   * then the block has no id.
+   * reaching for the mouse between them — or indents what it wrote. All of
+   * it at once: the block is named here and drawn before main has written
+   * it, so the next box is open for the very next key.
    *
    * `indent` is Tab in a box for a block that does not exist yet, which is
    * the ordinary way an outline gets built: type, Enter, Tab. It takes two
@@ -250,25 +344,39 @@ export default function PageView({
     // box is how a gap gets made, and so is Tab. Blurring a box nothing was
     // ever typed into is a click that landed elsewhere, and writes nothing.
     if (!text && then === 'stop') return;
-    act(async () => {
-      const id = await pages.addBlock(title, text, after);
-      if (first) await pages.indentBlock(id);
-      if (then === 'again') setWriting({ after: id });
-      // Out of the top level of a zoom is out of the view: the box reopens
-      // where it was, like any move with nowhere to go.
-      if (then === 'outdent' && top) {
-        setCaret(caret);
-        setEditingId(id);
-      } else if (then === 'indent' || then === 'outdent') {
-        setCaret(caret);
-        // Nowhere to go — the first block of an empty page going in, a
-        // top-level one coming out — comes back unchanged, and the box simply
-        // reopens where it was.
-        const move = then === 'indent' ? pages.indentBlock : pages.outdentBlock;
-        await move(id);
-        setEditingId(id);
-      }
-    });
+    // Named here, so the block is drawn — and the next box opened beneath
+    // it, or this one reopened on it — before main has heard of it.
+    const id = crypto.randomUUID();
+    const create: PageEvent = {
+      type: 'block.created',
+      // `after` left off entirely when absent, as main writes it.
+      payload: { page: title, id, text, ...(after ? { after } : {}) },
+    };
+    const steps: Step[] = [
+      [create, () => pages.addBlock(id, title, text, after)],
+    ];
+    // Each move resolved on the page as the steps before it leave it. One
+    // with nowhere to go — the first block of an empty page going in, a
+    // top-level one coming out — is not a step at all.
+    let next = predict(page, [create]);
+    const move = (by: 1 | -1) => {
+      const moved = moving(next.blocks, id, by);
+      if (!moved) return;
+      steps.push(moved);
+      next = predict(next, [moved[0]]);
+    };
+    if (first) move(1);
+    if (then === 'again') setWriting({ after: id });
+    // Out of the top level of a zoom is out of the view: the box reopens
+    // where it was, like any move with nowhere to go.
+    if ((then === 'indent' || then === 'outdent') && !(then === 'outdent' && top)) {
+      move(then === 'indent' ? 1 : -1);
+    }
+    if (then === 'indent' || then === 'outdent') {
+      setCaret(caret);
+      setEditingId(id);
+    }
+    act(() => write(...steps));
   };
 
   /**

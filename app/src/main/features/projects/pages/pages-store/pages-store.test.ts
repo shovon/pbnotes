@@ -756,3 +756,15 @@ test("the state is the journal with today on top, or the one page the trail ends
 
   await closeLedgers();
 });
+
+test("a block is written under the id it was drawn with, and never a second time", async () => {
+  const it = await project();
+  const id = randomUUID();
+  const page = await addBlock(it, TODAY, "drawn first", undefined, id);
+  assert.equal(page.blocks[0].id, id);
+
+  await assert.rejects(addBlock(it, TOMORROW, "again", undefined, id));
+  assert.deepEqual((await getPage(it, TOMORROW)).blocks, []);
+
+  await closeLedgers();
+});

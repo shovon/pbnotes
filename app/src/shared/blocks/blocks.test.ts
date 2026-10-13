@@ -7,13 +7,14 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { reduce } from "./blocks.ts";
-import type { LogEvent } from "../../../../../ledger/event-log/event-log.ts";
+import { indented, outdented, predict, reduce } from "./blocks.ts";
+import type { PageEvent } from "./blocks.ts";
+import type { Block } from "../pages.ts";
 
 const TODAY = "2026-09-21";
 
 /** One event, straight into `reduce`, with no log or device around it. */
-function event(type: string, v: number, payload: unknown): LogEvent {
+function event(type: string, v: number, payload: unknown) {
   return {
     seq: 1,
     device: "d",
@@ -23,7 +24,7 @@ function event(type: string, v: number, payload: unknown): LogEvent {
     v,
     at: "2026-09-21T00:00:00.000Z",
     payload,
-  } as LogEvent;
+  };
 }
 
 test("the fold ignores events it does not know", async () => {
@@ -70,4 +71,48 @@ test("a v1 payload still folds, page and all", async () => {
   );
   assert.equal(elsewhere[TODAY][0].children[0].text, "again");
   assert.deepEqual(Object.keys(elsewhere), [TODAY]);
+});
+
+test("a prediction is the fold, and folding it over a page that has it changes nothing", () => {
+  const block = (id: string, text: string): Block => ({
+    id,
+    text,
+    children: [],
+  });
+  const page = { title: TODAY, blocks: [block("a", "A"), block("b", "B")] };
+
+  // Enter beneath A, Tab, then Shift+Tab: each move resolved on the page as
+  // the events before it leave it, the way the renderer builds them.
+  const create: PageEvent = {
+    type: "block.created",
+    payload: { page: TODAY, id: "n", text: "new", after: "a" },
+  };
+  const created = predict(page, [create]);
+  assert.deepEqual(
+    created.blocks.map((it) => it.id),
+    ["a", "n", "b"],
+  );
+
+  const indent: PageEvent = {
+    type: "block.indented",
+    payload: indented(created.blocks, "n") ?? assert.fail(),
+  };
+  const under = predict(page, [create, indent]);
+  assert.deepEqual(under.blocks[0].children.map((it) => it.id), ["n"]);
+  // First among its siblings now: nowhere further in.
+  assert.equal(indented(under.blocks, "n"), undefined);
+
+  const outdent: PageEvent = {
+    type: "block.outdented",
+    payload: outdented(under.blocks, "n") ?? assert.fail(),
+  };
+  const out = predict(page, [create, indent, outdent]);
+  assert.deepEqual(out, created);
+  assert.equal(outdented(out.blocks, "n"), undefined);
+
+  // Main's state arrives before the write is known to have settled, so each
+  // of these is, for a moment, folded over a page that already holds it.
+  assert.deepEqual(predict(created, [create]), created);
+  assert.deepEqual(predict(under, [indent]), under);
+  assert.deepEqual(predict(out, [outdent]), out);
 });

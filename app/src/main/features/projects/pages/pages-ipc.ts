@@ -7,12 +7,7 @@ import {
   protocol,
 } from "electron";
 import { pathToFileURL } from "node:url";
-import {
-  IMAGE_SCHEME,
-  PAGE_CHANNELS,
-  created,
-  today,
-} from "../../../../shared/pages";
+import { IMAGE_SCHEME, PAGE_CHANNELS, today } from "../../../../shared/pages";
 import type { Place } from "../../../../shared/pages";
 import { requireString } from "../../../ipc";
 import {
@@ -53,6 +48,19 @@ function requireTitle(value: unknown): string {
     throw new TypeError("Expected a page title");
   }
   return title;
+}
+
+/**
+ * A block's id comes from the renderer, which drew the block under it before
+ * asking for it to be written. It is checked like a title, and for the same
+ * reason: it is a key in a log that keeps everything forever.
+ */
+function requireBlockId(value: unknown): string {
+  const id = requireString(value, "id");
+  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)) {
+    throw new TypeError("Expected a block id");
+  }
+  return id;
 }
 
 /**
@@ -137,16 +145,31 @@ export function pagesArrived(ledgerId: string): void {
 
 /**
  * A write: `run` appends, and the state it led to is sent before the reply.
- * `open.require` is called first, so which ledger it goes to was settled when
- * the call arrived.
+ * `open.require` is called as the call arrives, so which ledger it goes to is
+ * settled then.
+ *
+ * One at a time, in the order they arrived. Each is checked against the fold
+ * before it is appended, and the renderer draws a write before it is recorded
+ * — so the next one can name a block the one before is still writing. Checked
+ * early, that is "No such block" for a block the user is looking at. A write
+ * that is refused does not hold up the ones behind it.
  */
+let writing: Promise<unknown> = Promise.resolve();
+
 function writes(
   channel: string,
   run: (ledger: LedgerRef, ...args: unknown[]) => Promise<unknown>,
 ): void {
-  ipcMain.handle(channel, async (_event, ...args: unknown[]) => {
-    await run(await open.require(), ...args);
-    await publish();
+  ipcMain.handle(channel, (_event, ...args: unknown[]) => {
+    const ledger = open.require();
+    // Waited on in turn, which may be later than it fails.
+    ledger.catch((): void => undefined);
+    const turn = writing.then(async () => {
+      await run(await ledger, ...args);
+      await publish();
+    });
+    writing = turn.catch((): void => undefined);
+    return turn;
   });
 }
 
@@ -184,23 +207,16 @@ export function registerPageIpc(from: Open): void {
     getLogStatus(await open.require()),
   );
 
-  ipcMain.handle(
-    PAGE_CHANNELS.addBlock,
-    async (_event, title: unknown, text: unknown, after: unknown) => {
-      const ledger = await open.require();
+  writes(PAGE_CHANNELS.addBlock, (ledger, id, title, text, after) =>
+    addBlock(
+      ledger,
+      requireTitle(title),
+      requireString(text, "text"),
       // Absent means the end of the page; anything else has to be a block id
       // before it reaches a log that keeps it forever.
-      const beneath =
-        after === undefined ? undefined : requireString(after, "after");
-      const page = await addBlock(
-        ledger,
-        requireTitle(title),
-        requireString(text, "text"),
-        beneath,
-      );
-      await publish();
-      return created(page, beneath);
-    },
+      after === undefined ? undefined : requireString(after, "after"),
+      requireBlockId(id),
+    ),
   );
 
   ipcMain.handle(
