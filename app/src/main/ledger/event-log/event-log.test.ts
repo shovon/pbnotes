@@ -30,6 +30,7 @@ import {
   segmentName,
   verdict,
 } from './event-log.ts';
+import { createLedger } from '../marker/marker.ts';
 import type { LogEvent, LogOptions, Stop } from './event-log.ts';
 
 /**
@@ -39,9 +40,11 @@ import type { LogEvent, LogOptions, Stop } from './event-log.ts';
  */
 const DEVICE = "device-a";
 
-/** A fresh, empty log directory. */
+/** A fresh ledger with nothing in it. A log opens on nothing less. */
 async function scratch(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "pbnotes-log-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "pbnotes-log-"));
+  await createLedger(directory);
+  return directory;
 }
 
 function openLog(

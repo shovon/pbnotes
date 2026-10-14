@@ -21,6 +21,7 @@ import {
 } from "../../../../ledger/project-ledger/project-ledger.ts";
 import type { LedgerRef } from "../../../../ledger/project-ledger/project-ledger.ts";
 import { logSize, segmentName } from "../../../../ledger/event-log/event-log.ts";
+import { MARKER, createLedger } from "../../../../ledger/marker/marker.ts";
 import { lastLeaf, locate } from "../../../../../shared/pages.ts";
 import type { Block } from "../../../../../shared/pages.ts";
 
@@ -52,10 +53,21 @@ const TODAY = "2026-09-21";
 const TOMORROW = "2026-09-22";
 
 async function project(): Promise<LedgerRef> {
-  return {
+  const it = {
     id: randomUUID(),
     path: await mkdtemp(path.join(tmpdir(), "pbnotes-project-")),
   };
+  // As `index.ts` does for a folder nothing has been written in yet: a log
+  // opens only on a ledger, and never makes one.
+  await createLedger(logDirectory(it.path));
+  return it;
+}
+
+/** The device directories in a log folder, which also holds its marker. */
+async function devicesIn(directory: string): Promise<string[]> {
+  return (await readdir(directory, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
 }
 
 /**
@@ -67,7 +79,7 @@ async function project(): Promise<LedgerRef> {
  */
 async function segment(projectPath: string): Promise<string> {
   const directory = logDirectory(projectPath);
-  const devices = await readdir(directory);
+  const devices = await devicesIn(directory);
   assert.equal(devices.length, 1, "one device should have written here");
   return path.join(directory, devices[0], segmentName(1));
 }
@@ -77,9 +89,13 @@ test("the log is written into the project's own gnotes folder", async () => {
   await addBlock(it, TODAY, "lives here");
 
   assert.equal(logDirectory(it.path), path.join(it.path, "gnotes"));
-  // One directory per device, and the segments inside it. Nothing is written
-  // at the top of `gnotes/`, so two machines never share a path.
-  const [device] = await readdir(logDirectory(it.path));
+  // One directory per device, and the segments inside it. The only file at
+  // the top of `gnotes/` is the marker, which every machine writes the same.
+  assert.deepEqual(
+    (await readdir(logDirectory(it.path))).sort(),
+    [MARKER, ...(await devicesIn(logDirectory(it.path)))].sort(),
+  );
+  const [device] = await devicesIn(logDirectory(it.path));
   assert.deepEqual(await readdir(path.join(logDirectory(it.path), device)), [
     "0000000000000001.log",
   ]);
