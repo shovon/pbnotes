@@ -2,7 +2,8 @@
  * An append-only event log: the system of record for project content.
  *
  * Events are facts that already happened, so they are never rewritten and
- * never deleted. Anything the app needs to *read* is a projection — a view
+ * never deleted. The one exception is `renameTypes`, at the bottom, which
+ * changes what an event is called and nothing about what happened. Anything the app needs to *read* is a projection — a view
  * folded out of the log at boot and kept in memory. Projections are
  * disposable and can be reshaped freely; the log cannot, which is why every
  * event carries a schema version (see `LogEvent.v`).
@@ -33,6 +34,8 @@ import {
   open,
   mkdir,
   readdir,
+  readFile,
+  rename,
   truncate,
   stat,
   appendFile,
@@ -841,4 +844,86 @@ export class EventLog {
 /** Byte length of the log on disk, for tests and diagnostics. */
 export async function logSize(file: string): Promise<number> {
   return (await stat(file)).size;
+}
+
+/**
+ * One segment's text with every type in `names` replaced, or null when a line
+ * of it is not an intact record.
+ *
+ * Parsed and written back, which changes the type and nothing else: every
+ * record was written by `JSON.stringify`, and that gives the same bytes again
+ * for what it wrote. A file with no final newline keeps having none.
+ */
+function retype(text: string, names: Record<string, string>): string | null {
+  const lines = text.split('\n');
+  for (const [index, line] of lines.entries()) {
+    if (line === '' && index === lines.length - 1) continue;
+    const event = decode(line);
+    if (!event) return null;
+    if (!Object.hasOwn(names, event.type)) continue;
+    const json = JSON.stringify({ ...event, type: names[event.type] });
+    lines[index] = `${checksum(json)} ${json}`;
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Rewrites the segments in `directory` so that an event whose type is a key
+ * of `names` carries the value instead. Nothing else about a record changes,
+ * and no record moves to another segment, so every `seq`, clock and recorded
+ * tip is as true afterwards as it was before.
+ *
+ * This breaks both rules at the top of this file, once and on purpose (#39):
+ * it rewrites history, and it rewrites every device's files and not only
+ * ours. A machine that is appending to its own segment while another machine
+ * rewrites it leaves a sync tool with two versions of one path. #40 removes
+ * this and puts both rules back.
+ *
+ * Call it before the log is opened, never beside an open one. A segment is
+ * replaced by a rename and never emptied first, so a crash leaves each file
+ * either as it was or done, and running this again finishes the job. A
+ * segment with nothing to rename is not touched. Neither is one with a line
+ * that does not read as a record: that is a file still arriving, or damage,
+ * and both are `open`'s to deal with.
+ */
+export async function renameTypes(
+  directory: string,
+  names: Record<string, string>,
+): Promise<void> {
+  await requireLedger(directory);
+
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const deviceDirectory = path.join(directory, entry.name);
+    let renamed = false;
+
+    // Not here yet, as in `readDevice`: a placeholder or a directory that
+    // went away is skipped, and the next open tries again.
+    const files = await readdir(deviceDirectory).catch((): string[] => []);
+    for (const name of files) {
+      if (!SEGMENT_PATTERN.test(name)) continue;
+      const file = path.join(deviceDirectory, name);
+      const before = await readFile(file, 'utf8').catch((): null => null);
+      if (before === null) continue;
+      const after = retype(before, names);
+      if (after === null || after === before) continue;
+
+      // Beside the segment, so the rename stays on one filesystem. One left
+      // by a crash fails `SEGMENT_PATTERN`, so it is reported and not folded,
+      // and the next run writes over it.
+      const temporary = `${file}.rewrite`;
+      const handle = await open(temporary, 'w');
+      try {
+        await handle.writeFile(after);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await rename(temporary, file);
+      renamed = true;
+    }
+
+    if (renamed) await syncDirectory(deviceDirectory);
+  }
 }

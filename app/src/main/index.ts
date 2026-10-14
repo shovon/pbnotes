@@ -21,6 +21,7 @@ import {
   createLedger,
   inspect,
 } from "./ledger/marker/marker";
+import { renameTypes } from "./ledger/event-log/event-log";
 import {
   deviceId,
   recall,
@@ -35,6 +36,7 @@ import {
 import { pagesFold } from "./features/projects/pages/pages-store/pages-store";
 import { findImage, saveImage } from "./features/projects/pages/images/images";
 import { IMAGE_SCHEME } from "../shared/pages";
+import { RENAMED } from "../shared/blocks/blocks";
 import {
   MIN_SIZE,
   restoreWindowBounds,
@@ -157,6 +159,11 @@ app.on("ready", () => {
     // been opened by a build with this in it, this line goes and an unmarked
     // folder is adopted only when the user says so.
     if (found === "unmarked") await adoptLedger(directory);
+    // Temporary (#39, removed by #40). A log written before #38 names its
+    // events without the namespace, and here every device's segments are
+    // rewritten to carry it. After the two lines above, so a folder that is
+    // not a ledger is refused before anything in it is touched.
+    await renameTypes(directory, RENAMED);
   });
   // A different project is open, so a trail through the last one is over.
   registerProjectIpc(resetTrail);

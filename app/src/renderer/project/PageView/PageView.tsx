@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { indented, outdented, predict } from '../../../shared/blocks/blocks';
+import { indented, NAMESPACE, outdented, predict } from '../../../shared/blocks/blocks';
 import type { PageEvent } from '../../../shared/blocks/blocks';
 import { lastLeaf, locate } from '../../../shared/pages';
 import type { Block as BlockType, Page, PagesApi } from '../../../shared/pages';
@@ -125,7 +125,7 @@ export default function PageView({
       const payload = indented(blocks, id);
       return (
         payload && [
-          { type: 'block.indented', payload },
+          { type: `${NAMESPACE}block.indented`, payload },
           () => pages.indentBlock(id),
         ]
       );
@@ -133,7 +133,7 @@ export default function PageView({
     const payload = outdented(blocks, id);
     return (
       payload && [
-        { type: 'block.outdented', payload },
+        { type: `${NAMESPACE}block.outdented`, payload },
         () => pages.outdentBlock(id),
       ]
     );
@@ -166,7 +166,7 @@ export default function PageView({
     if (text === block.text) return;
     act(() =>
       write([
-        { type: 'block.edited', payload: { id: block.id, text } },
+        { type: `${NAMESPACE}block.edited`, payload: { id: block.id, text } },
         () => pages.editBlock(block.id, text),
       ]),
     );
@@ -231,7 +231,7 @@ export default function PageView({
       block.id === root?.id
         ? pages.deleteBlock(block.id)
         : write([
-            { type: 'block.deleted', payload: { id: block.id } },
+            { type: `${NAMESPACE}block.deleted`, payload: { id: block.id } },
             () => pages.deleteBlock(block.id),
           ]),
     );
@@ -282,7 +282,7 @@ export default function PageView({
           ? []
           : [
               [
-                { type: 'block.edited', payload: { id: block.id, text } },
+                { type: `${NAMESPACE}block.edited`, payload: { id: block.id, text } },
                 () => pages.editBlock(block.id, text),
               ] as Step,
             ]),
@@ -348,7 +348,7 @@ export default function PageView({
     // it, or this one reopened on it — before main has heard of it.
     const id = crypto.randomUUID();
     const create: PageEvent = {
-      type: 'block.created',
+      type: `${NAMESPACE}block.created`,
       // `after` left off entirely when absent, as main writes it.
       payload: { page: title, id, text, ...(after ? { after } : {}) },
     };

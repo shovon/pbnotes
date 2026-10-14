@@ -16,7 +16,7 @@ The outline format is small enough to split by hand:
 
 - `journals/2024_01_31.md` becomes the page `2024-01-31`, which already matches `DATE_PATTERN` in `src/shared/pages.ts`.
 - `pages/Foo.md` takes its title from a `title::` property if the file has one. Otherwise it comes from the filename, with `%2F` or `___` decoded back to `/` depending on the graph's `:file/name-format`.
-- Walk the blocks in document order. Emit `block.created` with no `after` (end of page), then `block.indented { parent }` for any nested block. Indenting makes a block its parent's last child, so document order produces the right tree without computing `after`.
+- Walk the blocks in document order. Emit `block.created` with no `after` (end of page), then `block.indented { parent }` for any nested block, each under its namespaced name (`github.com/shovon/pbnotes#block.created`), as every write is since #38. Indenting makes a block its parent's last child, so document order produces the right tree without computing `after`.
 - The importer is an ordinary writer on this device's log, so the one-writer-per-file rule holds.
 
 ## Decisions to make first
