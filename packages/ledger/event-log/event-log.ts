@@ -23,7 +23,7 @@
  * **One writer per file, forever.** A device appends only inside its own
  * directory, which is what makes the folder safe to hand to a sync tool: two
  * machines never touch the same path, so there is no divergence for Dropbox to
- * resolve and no conflicted copy to lose. See `docs/multi-writer.md`.
+ * resolve and no conflicted copy to lose. See `multi-writer.md`.
  *
  * Only the newest segment of a device is written to; the rest are sealed.
  * `seq` counts within one device and detects damage there. Order across
@@ -45,7 +45,7 @@ import path from 'node:path';
 import type { Dirent } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { MARKER, requireLedger } from '../marker/marker.ts';
-import type { DeviceStatus, LogStatus } from '../../../shared/log.ts';
+import type { DeviceStatus, LogStatus } from '../status.ts';
 
 export type { DeviceStatus, LogStatus };
 

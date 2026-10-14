@@ -11,8 +11,8 @@
  * folder — which is the same promise `docs/design.md` makes about the registry.
  */
 import { randomUUID } from 'node:crypto';
-import { getDatabase } from '../db';
-import type { DeviceMemory } from './event-log/event-log';
+import { getDatabase } from './db';
+import type { DeviceMemory } from '@pbnotes/ledger';
 
 /** Mints one on first call and keeps it thereafter. */
 export function deviceId(): string {

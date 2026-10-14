@@ -75,7 +75,7 @@ This is the one file that more than one device may write, which the invariant ot
 
 ### Opening, creating, adopting
 
-Three separate calls (`src/main/ledger/marker/marker.ts`). Opening never creates the directory and never writes a marker.
+Three separate calls (`marker/marker.ts`). Opening never creates the directory and never writes a marker.
 
 | The directory | `open` | What fixes it |
 | --- | --- | --- |
@@ -189,7 +189,7 @@ This is a change of posture more than of algorithm. Today the reader assumes *I 
 
 A log is **own** if its directory name equals our device id, and **foreign** otherwise.
 
-The two sections below are one function: `verdict(stop, own, last)` in `src/main/ledger/event-log/event-log.ts`, which maps a stopping point to `repair` (truncate), `damaged` (refuse to open) or `stall` (wait). It is pure and separate from the directory walk that feeds it, because it is the only decision in the log that deletes anything — and it is covered by its own truth-table tests that touch no filesystem, alongside the byte-level recovery tests.
+The two sections below are one function: `verdict(stop, own, last)` in `event-log/event-log.ts`, which maps a stopping point to `repair` (truncate), `damaged` (refuse to open) or `stall` (wait). It is pure and separate from the directory walk that feeds it, because it is the only decision in the log that deletes anything — and it is covered by its own truth-table tests that touch no filesystem, alongside the byte-level recovery tests.
 
 ### Own log: unchanged
 

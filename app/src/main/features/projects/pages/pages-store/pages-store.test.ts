@@ -15,13 +15,14 @@ import path from "node:path";
 import * as store from "./pages-store.ts";
 import type { PagesView } from "./pages-store.ts";
 import {
+  MARKER,
   closeLedgers,
+  createLedger,
   defineFold,
-  logDirectory,
-} from "../../../../ledger/project-ledger/project-ledger.ts";
-import type { LedgerRef } from "../../../../ledger/project-ledger/project-ledger.ts";
-import { logSize, segmentName } from "../../../../ledger/event-log/event-log.ts";
-import { MARKER, createLedger } from "../../../../ledger/marker/marker.ts";
+  logSize,
+  segmentName,
+} from "@pbnotes/ledger";
+import type { LedgerRef } from "@pbnotes/ledger";
 import { NAMESPACE } from "../../../../../shared/blocks/blocks.ts";
 import { lastLeaf, locate } from "../../../../../shared/pages.ts";
 import type { Block } from "../../../../../shared/pages.ts";
@@ -56,11 +57,15 @@ const TOMORROW = "2026-09-22";
 async function project(): Promise<LedgerRef> {
   const it = {
     id: randomUUID(),
-    path: await mkdtemp(path.join(tmpdir(), "pbnotes-project-")),
+    // As `index.ts` hands it over: the `gnotes/` inside a project's folder.
+    path: path.join(
+      await mkdtemp(path.join(tmpdir(), "pbnotes-project-")),
+      "gnotes",
+    ),
   };
   // As `index.ts` does for a folder nothing has been written in yet: a log
   // opens only on a ledger, and never makes one.
-  await createLedger(logDirectory(it.path));
+  await createLedger(it.path);
   return it;
 }
 
@@ -78,26 +83,24 @@ async function devicesIn(directory: string): Promise<string[]> {
  * here: these tests run with no binding, so each projection mints one. What
  * matters to a test is that exactly one machine wrote, which is asserted.
  */
-async function segment(projectPath: string): Promise<string> {
-  const directory = logDirectory(projectPath);
+async function segment(directory: string): Promise<string> {
   const devices = await devicesIn(directory);
   assert.equal(devices.length, 1, "one device should have written here");
   return path.join(directory, devices[0], segmentName(1));
 }
 
-test("the log is written into the project's own gnotes folder", async () => {
+test("the log is written into the folder it is handed", async () => {
   const it = await project();
   await addBlock(it, TODAY, "lives here");
 
-  assert.equal(logDirectory(it.path), path.join(it.path, "gnotes"));
   // One directory per device, and the segments inside it. The only file at
   // the top of `gnotes/` is the marker, which every machine writes the same.
   assert.deepEqual(
-    (await readdir(logDirectory(it.path))).sort(),
-    [MARKER, ...(await devicesIn(logDirectory(it.path)))].sort(),
+    (await readdir(it.path)).sort(),
+    [MARKER, ...(await devicesIn(it.path))].sort(),
   );
-  const [device] = await devicesIn(logDirectory(it.path));
-  assert.deepEqual(await readdir(path.join(logDirectory(it.path), device)), [
+  const [device] = await devicesIn(it.path);
+  assert.deepEqual(await readdir(path.join(it.path, device)), [
     "0000000000000001.log",
   ]);
   assert.ok((await logSize(await segment(it.path))) > 0);

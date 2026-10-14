@@ -1,0 +1,8 @@
+{
+  "name": "pbnotes-workspace",
+  "private": true,
+  "workspaces": [
+    "app",
+    "packages/*"
+  ]
+}

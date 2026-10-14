@@ -2,15 +2,19 @@
 
 The ledger is the plumbing for a project's events: it takes them in, reconciles writes from different devices, and lets a feature hook in its own projection. Nothing here knows what an event means.
 
-A project has one ledger, kept in `<project>/gnotes/`. Each device appends only inside its own subdirectory, and every device's segments are merged into one ordered stream when read. A `LEDGER` file at the top says that the directory is a ledger and which version of the format it holds.
+A project has one ledger, kept in whatever directory the caller names; the app keeps it in `<project>/gnotes/`. Each device appends only inside its own subdirectory, and every device's segments are merged into one ordered stream when read. A `LEDGER` file at the top says that the directory is a ledger and which version of the format it holds.
 
 ## The parts
 
 - `marker/` reads and writes `LEDGER`. It decides whether a directory may be opened at all, and is the only way one becomes a ledger.
 - `event-log/` writes and reads the files: framing, fsync, crash recovery, segment rollover, the hybrid logical clock, and the merge across devices.
 - `projection/` folds that stream into an in-memory state through a reducer, and re-folds when another device's events arrive.
-- `project-ledger/` is what the app's glue (`src/main/index.ts`) uses on a feature's behalf. It keeps one open log per project and runs every feature's fold over it.
-- `device-store.ts` holds this machine's id and what it remembers per project, in the app's database.
+- `project-ledger/` is what the app's glue (`app/src/main/index.ts`) uses on a feature's behalf. It keeps one open log per project and runs every feature's fold over it.
+- `status.ts` holds the types that say how much of a folder could be read. They are types only, so a renderer can show them.
+
+`index.ts` is the one entry point; import from `@pbnotes/ledger`, never a file inside it. The package imports nothing but Node builtins and has no build step: it ships its `.ts` source, the app's Vite build bundles it, and `npm test` here runs its tests by type stripping. The spec is [multi-writer.md](multi-writer.md).
+
+Where a device's id and its memory of each log are kept is the caller's choice, handed over with `bindDevice` as a `DeviceBinding`. The app keeps them in its database (`app/src/main/device-store.ts`).
 
 ## Using it for a feature
 
@@ -25,19 +29,19 @@ export const chatFold = {
 };
 ```
 
-`src/main/index.ts` registers it once, at module load, and hands the feature its view of whichever project is open:
+`app/src/main/index.ts` registers it once, at module load, and hands the feature its view of whichever project is open:
 
 ```ts
 const chatOf = defineFold('chat', chatFold);
 
-const view = await chatOf(project);
+const view = await chatOf({ id: project.id, path: logDirectory(project.path) });
 view.state;                                // read
 await view.dispatch('chat.sent', payload); // write: durable and folded once it resolves
 ```
 
-The feature sees only the view. It is never given the project, its id or its path.
+A `LedgerRef` is `{ id, path }`: what to remember the ledger by, and the directory it is kept in. The feature sees only the view. It is never given the project, its id or its path.
 
-`deviceOf(project)` and `logDirectory(project.path)` give the device directory for anything stored beside the log without an event; `@pbnotes/files` is the store the app uses for that, and it imports nothing from here. It goes in a subdirectory of the device directory, which the log leaves alone and does not report; a stray file there is reported as ignored. `index.ts` builds those paths and hands the feature a function that uses them. `onArrival` reports that another device's events were folded in. `closeLedgers` closes every open log at quit.
+`deviceOf(ref)` and `ref.path` give the device directory for anything stored beside the log without an event; `@pbnotes/files` is the store the app uses for that, and it imports nothing from here. It goes in a subdirectory of the device directory, which the log leaves alone and does not report; a stray file there is reported as ignored. `index.ts` builds those paths and hands the feature a function that uses them. `onArrival` reports that another device's events were folded in. `closeLedgers` closes every open log at quit.
 
 Opening a ledger never creates one. A directory with no valid `LEDGER` is refused with a `LedgerRefusedError`, whose `reason` says which of four things was wrong: `missing`, `unmarked`, `not-a-ledger` or `newer`. `createLedger(directory)` makes a ledger where there is nothing, and `adoptLedger(directory)` marks a directory that already holds a log. `beforeOpen` takes a function that is run on a ledger's directory before each open, which is where `index.ts` decides which of those to call.
 
