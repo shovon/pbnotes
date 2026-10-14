@@ -8,7 +8,6 @@ import {
   requireProject,
 } from "./features/projects/projects-ipc";
 import {
-  adoptLedger,
   beforeOpen,
   bindDevice,
   closeLedgers,
@@ -153,11 +152,6 @@ app.on("ready", () => {
   beforeOpen(async (directory) => {
     const found = await inspect(directory);
     if (found === "missing") await createLedger(directory);
-    // Temporary (#36). Every folder written before markers holds segments and
-    // no `LEDGER`, so for now one is written without asking. Once those have
-    // been opened by a build with this in it, this line goes and an unmarked
-    // folder is adopted only when the user says so.
-    if (found === "unmarked") await adoptLedger(directory);
   });
   // A different project is open, so a trail through the last one is over.
   registerProjectIpc(resetTrail);
