@@ -20,6 +20,7 @@ import {
   find,
   HANDLES,
   indented,
+  NAMESPACE,
   outdented,
   reduce,
 } from "../../../../../shared/blocks/blocks.ts";
@@ -256,7 +257,7 @@ export async function addBlock(
 
   // dispatch appends before it folds, so this resolves only once the event is
   // durable — the page handed back can never show something a crash takes.
-  await append(view, "block.created", {
+  await append(view, `${NAMESPACE}block.created`, {
     page: title,
     id,
     text,
@@ -287,7 +288,7 @@ export async function editBlock(
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
 
-  await append(view, "block.edited", { id: blockId, text });
+  await append(view, `${NAMESPACE}block.edited`, { id: blockId, text });
   return pageOf(view, found.page);
 }
 
@@ -307,7 +308,7 @@ export async function deleteBlock(
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
 
-  await append(view, "block.deleted", { id: blockId });
+  await append(view, `${NAMESPACE}block.deleted`, { id: blockId });
   return pageOf(view, found.page);
 }
 
@@ -332,7 +333,7 @@ export async function indentBlock(
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
   const payload = indented(found.blocks, blockId);
-  if (payload) await append(view, "block.indented", payload);
+  if (payload) await append(view, `${NAMESPACE}block.indented`, payload);
   return pageOf(view, found.page);
 }
 
@@ -354,6 +355,6 @@ export async function outdentBlock(
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
   const payload = outdented(found.blocks, blockId);
-  if (payload) await append(view, "block.outdented", payload);
+  if (payload) await append(view, `${NAMESPACE}block.outdented`, payload);
   return pageOf(view, found.page);
 }

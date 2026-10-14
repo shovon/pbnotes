@@ -8,7 +8,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, rename } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rename } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -22,6 +22,7 @@ import {
 import type { LedgerRef } from "../../../../ledger/project-ledger/project-ledger.ts";
 import { logSize, segmentName } from "../../../../ledger/event-log/event-log.ts";
 import { MARKER, createLedger } from "../../../../ledger/marker/marker.ts";
+import { NAMESPACE } from "../../../../../shared/blocks/blocks.ts";
 import { lastLeaf, locate } from "../../../../../shared/pages.ts";
 import type { Block } from "../../../../../shared/pages.ts";
 
@@ -100,6 +101,30 @@ test("the log is written into the project's own gnotes folder", async () => {
     "0000000000000001.log",
   ]);
   assert.ok((await logSize(await segment(it.path))) > 0);
+
+  await closeLedgers();
+});
+
+/**
+ * #38: what lands on disk is the namespaced name, for every event this store
+ * writes. Read off the segment rather than the fold, because the fold takes
+ * either name and would pass this with the bare ones.
+ */
+test("every write lands on disk under its namespaced name", async () => {
+  const it = await project();
+  const [first, second] = [randomUUID(), randomUUID()];
+  await addBlock(it, TODAY, "first", undefined, first);
+  await addBlock(it, TODAY, "second", first, second);
+  await editBlock(it, second, "rewritten");
+  await indentBlock(it, second);
+  await outdentBlock(it, second);
+  await deleteBlock(it, second);
+
+  const written = await readFile(await segment(it.path), "utf8");
+  for (const type of ["created", "edited", "indented", "outdented", "deleted"]) {
+    assert.ok(written.includes(`"${NAMESPACE}block.${type}"`), type);
+    assert.ok(!written.includes(`"block.${type}"`), type);
+  }
 
   await closeLedgers();
 });

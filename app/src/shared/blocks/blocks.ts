@@ -67,29 +67,45 @@ export type BlockOutdented = { id: string; after: string };
  * invisible to a fold that never asks for it, which is what made dropping it
  * an upcast-free change in this direction. `blocks.test.ts` pins that a `v1`
  * payload still folds, including one whose page is outright wrong.
+ *
+ * Named as this build writes them, which is under the namespace. The bare
+ * names the first logs were written with are `LEGACY`, further down.
  */
 export type PageEvent =
-  | { type: "block.created"; payload: BlockCreated }
-  | { type: "block.edited"; payload: BlockEdited }
-  | { type: "block.deleted"; payload: BlockDeleted }
-  | { type: "block.indented"; payload: BlockIndented }
-  | { type: "block.outdented"; payload: BlockOutdented };
+  | { type: Named<"block.created">; payload: BlockCreated }
+  | { type: Named<"block.edited">; payload: BlockEdited }
+  | { type: Named<"block.deleted">; payload: BlockDeleted }
+  | { type: Named<"block.indented">; payload: BlockIndented }
+  | { type: Named<"block.outdented">; payload: BlockOutdented };
 
 /**
- * What every pbnotes event type is being renamed to start with:
+ * What every pbnotes event type starts with:
  * `github.com/shovon/pbnotes#block.created`. See #37.
  *
  * An identifier and not a link. Once a log holds it, it is on disk forever,
  * and it stays these bytes wherever the repository goes.
  *
  * ponytail: here because this is the only fold there is. A second feature's
- * fold takes this, `known` and the doubling in `HANDLES` out to a module of
+ * fold takes this, `known` and the bare names in `HANDLES` out to a module of
  * their own in `shared`.
  */
 export const NAMESPACE = "github.com/shovon/pbnotes#";
 
-/** An event type under either of the two names it can be on disk with. */
-type Either<T extends string> = T | `${typeof NAMESPACE}${T}`;
+/** An event type as it is written: under the namespace. */
+type Named<T extends string> = `${typeof NAMESPACE}${T}`;
+
+/**
+ * The event types that were written under a bare name before #37, and so are
+ * in logs on disk under one for good. Closed: a type added from here on gets
+ * a namespaced name only, and does not go in this list.
+ */
+const LEGACY = [
+  "block.created",
+  "block.edited",
+  "block.deleted",
+  "block.indented",
+  "block.outdented",
+] as const;
 
 /**
  * Event type → the payload `v` this build folds, which is also the `v` it
@@ -106,29 +122,30 @@ type Either<T extends string> = T | `${typeof NAMESPACE}${T}`;
  * counted and reported rather than silently leaving holes in the page.
  */
 const VERSIONS: Record<PageEvent["type"], number> = {
-  "block.created": 1,
+  [`${NAMESPACE}block.created`]: 1,
   // 2 since the page came off the payload. Nothing needed an upcast in this
   // direction — the field is simply unread — but an older build handed one of
   // these would look up `state[undefined]`, miss, and drop the user's text
   // without a word. At `v: 2` its own gate refuses the event and says so.
-  "block.edited": 2,
-  "block.deleted": 2,
-  "block.indented": 2,
-  "block.outdented": 2,
+  [`${NAMESPACE}block.edited`]: 2,
+  [`${NAMESPACE}block.deleted`]: 2,
+  [`${NAMESPACE}block.indented`]: 2,
+  [`${NAMESPACE}block.outdented`]: 2,
 };
 
 /**
- * `VERSIONS` under both names, because the gate looks an event up by the type
- * it has on disk. This build writes the bare names and reads either: a build
- * that only knows the bare ones skips a namespaced event, so every machine on
- * a folder has to be able to read them before any machine writes them.
+ * `VERSIONS`, and the `LEGACY` types under their bare names too, because the
+ * gate looks an event up by the type it has on disk. This build writes the
+ * namespaced names and reads either. A build from before #37 skips a
+ * namespaced event, so every machine on a folder has to be running one that
+ * reads them before any machine runs this.
  */
 export const HANDLES = {
   ...VERSIONS,
   ...Object.fromEntries(
-    Object.entries(VERSIONS).map(([type, v]) => [NAMESPACE + type, v]),
+    LEGACY.map((type) => [type, VERSIONS[`${NAMESPACE}${type}`]]),
   ),
-} as Record<Either<PageEvent["type"]>, number>;
+} as Record<PageEvent["type"] | (typeof LEGACY)[number], number>;
 
 /**
  * `block` spliced in directly after `after`, wherever in the tree that is.
@@ -249,6 +266,14 @@ function foreign(_event: never, state: Pages): Pages {
   return state;
 }
 
+/** A `PageEvent` with the namespace off its type, which is what `reduce` switches on. */
+type Bare<E> = E extends {
+  type: `${typeof NAMESPACE}${infer T}`;
+  payload: infer P;
+}
+  ? { type: T; payload: P }
+  : never;
+
 /**
  * Pure, and over state that survives a structured clone: the view crosses to
  * the renderer as data and the fold may one day run off-thread.
@@ -274,7 +299,7 @@ export function reduce(
     : event;
   // The one cast in the fold: "if this is one of ours, this is its shape."
   // `foreign` below is where that turns out not to be true.
-  const it = known as unknown as PageEvent;
+  const it = known as unknown as Bare<PageEvent>;
 
   switch (it.type) {
     case "block.created": {
@@ -393,12 +418,12 @@ export function outdented(
  * children all over again.
  */
 function landed(state: Pages, event: PageEvent): boolean {
-  if (event.type === "block.created") return !!find(state, event.payload.id);
+  if (event.type === `${NAMESPACE}block.created`) return !!find(state, event.payload.id);
   const found = find(state, event.payload.id);
-  if (event.type === "block.indented") {
+  if (event.type === `${NAMESPACE}block.indented`) {
     return found?.parent?.id === event.payload.parent;
   }
-  if (event.type === "block.outdented") {
+  if (event.type === `${NAMESPACE}block.outdented`) {
     return found?.siblings[found.at - 1]?.id === event.payload.after;
   }
   return false;

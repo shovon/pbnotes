@@ -115,6 +115,15 @@ test("an event folds the same under its namespaced name", () => {
     assert.equal(handles[NAMESPACE + type], handles[type]);
   }
   assert.equal(Object.keys(handles).length, 10);
+  // Ten because five types predate the namespace. One added from here on is
+  // claimed under its namespaced name alone: every bare name the gate claims
+  // is one of these five.
+  assert.deepEqual(
+    Object.keys(handles)
+      .filter((type) => !type.startsWith(NAMESPACE))
+      .sort(),
+    [...new Set(log.map(([type]) => type))].sort(),
+  );
 
   // Only the exact prefix. A slash is what #37 first proposed and is not it.
   assert.deepEqual(
@@ -134,7 +143,7 @@ test("a prediction is the fold, and folding it over a page that has it changes n
   // Enter beneath A, Tab, then Shift+Tab: each move resolved on the page as
   // the events before it leave it, the way the renderer builds them.
   const create: PageEvent = {
-    type: "block.created",
+    type: `${NAMESPACE}block.created`,
     payload: { page: TODAY, id: "n", text: "new", after: "a" },
   };
   const created = predict(page, [create]);
@@ -144,7 +153,7 @@ test("a prediction is the fold, and folding it over a page that has it changes n
   );
 
   const indent: PageEvent = {
-    type: "block.indented",
+    type: `${NAMESPACE}block.indented`,
     payload: indented(created.blocks, "n") ?? assert.fail(),
   };
   const under = predict(page, [create, indent]);
@@ -153,7 +162,7 @@ test("a prediction is the fold, and folding it over a page that has it changes n
   assert.equal(indented(under.blocks, "n"), undefined);
 
   const outdent: PageEvent = {
-    type: "block.outdented",
+    type: `${NAMESPACE}block.outdented`,
     payload: outdented(under.blocks, "n") ?? assert.fail(),
   };
   const out = predict(page, [create, indent, outdent]);
