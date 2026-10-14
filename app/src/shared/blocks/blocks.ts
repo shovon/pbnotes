@@ -96,7 +96,8 @@ type Named<T extends string> = `${typeof NAMESPACE}${T}`;
 
 /**
  * The event types that were written under a bare name before #37, and so are
- * in logs on disk under one for good. Closed: a type added from here on gets
+ * in logs on disk under one until that log is next opened (`RENAMED`), and in
+ * what a machine on an older build goes on writing. Closed: a type added from here on gets
  * a namespaced name only, and does not go in this list.
  */
 const LEGACY = [
@@ -106,6 +107,15 @@ const LEGACY = [
   "block.indented",
   "block.outdented",
 ] as const;
+
+/**
+ * Each `LEGACY` name → the name a log is rewritten to hold in its place when
+ * a project opens (#39). Temporary: #40 removes the rewrite, this and
+ * `LEGACY`.
+ */
+export const RENAMED: Record<string, string> = Object.fromEntries(
+  LEGACY.map((type) => [type, `${NAMESPACE}${type}`]),
+);
 
 /**
  * Event type → the payload `v` this build folds, which is also the `v` it
