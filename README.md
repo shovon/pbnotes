@@ -12,6 +12,11 @@
 
 Pb Notes is a place to think out loud and keep what you learn: daily journal pages, pages that exist as soon as you link to them (`[[Mira]]`, `#Mira`), and under every page, everything that links back to it.
 
+## Status
+
+> [!WARNING]
+> Pb Notes is in early development, and the format of the `gnotes/` folder is not settled. A later version may change it, and may not be able to read a folder written by this one. Do not make it the only home for notes you cannot afford to lose.
+
 ## Why
 
 - **Your notes stay with your work.** Point Pb Notes at a folder and what you write goes into a plain `gnotes/` folder inside it. It backs up, syncs and moves with everything else in there.
