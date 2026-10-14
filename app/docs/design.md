@@ -29,21 +29,21 @@ An unreachable directory reports `unknown` rather than `missing` and is never pr
 | | Holds | Why |
 | --- | --- | --- |
 | SQLite (`notes.db`) | The projects registry, config, and local conveniences | Generic bookkeeping the user never authored. Losing a row is an annoyance |
-| Event log (`<project>/gnotes/`) | **Project content** | The user's own work. A domain-specific record of what they did, which later folds into whatever views the app needs |
+| Event log (the project folder) | **Project content** | The user's own work. A domain-specific record of what they did, which later folds into whatever views the app needs |
 
 ### Content lives in the project, not in `userData`
 
-The log is written **inside the directory the user chose**, one log per project, in a plain `gnotes/` folder. That is the reason project folders exist: the notes are about the work that is already there, so they back up with it, sync with it, and travel with it to another machine. Nuking `~/Library/Application Support/pbnotes` must cost the user nothing but the registry — a list they can rebuild by picking the folders again. It must never cost them a word they wrote.
+The log is written **in the folder the user chose**, one log per project, and that folder is the log: `LEDGER` and one directory per device at its top, and nothing else. Until #42 it was a `gnotes/` folder inside the project, beside other work; a project tracked before then has it moved up once. The folder backs up, syncs and travels to another machine like any other, because it is one. Nuking `~/Library/Application Support/pbnotes` must cost the user nothing but the registry — a list they can rebuild by picking the folders again. It must never cost them a word they wrote.
 
-Not behind a dot. A dot-directory means *you can safely ignore this*, which is what `.git` or `.venv` earns by being bookkeeping the user's work survives without. This log is the system of record: it is the only copy of what they wrote, and marking it ignorable is how it gets excluded from a backup or swept out as tool debris. Other content follows the same rule and sits in the same folder: a pasted image goes in the writing device's directory, beside its segments.
+Not hidden away. A dot-directory means *you can safely ignore this*, which is what `.git` or `.venv` earns by being bookkeeping the user's work survives without. This log is the system of record: it is the only copy of what they wrote, and marking it ignorable is how it gets excluded from a backup or swept out as tool debris. Other content follows the same rule and sits in the same place: a pasted image goes in the writing device's directory, beside its segments.
 
 ### Segments
 
-`gnotes/` holds **one directory per device**, each holding numbered segments, `0000000000000001.log` upward. Only the newest is written to; the rest are sealed, and `seq` keeps counting across them within that device.
+A project folder holds **one directory per device**, each holding numbered segments, `0000000000000001.log` upward. Only the newest is written to; the rest are sealed, and `seq` keeps counting across them within that device.
 
 The directory per device is what makes the folder safe to leave in Dropbox: **one writer per file, forever**, so two machines never touch the same path and a sync tool never has a divergence to resolve. `seq` therefore counts within a device rather than across the folder — it detects damage, and ordering is the hybrid logical clock's job. See [multi-writer.md](../../packages/ledger/multi-writer.md), which is the design in full: what a foreign log may and may not be repaired to, and how the clock is floored and bounded. What the reducer still gets wrong when two machines edit the same page at once is in [block-sync.md](block-sync.md).
 
-The one file at the top of `gnotes/` is `LEDGER`, a marker that says the folder is a ledger and which version of the format it holds. A log opens only on a folder that has it, so the app cannot start writing into the wrong directory, and a build refuses a folder written in a format newer than itself and does not misread it. Any other file found at the top is reported rather than folded.
+The one file at the top of a project folder is `LEDGER`, a marker that says the folder is a ledger and which version of the format it holds. A log opens only on a folder that has it, so the app cannot start writing into the wrong directory, and a build refuses a folder written in a format newer than itself and does not misread it. Any other file found at the top is reported rather than folded.
 
 The numbers are zero-padded to sixteen digits because `ls`, `readdir` and every archive tool sort names as text, and a fixed width makes text order and numeric order the same thing forever. Sixteen digits already runs past the largest integer JavaScript can count exactly; going wider would only buy digits the code could not do arithmetic on.
 

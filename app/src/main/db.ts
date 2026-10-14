@@ -59,6 +59,13 @@ const MIGRATIONS: string[] = [
      height    INTEGER NOT NULL,
      maximized INTEGER NOT NULL DEFAULT 0
    );`,
+
+  // Which projects still keep their ledger in `<project>/gnotes/` (#42): every
+  // one tracked when this runs, and none added after. `pending` until the
+  // move starts, `moving` once it has, NULL once `LEDGER` is at the top. The
+  // folder cannot say this itself: a project added later is in the same table.
+  `ALTER TABLE projects ADD COLUMN ledger_move TEXT;
+   UPDATE projects SET ledger_move = 'pending';`,
 ];
 
 let db: DatabaseSync | null = null;

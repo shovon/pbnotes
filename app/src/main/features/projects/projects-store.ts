@@ -174,6 +174,29 @@ export async function relocateProject(
   return getProject(id);
 }
 
+export type LedgerMove = 'pending' | 'moving';
+
+/**
+ * Whether the project at `projectPath` still has its ledger to move up out of
+ * `gnotes/` (#42). Keyed by path because that is what the ledger hands
+ * `beforeOpen`, and a path is tracked at most once.
+ */
+export function ledgerMove(projectPath: string): LedgerMove | null {
+  const row = getDatabase()
+    .prepare('SELECT ledger_move FROM projects WHERE path = ?')
+    .get(projectPath) as { ledger_move: LedgerMove | null } | undefined;
+  return row?.ledger_move ?? null;
+}
+
+export function setLedgerMove(
+  projectPath: string,
+  move: LedgerMove | null,
+): void {
+  getDatabase()
+    .prepare('UPDATE projects SET ledger_move = ? WHERE path = ?')
+    .run(move, projectPath);
+}
+
 /**
  * A `stat` against an unreachable network share can block for a long time, so
  * a slow probe reports `unknown` instead of stalling the list or being
