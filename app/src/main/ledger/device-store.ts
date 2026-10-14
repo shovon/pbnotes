@@ -1,7 +1,7 @@
 /**
  * This machine's identity, and what it remembers about each project's log.
  *
- * All of it lives in `notes.db` — under `userData`, never in the project
+ * All of it lives in the app's database — under `userData`, never in the project
  * folder. That is the whole point: the shared folder is what gets copied to a
  * second machine, so anything stored inside it would be copied along with the
  * right to write in a directory only one device may write in.

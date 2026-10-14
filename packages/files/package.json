@@ -1,0 +1,13 @@
+{
+  "name": "@pbnotes/files",
+  "version": "0.1.0",
+  "description": "Immutable files named by their hash, kept per device in a shared folder.",
+  "private": true,
+  "type": "module",
+  "main": "./files.ts",
+  "exports": "./files.ts",
+  "scripts": {
+    "test": "node --test '*.test.ts'"
+  },
+  "license": "MIT"
+}

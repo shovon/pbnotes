@@ -32,8 +32,8 @@ export type Reducer<S> = (state: S, event: LogEvent) => S;
  * picked up something which arrived in the folder.
  *
  * The difference matters to whoever is watching. A `dispatch` is already known
- * to the caller that asked for it — `addBlock` hands the folded page straight
- * back — so telling the view about it again is at best redundant work. A
+ * to the caller that asked for it — it resolves once the state is folded — so
+ * telling the view about it again is at best redundant work. A
  * `refold` is the only kind the view could not have known about, because
  * nothing local caused it.
  */
@@ -46,9 +46,9 @@ export type ProjectionOptions = LogOptions & {
    * Under one writer this could not matter: a log only ever held events the
    * build that wrote it knew about. With several machines in a folder, an
    * older build routinely reads what a newer one wrote, and `reduce` ends in a
-   * bare `return state` — so it would render an incomplete page and say
-   * nothing. Skipping stays the behaviour, because refusing to open would let
-   * one new event type on one machine lock the user out of their notes
+   * bare `return state` — so the consumer would show an incomplete state and
+   * say nothing. Skipping stays the behaviour, because refusing to open would
+   * let one new event type on one machine lock the user out of the log
    * everywhere. Counting is what turns it from silent into visible.
    */
   handles?: Record<string, number>;
@@ -79,7 +79,7 @@ export class Projection<S> {
     // What the fold *started* from, not what it arrived at. `fold.state` has
     // the entire log in it by the time this runs, and a refold onto that is
     // how every event already on disk at open gets folded a second time — for
-    // a reducer that appends (every block in a page), a doubled view.
+    // a reducer that appends, a doubled view.
     this.#initial = initial;
     this.#unhandled = fold.unhandled;
     this.#counted = fold.count;
@@ -168,8 +168,8 @@ export class Projection<S> {
    *
    * From scratch, not extended: another device's event can sort anywhere,
    * including before events already folded, so there is no tail to append.
-   * The price is that a late arrival reshuffles the page under the user, which
-   * is what a shared folder costs.
+   * The price is that a late arrival reshuffles the state under the consumer,
+   * which is what a shared folder costs.
    */
   async refold(): Promise<void> {
     const fold = Projection.#folder(
@@ -195,7 +195,7 @@ export class Projection<S> {
    * function is called.
    *
    * Not optional garnish once the folder is shared: without it, another
-   * machine's notes do not appear until the app restarts, because the log is
+   * machine's events do not appear until the consumer restarts, because the log is
    * read exactly once at open.
    */
   watch(): () => void {

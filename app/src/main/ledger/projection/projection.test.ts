@@ -33,7 +33,7 @@ const reduce: Reducer<Notes> = (state, event) => {
  *
  * Pinned rather than left to default because `seq` counts within a device now,
  * and a fresh id per session would mean a fresh directory per session — which
- * is what a real machine avoids by keeping its id in `notes.db`.
+ * is what a real machine avoids by keeping its id in the device binding.
  */
 const DEVICE = 'device-under-test';
 
@@ -224,8 +224,8 @@ test('events this build cannot fold are counted, not silently dropped', async ()
 });
 
 /**
- * Appends, the way the real page reducer does: a block's place on the page
- * comes from the fold, so an event folded twice is a block on the page twice.
+ * Appends, the way a real reducer over an ordered list does: an entry's place
+ * comes from the fold, so an event folded twice is an entry in the list twice.
  * `reduce` above is keyed by id and so is idempotent — it would fold the same
  * log ten times and look right, which is exactly why it cannot test this.
  */
@@ -258,7 +258,7 @@ test('re-folding a log that was not empty at open does not double it', async () 
 /**
  * What a subscriber is told, and when it is told nothing at all.
  *
- * This is what a window hangs off: it re-reads the page when the fold moved
+ * This is what a window hangs off: it re-reads the state when the fold moved
  * because a file arrived, and must not re-read it on a timer, or the view
  * throws away what it is showing every half minute for no reason.
  */

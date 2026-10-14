@@ -9,6 +9,9 @@
  * What is left here is the fold as it is handed to whoever registers it, the
  * commands that author events and the queries over what they fold to.
  *
+ * What several machines writing at once does to a page, and what the block
+ * fold still gets wrong then, is `docs/block-sync.md`.
+ *
  * Deliberately free of `electron` imports: callers hand in the view, which
  * keeps the store runnable under `node --test`.
  */

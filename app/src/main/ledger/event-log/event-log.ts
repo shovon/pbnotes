@@ -42,6 +42,7 @@ import { createInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 import path from 'node:path';
+import type { Dirent } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import type { DeviceStatus, LogStatus } from '../../../shared/log.ts';
 
@@ -68,7 +69,7 @@ export type LogEvent<T = unknown> = {
   /** Orders the merged log. */
   hlc: Hlc;
   id: string;
-  /** Domain event name, e.g. `note.written`. */
+  /** The consumer's name for what happened, e.g. `chat.sent`. */
   type: string;
   /**
    * Schema version of *this event type's* payload. History cannot be
@@ -339,9 +340,9 @@ async function* readDevice(
   out: DeviceRead,
   ignored: string[],
 ): AsyncGenerator<LogEvent> {
-  let names: string[];
+  let entries: Dirent[];
   try {
-    names = (await readdir(directory)).sort();
+    entries = await readdir(directory, { withFileTypes: true });
   } catch (error) {
     // Selective sync, an online-only placeholder, a directory that went away
     // mid-read. None of these are damage; they are "not here yet".
@@ -350,12 +351,16 @@ async function* readDevice(
     return;
   }
 
+  // A subdirectory belongs to whoever put it there: a consumer may keep things
+  // beside a device's segments that are that device's to write, like the log,
+  // and nothing the fold reads. Not junk, so not reported as skipped. A stray
+  // *file* still is — a conflicted copy is a file.
+  const names = entries
+    .filter((entry) => !entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
   const segments = names.filter((name) => SEGMENT_PATTERN.test(name));
   for (const name of names) {
-    // A device's images sit beside its segments (`features/projects/pages/images/images.ts`):
-    // its own to write, like the log, and nothing the fold reads. Not junk, so
-    // not reported as skipped.
-    if (name === 'images') continue;
     if (!segments.includes(name)) ignored.push(path.join(directory, name));
   }
 
@@ -444,7 +449,7 @@ function ignore(): void {
   // be replayed first, but the caller has nothing to fold it into.
 }
 
-/** What this device remembers between sessions, held in `notes.db`. */
+/** What this device remembers between sessions, kept by the device binding. */
 export type DeviceMemory = {
   /** Highest clock observed, so a folder that loses files cannot rewind it. */
   clock: Hlc;
@@ -456,7 +461,7 @@ export type LogOptions = {
   /**
    * This machine's identity, and the directory it writes in. Defaults to a
    * fresh id per process, which is right for tests and visible litter in
-   * production — call sites that mean it pass one from `notes.db`.
+   * production — call sites that mean it pass one from the device binding.
    */
   device?: string;
   memory?: DeviceMemory;
@@ -642,7 +647,7 @@ export class EventLog {
     const own = reads.get(device) as DeviceRead;
     const tip = options.memory?.tip;
     // Records in our own file that we did not write. A crash between the
-    // log's fsync and the note in `notes.db` looks the same, which is fine:
+    // log's fsync and the binding recording the tip looks the same, which is fine:
     // rotating costs a directory, and being wrong about this costs events.
     const duplicate =
       tip !== undefined &&
