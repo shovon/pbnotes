@@ -57,11 +57,8 @@ const TOMORROW = "2026-09-22";
 async function project(): Promise<LedgerRef> {
   const it = {
     id: randomUUID(),
-    // As `index.ts` hands it over: the `gnotes/` inside a project's folder.
-    path: path.join(
-      await mkdtemp(path.join(tmpdir(), "pbnotes-project-")),
-      "gnotes",
-    ),
+    // As `index.ts` hands it over: the project folder is the ledger.
+    path: await mkdtemp(path.join(tmpdir(), "pbnotes-project-")),
   };
   // As `index.ts` does for a folder nothing has been written in yet: a log
   // opens only on a ledger, and never makes one.
@@ -79,7 +76,7 @@ async function devicesIn(directory: string): Promise<string[]> {
 /**
  * The first segment of the only device writing in a project's log folder.
  *
- * The layout is `gnotes/<device>/<segment>`, and the device id is not fixed
+ * The layout is `<project>/<device>/<segment>`, and the device id is not fixed
  * here: these tests run with no binding, so each projection mints one. What
  * matters to a test is that exactly one machine wrote, which is asserted.
  */
@@ -94,7 +91,7 @@ test("the log is written into the folder it is handed", async () => {
   await addBlock(it, TODAY, "lives here");
 
   // One directory per device, and the segments inside it. The only file at
-  // the top of `gnotes/` is the marker, which every machine writes the same.
+  // the top of the project folder is the marker, which every machine writes the same.
   assert.deepEqual(
     (await readdir(it.path)).sort(),
     [MARKER, ...(await devicesIn(it.path))].sort(),

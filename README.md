@@ -15,11 +15,11 @@ Pb Notes is a place to think out loud and keep what you learn: daily journal pag
 ## Status
 
 > [!WARNING]
-> Pb Notes is in early development, and the format of the `gnotes/` folder is not settled. A later version may change it, and may not be able to read a folder written by this one. A folder records which version of the format it holds, so a build that meets a newer one refuses to open it and does not misread it. Do not make it the only home for notes you cannot afford to lose.
+> Pb Notes is in early development, and the format of a project folder is not settled. A later version may change it, and may not be able to read a folder written by this one. A folder records which version of the format it holds, so a build that meets a newer one refuses to open it and does not misread it. Do not make it the only home for notes you cannot afford to lose.
 
 ## Why
 
-- **Your notes stay with your work.** Point Pb Notes at a folder and what you write goes into a plain `gnotes/` folder inside it. It backs up, syncs and moves with everything else in there.
+- **Your notes are plain files in a folder you pick.** Point Pb Notes at an empty folder and what you write is kept there. It backs up, syncs and moves like any other folder.
 - **Safe for many writers.** Leave the folder in Dropbox, iCloud or any other sync tool and write from several machines. Each one writes only its own files, so there is never a conflicted copy, and an edit made elsewhere shows up on screen when it arrives.
 - **Nothing is lost if the app's own data is wiped.** The app remembers only which folders you picked. Pick them again and every note is still there.
 

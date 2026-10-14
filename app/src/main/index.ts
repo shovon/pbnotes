@@ -8,6 +8,11 @@ import {
   requireProject,
 } from "./features/projects/projects-ipc";
 import {
+  ledgerMove,
+  setLedgerMove,
+} from "./features/projects/projects-store";
+import { liftLedger } from "./features/projects/lift-ledger/lift-ledger";
+import {
   adoptLedger,
   beforeOpen,
   bindDevice,
@@ -18,7 +23,6 @@ import {
   inspect,
   onArrival,
 } from "@pbnotes/ledger";
-import type { LedgerRef } from "@pbnotes/ledger";
 import {
   deviceId,
   recall,
@@ -58,28 +62,6 @@ if (!app.commandLine.hasSwitch("user-data-dir")) {
 // because a ledger that is already open has replayed without a fold that
 // arrives after it.
 const pagesOf = defineFold("pages", pagesFold);
-
-/**
- * `<project>/gnotes/`, holding the ledger. Visible, not behind a dot: a
- * dot-directory tells the user "you can safely ignore this", which is true of
- * a tool's bookkeeping and a lie about the only copy of their work.
- *
- * The log lives *inside the project's own directory*, and that location is
- * the point of the whole app. A project folder is where the user's work
- * already lives, so what they write about it belongs beside it: it gets backed
- * up with it, syncs with it, travels with it to another machine, and outlives
- * pbnotes itself. Put it in `userData` instead and wiping an OS support
- * folder — or losing the registry that maps a UUID back to a path — takes the
- * writing with it. The content is the user's, not the app's.
- */
-function logDirectory(projectPath: string): string {
-  return path.join(projectPath, "gnotes");
-}
-
-/** A project as the ledger knows it: its id, and where its log is kept. */
-function ledgerOf(project: { id: string; path: string }): LedgerRef {
-  return { id: project.id, path: logDirectory(project.path) };
-}
 
 // Before the app is ready, or it is too late. `standard` gives the URL a
 // host, which is always `images`; the handler is in `pages-ipc`.
@@ -164,12 +146,25 @@ app.on("ready", () => {
     remember,
     rotate: rotateDeviceId,
   });
+  // A project folder is its ledger, so what the user writes lives with the
+  // folder they picked: it backs up, syncs and moves with it, and outlives
+  // the app. Never `userData`: wiping that must not lose a word.
+  //
   // A log opens only on a folder that holds a `LEDGER` marker, and never
-  // makes one. What a project's `gnotes/` gets before it is opened is decided
-  // here: a folder nothing has been written in is made a ledger, because that
-  // is what picking a new project means. Anything else that is not one is
-  // left alone, and the open that follows refuses it and says why.
+  // makes one. What a project folder gets before it is opened is decided
+  // here. A project tracked before #42 has its ledger moved up out of
+  // `gnotes/` first. Then a folder nothing has been written in is made a
+  // ledger, because that is what picking a new project means. Anything else
+  // that is not one is left alone, and the open that follows refuses it and
+  // says why.
   beforeOpen(async (directory) => {
+    const move = ledgerMove(directory);
+    if (move) {
+      const lift = await liftLedger(directory, move === "moving", () =>
+        setLedgerMove(directory, "moving"),
+      );
+      if (lift !== "none") setLedgerMove(directory, null);
+    }
     const found = await inspect(directory);
     if (found === "missing") await createLedger(directory);
     // Temporary (#36). Every folder written before markers holds segments and
@@ -188,12 +183,12 @@ app.on("ready", () => {
   // the first thing each of these calls: a write or an image sent just before
   // the project changed lands where it was sent.
   registerPageIpc({
-    require: async () => pagesOf(ledgerOf(await requireProject())),
+    require: async () => pagesOf(await requireProject()),
     saveImage: async (bytes, mime) => {
       const project = await requireProject();
       return saveImage(
-        logDirectory(project.path),
-        await deviceOf(ledgerOf(project)),
+        project.path,
+        await deviceOf(project),
         bytes,
         mime,
       );
@@ -204,7 +199,7 @@ app.on("ready", () => {
     findImage: async (name) => {
       const project = currentProject();
       return project
-        ? findImage(logDirectory(project.path), name)
+        ? findImage(project.path, name)
         : undefined;
     },
   });

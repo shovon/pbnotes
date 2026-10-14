@@ -2,7 +2,7 @@
 
 The ledger is the plumbing for a project's events: it takes them in, reconciles writes from different devices, and lets a feature hook in its own projection. Nothing here knows what an event means.
 
-A project has one ledger, kept in whatever directory the caller names; the app keeps it in `<project>/gnotes/`. Each device appends only inside its own subdirectory, and every device's segments are merged into one ordered stream when read. A `LEDGER` file at the top says that the directory is a ledger and which version of the format it holds.
+A project has one ledger, kept in whatever directory the caller names; the app hands it the project folder itself. Each device appends only inside its own subdirectory, and every device's segments are merged into one ordered stream when read. A `LEDGER` file at the top says that the directory is a ledger and which version of the format it holds.
 
 ## The parts
 

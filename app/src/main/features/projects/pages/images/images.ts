@@ -1,6 +1,6 @@
 /**
  * Where a project's images are: beside the log, in the folder of the device
- * that added them — `gnotes/<device-id>/images/<sha256>.png`.
+ * that added them — `<project>/<device-id>/images/<sha256>.png`.
  *
  * Kept by `@pbnotes/files`, which is where the reasoning lives: per device,
  * named by the hash of the bytes, and found in whichever device's folder has
