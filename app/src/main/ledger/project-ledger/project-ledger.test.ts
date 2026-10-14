@@ -17,6 +17,7 @@ import {
   deviceOf,
   logDirectory,
 } from './project-ledger.ts';
+import { MARKER, createLedger } from '../marker/marker.ts';
 import type { Fold } from './project-ledger.ts';
 
 /** Collects the payloads of one event type, in order. */
@@ -29,17 +30,24 @@ function collect<T extends string>(type: T): Fold<string[], T> {
   };
 }
 
+/** Somewhere new, with the ledger made: opening one never makes it. */
+async function project(): Promise<{ id: string; path: string }> {
+  const it = {
+    id: randomUUID(),
+    path: await mkdtemp(path.join(tmpdir(), 'pbnotes-ledger-')),
+  };
+  await createLedger(logDirectory(it.path));
+  return it;
+}
+
 const notes = defineFold('notes', collect('note.written'));
 const chat = defineFold('chat', collect('message.sent'));
 
 test('two folds share one log, one writer, and one status', async () => {
-  const project = {
-    id: randomUUID(),
-    path: await mkdtemp(path.join(tmpdir(), 'pbnotes-ledger-')),
-  };
+  const it = await project();
 
-  const written = await notes(project);
-  const said = await chat(project);
+  const written = await notes(it);
+  const said = await chat(it);
   await written.dispatch('note.written', 'a');
   await said.dispatch('message.sent', 'hello');
   await written.dispatch('note.written', 'b');
@@ -47,22 +55,20 @@ test('two folds share one log, one writer, and one status', async () => {
   assert.deepEqual(written.state, ['a', 'b']);
   assert.deepEqual(said.state, ['hello']);
   assert.deepEqual(written.status.unhandled, []);
-  assert.deepEqual(await readdir(logDirectory(project.path)), [
-    await deviceOf(project),
-  ]);
+  assert.deepEqual(
+    (await readdir(logDirectory(it.path))).sort(),
+    [MARKER, await deviceOf(it)].sort(),
+  );
 
   await closeLedgers();
-  assert.deepEqual((await chat(project)).state, ['hello']);
-  assert.deepEqual((await notes(project)).state, ['a', 'b']);
+  assert.deepEqual((await chat(it)).state, ['hello']);
+  assert.deepEqual((await notes(it)).state, ['a', 'b']);
   await closeLedgers();
 });
 
 test('a fold cannot join once a ledger is open', async () => {
-  const project = {
-    id: randomUUID(),
-    path: await mkdtemp(path.join(tmpdir(), 'pbnotes-ledger-')),
-  };
-  await notes(project);
+  const it = await project();
+  await notes(it);
   assert.throws(() => defineFold('late', collect('late.event')), /after/);
   await closeLedgers();
 });

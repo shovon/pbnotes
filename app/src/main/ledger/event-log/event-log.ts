@@ -44,6 +44,7 @@ import { crc32 } from 'node:zlib';
 import path from 'node:path';
 import type { Dirent } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
+import { MARKER, requireLedger } from '../marker/marker.ts';
 import type { DeviceStatus, LogStatus } from '../../../shared/log.ts';
 
 export type { DeviceStatus, LogStatus };
@@ -530,13 +531,16 @@ export class EventLog {
    * and bake the damage in — and, now that there are several writers, it is
    * also what makes the clock correct, because a device that appends before it
    * reads has no idea what it is appending after.
+   *
+   * Never creates `directory`, and refuses one that does not hold a marker:
+   * see `marker.ts`. Making a ledger is a separate call.
    */
   static async open(
     directory: string,
     apply: (event: LogEvent) => void = ignore,
     options: LogOptions = {},
   ): Promise<EventLog> {
-    await mkdir(directory, { recursive: true });
+    await requireLedger(directory);
 
     let device = options.device ?? randomUUID();
     // Ours before the replay reads it: a directory that is merely not there
@@ -594,8 +598,11 @@ export class EventLog {
     duplicate: boolean;
   }> {
     const entries = await readdir(directory, { withFileTypes: true });
+    // The marker is the one file that belongs at the top. Any other is
+    // reported: a segment from before devices had directories, a conflicted
+    // copy of the marker itself.
     const ignored = entries
-      .filter((entry) => !entry.isDirectory())
+      .filter((entry) => !entry.isDirectory() && entry.name !== MARKER)
       .map((entry) => path.join(directory, entry.name));
     const devices = entries
       .filter((entry) => entry.isDirectory())

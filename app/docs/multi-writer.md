@@ -37,6 +37,7 @@ Note what does *not* work: keeping a local secret and comparing it to an id publ
 
 ```
 <log directory>/
+  LEDGER
   <device-id>/0000000000000001.log
   <device-id>/0000000000000002.log
   <other-device-id>/0000000000000001.log
@@ -44,9 +45,50 @@ Note what does *not* work: keeping a local secret and comparing it to an id publ
 
 Segment naming, sealing and rollover are unchanged: sixteen digits, 16 MiB or local midnight, only the newest written to. Sealing gets *more* valuable here — a sealed segment never changes again, so a sync tool uploads it once and leaves it alone. Only each device's hot file churns, and the daily roll bounds how large it gets.
 
+**`LEDGER` is the only file at the top**, and is described under [The marker](#the-marker).
+
 **Root-level `*.log` files are ignored.** Logs written in the old single-writer layout held throwaway data and are not worth a migration path; they are listed in the status surface so the skip is visible rather than silent, and never folded. This is a deliberate one-time break, and it is what lets the envelope below require its new fields instead of treating them as optional.
 
 **A subdirectory of a device directory is left alone.** A consumer may keep things beside a device's segments that are that device's to write and that no event carries. The log does not read them and does not report them. A stray *file* in a device directory is reported: conflicted copies and junk are files. `@pbnotes/files` keeps to the same layout and claims one such subdirectory by name.
+
+## The marker
+
+Nothing about a directory's shape proves it is a ledger. A log that opened on whatever path it was handed would write a device directory into the wrong folder and read every subdirectory there as a device. So a ledger says that it is one, in a file named `LEDGER` at the top of the directory:
+
+```
+Signature: bULhVFqraHDHescwKKhK0g==
+# This folder is an append-only event ledger. Each subfolder belongs to one
+# device. Do not edit, rename or delete anything here by hand.
+read 1
+write 1
+```
+
+- **The first line is the signature**: 128 random bits in base64, the same in every ledger there will ever be, and never changed. It is matched exactly. A file named `LEDGER` that does not start with it is not a marker.
+- **Lines that start with `#` are skipped.** They are for a person who finds the file. Their wording is not part of the format.
+- **`read N` and `write N`** are the lowest format version a build needs to read the directory and to write to it. Both are required, in that order, and nothing else may follow. Every line ends in one newline.
+- **Version 1** is the envelope, the segment names and the layout described in this document. A version goes up for a change an older build would misread. A change an older build already skips and reports, such as a new event type, does not need it.
+- **Two numbers and not one**, so that a later format can say that an older build may read but must not write. Nothing reads without writing yet, so a build opens a directory only when it meets both.
+
+This is the one file that more than one device may write, which the invariant otherwise forbids. It is safe because of what goes in it: no id, no date, nothing that differs between writers. Every build of one version writes the same bytes, with an exclusive create, once, and never rewrites them. Two machines that create the same directory before they sync produce identical files, and a conflicted copy of one is a duplicate, reported as a stray file like any other.
+
+### Opening, creating, adopting
+
+Three separate calls (`src/main/ledger/marker/marker.ts`). Opening never creates the directory and never writes a marker.
+
+| The directory | `open` | What fixes it |
+| --- | --- | --- |
+| Holds a valid `LEDGER` with `read` and `write` this build meets | Opens | |
+| Does not exist, or is empty | Refuses: `missing` | `createLedger` |
+| No `LEDGER`, and at least one subdirectory holds a segment | Refuses: `unmarked` | `adoptLedger` |
+| No `LEDGER`, not empty, no segments anywhere | Refuses: `not-a-ledger` | Nothing |
+| `LEDGER` has the wrong signature, or does not parse | Refuses: `not-a-ledger` | Nothing |
+| `LEDGER` asks for a higher `read` or `write` | Refuses: `newer` | A newer build |
+
+The refusal is a `LedgerRefusedError` whose `reason` is one of the four, because what to do next differs for each and is the caller's decision. A directory that holds only dotfiles counts as empty: a file manager leaves those in a folder it was merely asked to show.
+
+`unmarked` covers three things that look the same on disk: a directory written before markers existed, one whose marker has not arrived from the sync tool yet, and one whose marker was lost. Adopting is safe in all three, since it writes the bytes that are there or on their way and touches nothing else.
+
+A higher version is refused outright and there is no way to force past it. The log is never rewritten, so a record appended by a build that did not know the format stays for good.
 
 ## The envelope
 
@@ -203,7 +245,7 @@ type DeviceStatus = {
 
 type LogStatus = {
   devices: DeviceStatus[];
-  /** Paths skipped: root-level segments, conflicted copies, junk. */
+  /** Paths skipped: root-level segments, conflicted copies, junk. Never the marker. */
   ignored: string[];
   /** Event types, and payload versions, this build could not fold. */
   unhandled: { type: string; v: number; count: number }[];
@@ -228,7 +270,10 @@ Handed to the consumer alongside the state. How it reaches the user is the consu
 - A duplicated segment file folds once, not twice.
 - An unrecognised event type is skipped, counted, and reported in `unhandled`.
 - A conflicted copy inside our own device directory mints a new device id, as does a tip on disk that runs past the one the device binding recorded.
-- Root-level segments and junk files appear in `ignored`, not in the fold. A subdirectory of a device directory does not.
+- Root-level segments and junk files appear in `ignored`, not in the fold. A subdirectory of a device directory does not, and neither does the marker.
+- Opening writes nothing in a directory that is empty, absent, or somebody's unrelated folder, and each of the four refusals can be told apart.
+- An unmarked directory reads the same after it is adopted, and the marker is the only path that was added.
+- A marker asking for a higher `read` or `write` is refused and the directory is not written to. One with any other signature is not a ledger.
 - A re-fold caused by an arriving file is reported to subscribers; one caused by this device's own write, or by a poll that read an unchanged log, is not.
 
 ### The one that matters

@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cp, mkdtemp } from 'node:fs/promises';
+import { createLedger } from '../marker/marker.ts';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Projection } from './projection.ts';
@@ -39,7 +40,9 @@ const DEVICE = 'device-under-test';
 
 /** A fresh log directory; the projection owns everything inside it. */
 async function scratch(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), 'pbnotes-proj-'));
+  const directory = await mkdtemp(path.join(tmpdir(), 'pbnotes-proj-'));
+  await createLedger(directory);
+  return directory;
 }
 
 async function writeSession(directory: string): Promise<Notes> {

@@ -15,7 +15,7 @@ Pb Notes is a place to think out loud and keep what you learn: daily journal pag
 ## Status
 
 > [!WARNING]
-> Pb Notes is in early development, and the format of the `gnotes/` folder is not settled. A later version may change it, and may not be able to read a folder written by this one. Do not make it the only home for notes you cannot afford to lose.
+> Pb Notes is in early development, and the format of the `gnotes/` folder is not settled. A later version may change it, and may not be able to read a folder written by this one. A folder records which version of the format it holds, so a build that meets a newer one refuses to open it and does not misread it. Do not make it the only home for notes you cannot afford to lose.
 
 ## Why
 

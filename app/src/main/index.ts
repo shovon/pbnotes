@@ -8,6 +8,7 @@ import {
   requireProject,
 } from "./features/projects/projects-ipc";
 import {
+  beforeOpen,
   bindDevice,
   closeLedgers,
   defineFold,
@@ -15,6 +16,11 @@ import {
   logDirectory,
   onArrival,
 } from "./ledger/project-ledger/project-ledger";
+import {
+  adoptLedger,
+  createLedger,
+  inspect,
+} from "./ledger/marker/marker";
 import {
   deviceId,
   recall,
@@ -137,6 +143,20 @@ app.on("ready", () => {
     recall,
     remember,
     rotate: rotateDeviceId,
+  });
+  // A log opens only on a folder that holds a `LEDGER` marker, and never
+  // makes one. What a project's `gnotes/` gets before it is opened is decided
+  // here: a folder nothing has been written in is made a ledger, because that
+  // is what picking a new project means. Anything else that is not one is
+  // left alone, and the open that follows refuses it and says why.
+  beforeOpen(async (directory) => {
+    const found = await inspect(directory);
+    if (found === "missing") await createLedger(directory);
+    // Temporary (#36). Every folder written before markers holds segments and
+    // no `LEDGER`, so for now one is written without asking. Once those have
+    // been opened by a build with this in it, this line goes and an unmarked
+    // folder is adopted only when the user says so.
+    if (found === "unmarked") await adoptLedger(directory);
   });
   // A different project is open, so a trail through the last one is over.
   registerProjectIpc(resetTrail);

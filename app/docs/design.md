@@ -43,7 +43,7 @@ Not behind a dot. A dot-directory means *you can safely ignore this*, which is w
 
 The directory per device is what makes the folder safe to leave in Dropbox: **one writer per file, forever**, so two machines never touch the same path and a sync tool never has a divergence to resolve. `seq` therefore counts within a device rather than across the folder — it detects damage, and ordering is the hybrid logical clock's job. See [multi-writer.md](multi-writer.md), which is the design in full: what a foreign log may and may not be repaired to, and how the clock is floored and bounded. What the reducer still gets wrong when two machines edit the same page at once is in [block-sync.md](block-sync.md).
 
-Nothing is written at the top of `gnotes/`, and files found there are reported rather than folded.
+The one file at the top of `gnotes/` is `LEDGER`, a marker that says the folder is a ledger and which version of the format it holds. A log opens only on a folder that has it, so the app cannot start writing into the wrong directory, and a build refuses a folder written in a format newer than itself and does not misread it. Any other file found at the top is reported rather than folded.
 
 The numbers are zero-padded to sixteen digits because `ls`, `readdir` and every archive tool sort names as text, and a fixed width makes text order and numeric order the same thing forever. Sixteen digits already runs past the largest integer JavaScript can count exactly; going wider would only buy digits the code could not do arithmetic on.
 

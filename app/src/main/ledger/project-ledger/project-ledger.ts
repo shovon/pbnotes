@@ -69,6 +69,20 @@ export function bindDevice(next: DeviceBinding): void {
 }
 
 /**
+ * Run on a ledger's directory before it is opened, once per open.
+ *
+ * A log opens only on a directory that holds a marker and makes none itself
+ * (`marker.ts`). Whether one that is missing gets created is the caller's
+ * policy, so this is where the caller puts it. Left unset, a directory that
+ * is not already a ledger is refused.
+ */
+let prepare: ((directory: string) => Promise<void>) | undefined;
+
+export function beforeOpen(next: (directory: string) => Promise<void>): void {
+  prepare = next;
+}
+
+/**
  * Told which project's folds moved because something arrived in its folder.
  *
  * Injected for the same reason as `bindDevice`: this file holds no `electron`
@@ -155,10 +169,11 @@ function projectionFor(project: LedgerRef): Promise<Projection<Slices>> {
   if (cached) void release(cached);
 
   const all = [...folds];
-  const entry: Entry = {
-    path: project.path,
-    projection: Projection.open<Slices>(
-      logDirectory(project.path),
+  const directory = logDirectory(project.path);
+  const open = async (): Promise<Projection<Slices>> => {
+    await prepare?.(directory);
+    return Projection.open<Slices>(
+      directory,
       reduce,
       Object.fromEntries(all.map(([name, fold]) => [name, fold.initial])),
       {
@@ -177,7 +192,11 @@ function projectionFor(project: LedgerRef): Promise<Projection<Slices>> {
           return device;
         },
       },
-    ).then((projection) => {
+    );
+  };
+  const entry: Entry = {
+    path: project.path,
+    projection: open().then((projection) => {
       // The folder is shared, so another machine's events can land at any
       // moment. Without this they would not appear until the app restarts.
       projection.watch();
