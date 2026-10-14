@@ -1,0 +1,13 @@
+{
+  "name": "@pbnotes/ledger",
+  "version": "0.1.0",
+  "description": "An append-only event log that several devices write through a shared folder, and the fold that reads it.",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "exports": "./index.ts",
+  "scripts": {
+    "test": "node --test '**/*.test.ts'"
+  },
+  "license": "MIT"
+}

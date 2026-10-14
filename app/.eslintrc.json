@@ -70,6 +70,23 @@
   },
   "overrides": [
     {
+      "files": ["src/renderer/**", "src/preload/**", "src/shared/**"],
+      "rules": {
+        "@typescript-eslint/no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@pbnotes/ledger",
+                "allowTypeImports": true,
+                "message": "The ledger runs on Node. Outside main, take its types only, with `import type`."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "files": [
         "vite.*.config.ts",
         "vite.*.config.mts",

@@ -2,13 +2,13 @@
 
 *Status: the reducer semantics are deferred. See [Deferred](#deferred-what-the-reducer-still-gets-wrong).*
 
-[multi-writer.md](multi-writer.md) is the spec for the ledger: how several machines write events into one folder and every one of them folds the same order. It says nothing about what an event means. This is the other half: what that order does to blocks and pages, and the rules the block model keeps so that a sync does not lose what someone typed.
+[multi-writer.md](../../packages/ledger/multi-writer.md) is the spec for the ledger: how several machines write events into one folder and every one of them folds the same order. It says nothing about what an event means. This is the other half: what that order does to blocks and pages, and the rules the block model keeps so that a sync does not lose what someone typed.
 
 The ledger gives convergence. Every device folds the same events in the same order and lands on the same pages. What is left for the block model is intention: whether the page everyone agrees on is the one a person expected.
 
 ## What a misordered event does to a page
 
-The ledger orders events with a hybrid logical clock and not a plain counter, because a counter lets a device that has not read the folder yet sort its events before history (see "Why not a plain Lamport counter" in [multi-writer.md](multi-writer.md)). That is the ledger's half of the argument. This is what it would cost a block.
+The ledger orders events with a hybrid logical clock and not a plain counter, because a counter lets a device that has not read the folder yet sort its events before history (see "Why not a plain Lamport counter" in [multi-writer.md](../../packages/ledger/multi-writer.md)). That is the ledger's half of the argument. This is what it would cost a block.
 
 `reduce` is written for events that arrive in causal order, and it fails quietly when they do not:
 

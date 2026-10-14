@@ -8,25 +8,23 @@ import {
   requireProject,
 } from "./features/projects/projects-ipc";
 import {
+  adoptLedger,
   beforeOpen,
   bindDevice,
   closeLedgers,
+  createLedger,
   defineFold,
   deviceOf,
-  logDirectory,
-  onArrival,
-} from "./ledger/project-ledger/project-ledger";
-import {
-  adoptLedger,
-  createLedger,
   inspect,
-} from "./ledger/marker/marker";
+  onArrival,
+} from "@pbnotes/ledger";
+import type { LedgerRef } from "@pbnotes/ledger";
 import {
   deviceId,
   recall,
   remember,
   rotateDeviceId,
-} from "./ledger/device-store";
+} from "./device-store";
 import {
   refreshPages,
   registerPageIpc,
@@ -60,6 +58,28 @@ if (!app.commandLine.hasSwitch("user-data-dir")) {
 // because a ledger that is already open has replayed without a fold that
 // arrives after it.
 const pagesOf = defineFold("pages", pagesFold);
+
+/**
+ * `<project>/gnotes/`, holding the ledger. Visible, not behind a dot: a
+ * dot-directory tells the user "you can safely ignore this", which is true of
+ * a tool's bookkeeping and a lie about the only copy of their work.
+ *
+ * The log lives *inside the project's own directory*, and that location is
+ * the point of the whole app. A project folder is where the user's work
+ * already lives, so what they write about it belongs beside it: it gets backed
+ * up with it, syncs with it, travels with it to another machine, and outlives
+ * pbnotes itself. Put it in `userData` instead and wiping an OS support
+ * folder — or losing the registry that maps a UUID back to a path — takes the
+ * writing with it. The content is the user's, not the app's.
+ */
+function logDirectory(projectPath: string): string {
+  return path.join(projectPath, "gnotes");
+}
+
+/** A project as the ledger knows it: its id, and where its log is kept. */
+function ledgerOf(project: { id: string; path: string }): LedgerRef {
+  return { id: project.id, path: logDirectory(project.path) };
+}
 
 // Before the app is ready, or it is too late. `standard` gives the URL a
 // host, which is always `images`; the handler is in `pages-ipc`.
@@ -168,12 +188,12 @@ app.on("ready", () => {
   // the first thing each of these calls: a write or an image sent just before
   // the project changed lands where it was sent.
   registerPageIpc({
-    require: async () => pagesOf(await requireProject()),
+    require: async () => pagesOf(ledgerOf(await requireProject())),
     saveImage: async (bytes, mime) => {
       const project = await requireProject();
       return saveImage(
         logDirectory(project.path),
-        await deviceOf(project),
+        await deviceOf(ledgerOf(project)),
         bytes,
         mime,
       );

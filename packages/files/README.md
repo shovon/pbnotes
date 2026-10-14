@@ -34,7 +34,7 @@ The directory can be one that `@pbnotes/ledger` keeps a log in. Neither package 
 2. One subdirectory per device. A device writes only inside its own.
 3. Inside a device directory, loose files are the ledger's segments. Each subdirectory belongs to whoever claimed its name, and the ledger neither reads nor reports it.
 
-The ledger's spec says the same under "Layout" in `app/docs/multi-writer.md`. `folder` is the name this store claims.
+The ledger's spec says the same under "Layout" in `packages/ledger/multi-writer.md`. `folder` is the name this store claims.
 
 ## The device id
 

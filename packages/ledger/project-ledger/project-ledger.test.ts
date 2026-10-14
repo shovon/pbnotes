@@ -15,7 +15,6 @@ import {
   closeLedgers,
   defineFold,
   deviceOf,
-  logDirectory,
 } from './project-ledger.ts';
 import { MARKER, createLedger } from '../marker/marker.ts';
 import type { Fold } from './project-ledger.ts';
@@ -36,7 +35,7 @@ async function project(): Promise<{ id: string; path: string }> {
     id: randomUUID(),
     path: await mkdtemp(path.join(tmpdir(), 'pbnotes-ledger-')),
   };
-  await createLedger(logDirectory(it.path));
+  await createLedger(it.path);
   return it;
 }
 
@@ -56,7 +55,7 @@ test('two folds share one log, one writer, and one status', async () => {
   assert.deepEqual(said.state, ['hello']);
   assert.deepEqual(written.status.unhandled, []);
   assert.deepEqual(
-    (await readdir(logDirectory(it.path))).sort(),
+    (await readdir(it.path)).sort(),
     [MARKER, await deviceOf(it)].sort(),
   );
 
