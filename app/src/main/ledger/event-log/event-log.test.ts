@@ -27,7 +27,6 @@ import {
   LogCorruptError,
   compare,
   logSize,
-  renameTypes,
   segmentName,
   verdict,
 } from './event-log.ts';
@@ -564,91 +563,4 @@ test("a sealed segment of ours that stops early is damage, not a torn tail", () 
   // this — something else did, and the segments after it hold good records.
   assert.equal(verdict(TORN, true, false), "damaged");
   assert.equal(verdict(DAMAGED, true, false), "damaged");
-});
-
-// ---------------------------------------------------------------------------
-// #39: the one rewrite. Goes with `renameTypes`, in #40.
-// ---------------------------------------------------------------------------
-
-const NAMES = { "note.written": "example.com#note.written" };
-
-/** Two devices, ours over two segments, every event under the old name. */
-async function oldNames(): Promise<string> {
-  const dir = await scratch();
-  const log = await openLog(dir, undefined, { maxSegmentBytes: 400 });
-  for (let i = 0; i < 4; i++) await log.append("note.written", { i });
-  await log.append("note.kept", { i: 4 });
-  await log.close();
-  assert.equal((await segments(dir)).length > 1, true, "more than one segment");
-  await otherDevice(dir, "device-b", 2);
-  return dir;
-}
-
-test("renaming types changes the type of an event and nothing else", async () => {
-  const dir = await oldNames();
-  const before = await folded(dir);
-  const files = await segments(dir);
-
-  await renameTypes(dir, NAMES);
-
-  assert.deepEqual(
-    await folded(dir),
-    before.map((it) => ({ ...it, type: it.type in NAMES ? NAMES[it.type as keyof typeof NAMES] : it.type })),
-  );
-  assert.deepEqual(await segments(dir), files, "same segments, and nothing beside them");
-  assert.deepEqual(await segments(dir, "device-b"), [segmentName(1)]);
-
-  // The tip this device recorded is still its tip, so it is not taken for a
-  // clone of itself.
-  const ours = before.filter((it) => it.device === DEVICE);
-  const log = await openLog(dir, undefined, {
-    memory: { clock: { l: 0, c: 0 }, tip: { segment: files.length, seq: ours.length } },
-    rotate: () => assert.fail("the rewrite moved the tip"),
-  });
-  await log.close();
-
-  // Once per log: a second pass has nothing to do and writes nothing.
-  const done = await readFile(segment(dir));
-  await renameTypes(dir, NAMES);
-  assert.deepEqual(await readFile(segment(dir)), done);
-});
-
-test("a rename that stopped partway still opens, and finishes on the next run", async () => {
-  const dir = await oldNames();
-  const before = await folded(dir);
-  const old = await readFile(segment(dir, 2));
-
-  // A crash after the first segment: the second is as it was, with the copy
-  // that was about to replace it still beside it.
-  await renameTypes(dir, NAMES);
-  await writeFile(segment(dir, 2), old);
-  await writeFile(`${segment(dir, 2)}.rewrite`, "half of a seg");
-
-  const mixed = await folded(dir);
-  assert.deepEqual(mixed.map((it) => it.id), before.map((it) => it.id), "every event, either name");
-  assert.equal(mixed.some((it) => it.type === "note.written"), true);
-
-  await renameTypes(dir, NAMES);
-  assert.equal((await folded(dir)).some((it) => it.type === "note.written"), false);
-  assert.equal((await segments(dir)).includes(`${segmentName(2)}.rewrite`), false);
-});
-
-test("a segment that is still arriving is not rewritten", async () => {
-  const dir = await scratch();
-  await otherDevice(dir, "device-b", 3);
-  const whole = await readFile(segment(dir, 1, "device-b"));
-  const torn = whole.subarray(0, whole.length - 30);
-  await writeFile(segment(dir, 1, "device-b"), torn);
-
-  await renameTypes(dir, NAMES);
-  assert.deepEqual(await readFile(segment(dir, 1, "device-b")), torn);
-});
-
-test("nothing is renamed in a folder that is not a ledger", async () => {
-  const dir = await oldNames();
-  const before = await readFile(segment(dir));
-  await rm(path.join(dir, "LEDGER"));
-
-  await assert.rejects(renameTypes(dir, NAMES), { name: "LedgerRefusedError" });
-  assert.deepEqual(await readFile(segment(dir)), before);
 });

@@ -49,7 +49,7 @@ Segment naming, sealing and rollover are unchanged: sixteen digits, 16 MiB or lo
 
 **Root-level `*.log` files are ignored.** Logs written in the old single-writer layout held throwaway data and are not worth a migration path; they are listed in the status surface so the skip is visible rather than silent, and never folded. This is a deliberate one-time break, and it is what lets the envelope below require its new fields instead of treating them as optional.
 
-**Event type names are rewritten once (#39).** Before a log opens, `renameTypes` goes through every device's segments and replaces each type name it is given with another. The app uses it for the five block events that were written without a namespace before #38. This is a second deliberate break, and it breaks two rules of this spec: a sealed segment changes, and a machine writes files that belong to other devices. It rewrites other devices' files because a directory left behind by a rotated device id belongs to no machine, so nothing else would ever rewrite it. The cost is that a machine appending to its newest segment while another machine rewrites that segment leaves the sync tool two versions of one path. A record keeps its segment, `seq`, clock and id, so a recorded tip stays true. Each segment is replaced by a rename, so a run that is interrupted leaves every file whole and the next open finishes. A segment with a line that does not read as a record is skipped, since it is either still arriving or damaged. #40 removes the rewrite and restores both rules.
+**Event type names were rewritten once.** For one release (#39) the app went through every device's segments before a log opened and gave the five block events of the time their namespaced names. That was a second deliberate break: it changed sealed segments, and it wrote files that belonged to other devices. The code is gone (#40) and nothing rewrites a record once it is written, and nothing writes in another device's directory. The one cut that remains is the torn tail of this device's own newest segment, under [Own log: unchanged](#own-log-unchanged). A folder that was never opened by that release still holds the old names, and its events are skipped and counted as unhandled.
 
 **A subdirectory of a device directory is left alone.** A consumer may keep things beside a device's segments that are that device's to write and that no event carries. The log does not read them and does not report them. A stray *file* in a device directory is reported: conflicted copies and junk are files. `@pbnotes/files` keeps to the same layout and claims one such subdirectory by name.
 
@@ -90,7 +90,7 @@ The refusal is a `LedgerRefusedError` whose `reason` is one of the four, because
 
 `unmarked` covers three things that look the same on disk: a directory written before markers existed, one whose marker has not arrived from the sync tool yet, and one whose marker was lost. Adopting is safe in all three, since it writes the bytes that are there or on their way and touches nothing else.
 
-A higher version is refused outright and there is no way to force past it. The log is not rewritten to fix it (the only rewrite there is renames event types, see [Layout](#layout)), so a record appended by a build that did not know the format stays for good.
+A higher version is refused outright and there is no way to force past it. The log is never rewritten, so a record appended by a build that did not know the format stays for good.
 
 ## The envelope
 
