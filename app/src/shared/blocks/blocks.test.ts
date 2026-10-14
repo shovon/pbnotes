@@ -7,8 +7,15 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { indented, outdented, predict, reduce } from "./blocks.ts";
-import type { PageEvent } from "./blocks.ts";
+import {
+  HANDLES,
+  indented,
+  NAMESPACE,
+  outdented,
+  predict,
+  reduce,
+} from "./blocks.ts";
+import type { PageEvent, Pages } from "./blocks.ts";
 import type { Block } from "../pages.ts";
 
 const TODAY = "2026-09-21";
@@ -71,6 +78,49 @@ test("a v1 payload still folds, page and all", async () => {
   );
   assert.equal(elsewhere[TODAY][0].children[0].text, "again");
   assert.deepEqual(Object.keys(elsewhere), [TODAY]);
+});
+
+/**
+ * #37: every event has a second name, and a log may hold either. What has to
+ * hold is that the name changes nothing about what an event folds to, and
+ * that the gate claims both — an event the gate does not claim is reported to
+ * the user as one this build cannot read.
+ */
+test("an event folds the same under its namespaced name", () => {
+  const log: [string, unknown][] = [
+    ["block.created", { page: TODAY, id: "b1", text: "first" }],
+    ["block.created", { page: TODAY, id: "b2", text: "second", after: "b1" }],
+    ["block.created", { page: TODAY, id: "b3", text: "third", after: "b2" }],
+    ["block.indented", { id: "b2", parent: "b1" }],
+    ["block.indented", { id: "b3", parent: "b1" }],
+    ["block.edited", { id: "b2", text: "rewritten" }],
+    ["block.outdented", { id: "b2", after: "b1" }],
+    ["block.deleted", { id: "b3" }],
+  ];
+  const fold = (prefix: string) =>
+    log.reduce(
+      (state, [type, payload]) =>
+        reduce(state, event(prefix + type, 2, payload)),
+      {} as Pages,
+    );
+
+  assert.deepEqual(fold(NAMESPACE), fold(""));
+  assert.deepEqual(fold(NAMESPACE)[TODAY], [
+    { id: "b1", text: "first", children: [] },
+    { id: "b2", text: "rewritten", children: [] },
+  ]);
+
+  const handles: Record<string, number> = HANDLES;
+  for (const type of new Set(log.map(([type]) => type))) {
+    assert.equal(handles[NAMESPACE + type], handles[type]);
+  }
+  assert.equal(Object.keys(handles).length, 10);
+
+  // Only the exact prefix. A slash is what #37 first proposed and is not it.
+  assert.deepEqual(
+    reduce({}, event("github.com/shovon/pbnotes/block.created", 1, log[0][1])),
+    {},
+  );
 });
 
 test("a prediction is the fold, and folding it over a page that has it changes nothing", () => {
