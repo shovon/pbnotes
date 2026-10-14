@@ -33,7 +33,7 @@ An unreachable directory reports `unknown` rather than `missing` and is never pr
 
 ### Content lives in the project, not in `userData`
 
-The log is written **in the folder the user chose**, one log per project, and that folder is the log: `LEDGER` and one directory per device at its top, and nothing else. Until #42 it was a `gnotes/` folder inside the project, beside other work; a project tracked before then has it moved up once. The folder backs up, syncs and travels to another machine like any other, because it is one. Nuking `~/Library/Application Support/pbnotes` must cost the user nothing but the registry — a list they can rebuild by picking the folders again. It must never cost them a word they wrote.
+The log is written **in the folder the user chose**, one log per project, and that folder is the log: `LEDGER` and one directory per device at its top, and nothing else. The folder backs up, syncs and travels to another machine like any other, because it is one. Nuking `~/Library/Application Support/pbnotes` must cost the user nothing but the registry — a list they can rebuild by picking the folders again. It must never cost them a word they wrote.
 
 Not hidden away. A dot-directory means *you can safely ignore this*, which is what `.git` or `.venv` earns by being bookkeeping the user's work survives without. This log is the system of record: it is the only copy of what they wrote, and marking it ignorable is how it gets excluded from a backup or swept out as tool debris. Other content follows the same rule and sits in the same place: a pasted image goes in the writing device's directory, beside its segments.
 

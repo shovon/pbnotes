@@ -66,6 +66,9 @@ const MIGRATIONS: string[] = [
   // folder cannot say this itself: a project added later is in the same table.
   `ALTER TABLE projects ADD COLUMN ledger_move TEXT;
    UPDATE projects SET ledger_move = 'pending';`,
+
+  // That move has run on every machine there is (#43), and its code is gone.
+  `ALTER TABLE projects DROP COLUMN ledger_move;`,
 ];
 
 let db: DatabaseSync | null = null;

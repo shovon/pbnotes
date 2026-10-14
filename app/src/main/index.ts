@@ -8,11 +8,6 @@ import {
   requireProject,
 } from "./features/projects/projects-ipc";
 import {
-  ledgerMove,
-  setLedgerMove,
-} from "./features/projects/projects-store";
-import { liftLedger } from "./features/projects/lift-ledger/lift-ledger";
-import {
   adoptLedger,
   beforeOpen,
   bindDevice,
@@ -152,19 +147,10 @@ app.on("ready", () => {
   //
   // A log opens only on a folder that holds a `LEDGER` marker, and never
   // makes one. What a project folder gets before it is opened is decided
-  // here. A project tracked before #42 has its ledger moved up out of
-  // `gnotes/` first. Then a folder nothing has been written in is made a
-  // ledger, because that is what picking a new project means. Anything else
-  // that is not one is left alone, and the open that follows refuses it and
-  // says why.
+  // here: a folder nothing has been written in is made a ledger, because that
+  // is what picking a new project means. Anything else that is not one is
+  // left alone, and the open that follows refuses it and says why.
   beforeOpen(async (directory) => {
-    const move = ledgerMove(directory);
-    if (move) {
-      const lift = await liftLedger(directory, move === "moving", () =>
-        setLedgerMove(directory, "moving"),
-      );
-      if (lift !== "none") setLedgerMove(directory, null);
-    }
     const found = await inspect(directory);
     if (found === "missing") await createLedger(directory);
     // Temporary (#36). Every folder written before markers holds segments and
