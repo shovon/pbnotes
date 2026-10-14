@@ -68,8 +68,9 @@ export type BlockOutdented = { id: string; after: string };
  * an upcast-free change in this direction. `blocks.test.ts` pins that a `v1`
  * payload still folds, including one whose page is outright wrong.
  *
- * Named as this build writes them, which is under the namespace. The bare
- * names the first logs were written with are `LEGACY`, further down.
+ * Named under the namespace, which is the only name an event has. The first
+ * logs were written with bare names (`block.created`); those were rewritten
+ * once (#39) and are not read (#40).
  */
 export type PageEvent =
   | { type: Named<"block.created">; payload: BlockCreated }
@@ -86,36 +87,12 @@ export type PageEvent =
  * and it stays these bytes wherever the repository goes.
  *
  * ponytail: here because this is the only fold there is. A second feature's
- * fold takes this, `known` and the bare names in `HANDLES` out to a module of
- * their own in `shared`.
+ * fold takes this out to a module of its own in `shared`.
  */
 export const NAMESPACE = "github.com/shovon/pbnotes#";
 
 /** An event type as it is written: under the namespace. */
 type Named<T extends string> = `${typeof NAMESPACE}${T}`;
-
-/**
- * The event types that were written under a bare name before #37, and so are
- * in logs on disk under one until that log is next opened (`RENAMED`), and in
- * what a machine on an older build goes on writing. Closed: a type added from here on gets
- * a namespaced name only, and does not go in this list.
- */
-const LEGACY = [
-  "block.created",
-  "block.edited",
-  "block.deleted",
-  "block.indented",
-  "block.outdented",
-] as const;
-
-/**
- * Each `LEGACY` name → the name a log is rewritten to hold in its place when
- * a project opens (#39). Temporary: #40 removes the rewrite, this and
- * `LEGACY`.
- */
-export const RENAMED: Record<string, string> = Object.fromEntries(
-  LEGACY.map((type) => [type, `${NAMESPACE}${type}`]),
-);
 
 /**
  * Event type → the payload `v` this build folds, which is also the `v` it
@@ -131,7 +108,7 @@ export const RENAMED: Record<string, string> = Object.fromEntries(
  * one does not understand. Those events are skipped, as they always were, but
  * counted and reported rather than silently leaving holes in the page.
  */
-const VERSIONS: Record<PageEvent["type"], number> = {
+export const HANDLES: Record<PageEvent["type"], number> = {
   [`${NAMESPACE}block.created`]: 1,
   // 2 since the page came off the payload. Nothing needed an upcast in this
   // direction — the field is simply unread — but an older build handed one of
@@ -142,20 +119,6 @@ const VERSIONS: Record<PageEvent["type"], number> = {
   [`${NAMESPACE}block.indented`]: 2,
   [`${NAMESPACE}block.outdented`]: 2,
 };
-
-/**
- * `VERSIONS`, and the `LEGACY` types under their bare names too, because the
- * gate looks an event up by the type it has on disk. This build writes the
- * namespaced names and reads either. A build from before #37 skips a
- * namespaced event, so every machine on a folder has to be running one that
- * reads them before any machine runs this.
- */
-export const HANDLES = {
-  ...VERSIONS,
-  ...Object.fromEntries(
-    LEGACY.map((type) => [type, VERSIONS[`${NAMESPACE}${type}`]]),
-  ),
-} as Record<PageEvent["type"] | (typeof LEGACY)[number], number>;
 
 /**
  * `block` spliced in directly after `after`, wherever in the tree that is.
@@ -301,15 +264,16 @@ export function reduce(
   state: Pages,
   event: { type: string; payload: unknown },
 ): Pages {
-  // One event, two names: the bare one every log so far was written with, and
-  // the namespaced one. Taken down to the bare name here so that each branch
-  // below is written once, and the two cannot come to fold differently.
-  const known = event.type.startsWith(NAMESPACE)
-    ? { ...event, type: event.type.slice(NAMESPACE.length) }
-    : event;
+  // Ours are under the namespace and nothing else is: a bare `block.created`
+  // is not this event (#40). The gate does not claim one either, so a log
+  // that holds one reports it.
+  if (!event.type.startsWith(NAMESPACE)) return state;
   // The one cast in the fold: "if this is one of ours, this is its shape."
   // `foreign` below is where that turns out not to be true.
-  const it = known as unknown as Bare<PageEvent>;
+  const it = {
+    ...event,
+    type: event.type.slice(NAMESPACE.length),
+  } as unknown as Bare<PageEvent>;
 
   switch (it.type) {
     case "block.created": {

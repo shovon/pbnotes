@@ -20,13 +20,9 @@ import {
   logDirectory,
 } from "../../../../ledger/project-ledger/project-ledger.ts";
 import type { LedgerRef } from "../../../../ledger/project-ledger/project-ledger.ts";
-import {
-  logSize,
-  renameTypes,
-  segmentName,
-} from "../../../../ledger/event-log/event-log.ts";
+import { logSize, segmentName } from "../../../../ledger/event-log/event-log.ts";
 import { MARKER, createLedger } from "../../../../ledger/marker/marker.ts";
-import { NAMESPACE, RENAMED } from "../../../../../shared/blocks/blocks.ts";
+import { NAMESPACE } from "../../../../../shared/blocks/blocks.ts";
 import { lastLeaf, locate } from "../../../../../shared/pages.ts";
 import type { Block } from "../../../../../shared/pages.ts";
 
@@ -111,8 +107,8 @@ test("the log is written into the project's own gnotes folder", async () => {
 
 /**
  * #38: what lands on disk is the namespaced name, for every event this store
- * writes. Read off the segment rather than the fold, because the fold takes
- * either name and would pass this with the bare ones.
+ * writes. Read off the segment, because that is where the name has to be
+ * right: a bare one is not folded (#40), on this machine or any other.
  */
 test("every write lands on disk under its namespaced name", async () => {
   const it = await project();
@@ -129,42 +125,6 @@ test("every write lands on disk under its namespaced name", async () => {
     assert.ok(written.includes(`"${NAMESPACE}block.${type}"`), type);
     assert.ok(!written.includes(`"block.${type}"`), type);
   }
-
-  await closeLedgers();
-});
-
-/**
- * #39, and gone with it in #40. A log from before #38 holds the bare names;
- * `index.ts` renames them before the log opens, and the pages have to come
- * out as they went in. No build writes bare names any more, so the old log is
- * made by renaming a new one backwards.
- */
-test("a log of bare names is rewritten, and folds to the same pages", async () => {
-  const it = await project();
-  const [first, second, third] = [randomUUID(), randomUUID(), randomUUID()];
-  await addBlock(it, TODAY, "first", undefined, first);
-  await addBlock(it, TODAY, "second", first, second);
-  await addBlock(it, TODAY, "third", second, third);
-  await editBlock(it, second, "rewritten");
-  await indentBlock(it, second);
-  await indentBlock(it, third);
-  await outdentBlock(it, third);
-  await deleteBlock(it, first);
-  const file = await segment(it.path);
-  await closeLedgers();
-
-  const bare = Object.fromEntries(
-    Object.entries(RENAMED).map(([old, named]) => [named, old]),
-  );
-  await renameTypes(logDirectory(it.path), bare);
-  assert.ok(!(await readFile(file, "utf8")).includes(NAMESPACE));
-  const before = await getPage(it, TODAY);
-  assert.equal(before.blocks.length > 0, true);
-  await closeLedgers();
-
-  await renameTypes(logDirectory(it.path), RENAMED);
-  assert.ok(!/"type":"block\./.test(await readFile(file, "utf8")));
-  assert.deepEqual(await getPage(it, TODAY), before);
 
   await closeLedgers();
 });

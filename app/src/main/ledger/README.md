@@ -41,8 +41,6 @@ The feature sees only the view. It is never given the project, its id or its pat
 
 Opening a ledger never creates one. A directory with no valid `LEDGER` is refused with a `LedgerRefusedError`, whose `reason` says which of four things was wrong: `missing`, `unmarked`, `not-a-ledger` or `newer`. `createLedger(directory)` makes a ledger where there is nothing, and `adoptLedger(directory)` marks a directory that already holds a log. `beforeOpen` takes a function that is run on a ledger's directory before each open, which is where `index.ts` decides which of those to call.
 
-`renameTypes(directory, names)` in `event-log/` rewrites event type names on disk, in every device's segments. It is temporary (#39, removed by #40), it is called from `beforeOpen` and nowhere else, and it is the only thing here that changes a record after it was written.
-
 There is no way to iterate the log from a feature. One that needs the events themselves has its reducer push each one onto an array in its own fold state.
 
 ## Rules a fold has to keep

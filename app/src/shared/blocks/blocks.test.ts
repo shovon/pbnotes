@@ -39,8 +39,8 @@ test("the fold ignores events it does not know", async () => {
 });
 
 /**
- * The shape every log already on disk was written in: a page on the events
- * that follow a creation. Nothing reads it any more, so there is no upcast to
+ * The shape the first logs were written in: a page on the events that follow
+ * a creation. Nothing reads it any more, so there is no upcast to
  * exercise — what has to hold is that the id alone still reaches the block,
  * which is the whole claim that made dropping the field safe. No write path
  * produces these any more, so this is the only thing that would notice if
@@ -49,18 +49,18 @@ test("the fold ignores events it does not know", async () => {
 test("a v1 payload still folds, page and all", async () => {
   const created = reduce(
     {},
-    event("block.created", 1, { page: TODAY, id: "b1", text: "first" }),
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "b1", text: "first" }),
   );
   const nested = reduce(
     reduce(
       created,
-      event("block.created", 1, { page: TODAY, id: "b2", text: "second" }),
+      event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "b2", text: "second" }),
     ),
-    event("block.indented", 1, { page: TODAY, id: "b2", parent: "b1" }),
+    event(`${NAMESPACE}block.indented`, 1, { page: TODAY, id: "b2", parent: "b1" }),
   );
   const edited = reduce(
     nested,
-    event("block.edited", 1, { page: TODAY, id: "b2", text: "rewritten" }),
+    event(`${NAMESPACE}block.edited`, 1, { page: TODAY, id: "b2", text: "rewritten" }),
   );
   assert.deepEqual(edited[TODAY], [
     {
@@ -74,62 +74,33 @@ test("a v1 payload still folds, page and all", async () => {
   // the same way, where before it would have folded to nothing.
   const elsewhere = reduce(
     edited,
-    event("block.edited", 1, { page: "Mira", id: "b2", text: "again" }),
+    event(`${NAMESPACE}block.edited`, 1, { page: "Mira", id: "b2", text: "again" }),
   );
   assert.equal(elsewhere[TODAY][0].children[0].text, "again");
   assert.deepEqual(Object.keys(elsewhere), [TODAY]);
 });
 
 /**
- * #37: every event has a second name, and a log may hold either. What has to
- * hold is that the name changes nothing about what an event folds to, and
- * that the gate claims both — an event the gate does not claim is reported to
- * the user as one this build cannot read.
+ * #40: an event has one name, the namespaced one. A bare name from a log
+ * that was never rewritten (#39) is not folded and not claimed by the gate,
+ * so it is reported to the user as one this build cannot read.
  */
-test("an event folds the same under its namespaced name", () => {
-  const log: [string, unknown][] = [
-    ["block.created", { page: TODAY, id: "b1", text: "first" }],
-    ["block.created", { page: TODAY, id: "b2", text: "second", after: "b1" }],
-    ["block.created", { page: TODAY, id: "b3", text: "third", after: "b2" }],
-    ["block.indented", { id: "b2", parent: "b1" }],
-    ["block.indented", { id: "b3", parent: "b1" }],
-    ["block.edited", { id: "b2", text: "rewritten" }],
-    ["block.outdented", { id: "b2", after: "b1" }],
-    ["block.deleted", { id: "b3" }],
-  ];
-  const fold = (prefix: string) =>
-    log.reduce(
-      (state, [type, payload]) =>
-        reduce(state, event(prefix + type, 2, payload)),
-      {} as Pages,
-    );
+test("an event is folded under its namespaced name and no other", () => {
+  const payload = { page: TODAY, id: "b1", text: "first" };
+  const empty: Pages = {};
 
-  assert.deepEqual(fold(NAMESPACE), fold(""));
-  assert.deepEqual(fold(NAMESPACE)[TODAY], [
-    { id: "b1", text: "first", children: [] },
-    { id: "b2", text: "rewritten", children: [] },
-  ]);
-
-  const handles: Record<string, number> = HANDLES;
-  for (const type of new Set(log.map(([type]) => type))) {
-    assert.equal(handles[NAMESPACE + type], handles[type]);
-  }
-  assert.equal(Object.keys(handles).length, 10);
-  // Ten because five types predate the namespace. One added from here on is
-  // claimed under its namespaced name alone: every bare name the gate claims
-  // is one of these five.
-  assert.deepEqual(
-    Object.keys(handles)
-      .filter((type) => !type.startsWith(NAMESPACE))
-      .sort(),
-    [...new Set(log.map(([type]) => type))].sort(),
-  );
-
+  assert.deepEqual(reduce(empty, event(`${NAMESPACE}block.created`, 1, payload)), {
+    [TODAY]: [{ id: "b1", text: "first", children: [] }],
+  });
+  assert.equal(reduce(empty, event("block.created", 1, payload)), empty);
   // Only the exact prefix. A slash is what #37 first proposed and is not it.
-  assert.deepEqual(
-    reduce({}, event("github.com/shovon/pbnotes/block.created", 1, log[0][1])),
-    {},
+  assert.equal(
+    reduce(empty, event("github.com/shovon/pbnotes/block.created", 1, payload)),
+    empty,
   );
+
+  assert.equal(Object.keys(HANDLES).length, 5);
+  assert.equal(Object.keys(HANDLES).every((type) => type.startsWith(NAMESPACE)), true);
 });
 
 test("a prediction is the fold, and folding it over a page that has it changes nothing", () => {
