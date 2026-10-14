@@ -76,6 +76,22 @@ export type PageEvent =
   | { type: "block.outdented"; payload: BlockOutdented };
 
 /**
+ * What every pbnotes event type is being renamed to start with:
+ * `github.com/shovon/pbnotes#block.created`. See #37.
+ *
+ * An identifier and not a link. Once a log holds it, it is on disk forever,
+ * and it stays these bytes wherever the repository goes.
+ *
+ * ponytail: here because this is the only fold there is. A second feature's
+ * fold takes this, `known` and the doubling in `HANDLES` out to a module of
+ * their own in `shared`.
+ */
+export const NAMESPACE = "github.com/shovon/pbnotes#";
+
+/** An event type under either of the two names it can be on disk with. */
+type Either<T extends string> = T | `${typeof NAMESPACE}${T}`;
+
+/**
  * Event type → the payload `v` this build folds, which is also the `v` it
  * writes. One number for both on purpose: a build that wrote a version its own
  * gate refuses would skip its own events.
@@ -89,7 +105,7 @@ export type PageEvent =
  * one does not understand. Those events are skipped, as they always were, but
  * counted and reported rather than silently leaving holes in the page.
  */
-export const HANDLES: Record<PageEvent["type"], number> = {
+const VERSIONS: Record<PageEvent["type"], number> = {
   "block.created": 1,
   // 2 since the page came off the payload. Nothing needed an upcast in this
   // direction — the field is simply unread — but an older build handed one of
@@ -100,6 +116,19 @@ export const HANDLES: Record<PageEvent["type"], number> = {
   "block.indented": 2,
   "block.outdented": 2,
 };
+
+/**
+ * `VERSIONS` under both names, because the gate looks an event up by the type
+ * it has on disk. This build writes the bare names and reads either: a build
+ * that only knows the bare ones skips a namespaced event, so every machine on
+ * a folder has to be able to read them before any machine writes them.
+ */
+export const HANDLES = {
+  ...VERSIONS,
+  ...Object.fromEntries(
+    Object.entries(VERSIONS).map(([type, v]) => [NAMESPACE + type, v]),
+  ),
+} as Record<Either<PageEvent["type"]>, number>;
 
 /**
  * `block` spliced in directly after `after`, wherever in the tree that is.
@@ -237,9 +266,15 @@ export function reduce(
   state: Pages,
   event: { type: string; payload: unknown },
 ): Pages {
+  // One event, two names: the bare one every log so far was written with, and
+  // the namespaced one. Taken down to the bare name here so that each branch
+  // below is written once, and the two cannot come to fold differently.
+  const known = event.type.startsWith(NAMESPACE)
+    ? { ...event, type: event.type.slice(NAMESPACE.length) }
+    : event;
   // The one cast in the fold: "if this is one of ours, this is its shape."
   // `foreign` below is where that turns out not to be true.
-  const it = event as unknown as PageEvent;
+  const it = known as unknown as PageEvent;
 
   switch (it.type) {
     case "block.created": {

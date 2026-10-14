@@ -24,6 +24,8 @@ The same goes for an event delivered twice. A second `block.created` with an exi
 
 Only `block.created` carries a page. `block.edited`, `.deleted`, `.indented` and `.outdented` carry the block id and nothing else, and the fold finds the block wherever it is.
 
+Every one of these may also be on disk under a namespaced name, `github.com/shovon/pbnotes#block.created` and so on. `reduce` takes the namespace off before it looks at the type, so the two names of an event fold identically; this document uses the bare names throughout. No build writes the namespaced names yet (#37).
+
 This is a sync property rather than a tidiness one. A page on a post-creation event is a copy of where the block sat when the user typed — correct on the machine that wrote it, and stale as soon as another machine moves the block. `state[page]` would then miss and `reduce` would return the state unchanged, which is a keystroke lost in silence. Addressed by id, the same event folds correctly no matter what else has happened to the block. It is also what any cross-page move has to be built on, so the shape is settled before the feature that needs it exists, rather than after.
 
 Payloads went to `v: 2`. A `v1` payload needs no upcast — it has a field the fold no longer reads — but the bump matters in the other direction: an older build handed a `v2` event would look up `state[undefined]` and drop it without a word, and at `v: 2` its `HANDLES` gate refuses the event and `ViewStatus` reports it instead.
