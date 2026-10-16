@@ -1,6 +1,6 @@
 # Multi-writer logs
 
-*Status: implemented.*
+*Status: implemented, with one part superseded.* Since #45 a device keeps no identity: every session that writes gets a directory of its own under a fresh id, so what this spec says about a device binding, its recorded tip and clock floor, and rotating to a new id no longer applies, and nor do `createLedger`, `adoptLedger`, `Projection`, `EventLog` or `unhandled`. Read "device" as "writing session". `openOrCreate` in `ledger.ts` creates a ledger in a missing or empty folder and refuses everything else.
 
 This is the spec for the ledger: an append-only event log that several devices write to through a shared folder, and the fold that reads it. It says nothing about what an event means. That belongs to whoever defines the events and the reducer, called the consumer here.
 

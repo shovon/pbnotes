@@ -3,8 +3,8 @@
  * the pages fold a caller hands in. Nothing here knows what that is a view
  * of: not a ledger, not its id, not where it is kept.
  *
- * No plumbing, and no import of any. Where the log lives, which device this
- * is and which logs are open belong to `ledger/project-ledger`; what a block
+ * No plumbing, and no import of any. Where the log lives and which logs are
+ * open belong to `src/main/ledgers.ts`; what a block
  * *is* — the event schema and the fold over it — is `shared/blocks/blocks.ts`.
  * What is left here is the fold as it is handed to whoever registers it, the
  * commands that author events and the queries over what they fold to.
@@ -36,17 +36,25 @@ import type {
   PagesState,
   Place,
 } from "../../../../../shared/pages.ts";
-import type { ViewStatus } from "../../../../../shared/log.ts";
+import type { LogStatus } from "../../../../../shared/log.ts";
 
 /**
- * The pages fold, for whoever wires the app together to register with the
- * ledger. Not registered here: that would take a ledger to register it with.
+ * The pages fold, for whoever wires the app together to run over the ledger.
+ *
+ * The ledger hands it every event, so the gate is here: an event type this
+ * build does not have — a bare name (#40) among them — or a `v` newer than it
+ * reads leaves the pages as they were. A build that wrote a `v` its own gate
+ * refuses would skip its own events, which is why `append` takes `v` from the
+ * same table.
  */
-export const pagesFold: {
-  reduce: typeof reduce;
-  initial: Pages;
-  handles: typeof HANDLES;
-} = { reduce, initial: {}, handles: HANDLES };
+export const pagesFold = {
+  reduce: (state: Pages, event: { type: string; v: number; payload: unknown }): Pages =>
+    Object.hasOwn(HANDLES, event.type) &&
+    event.v <= HANDLES[event.type as PageEvent["type"]]
+      ? reduce(state, event)
+      : state,
+  initial: {} as Pages,
+};
 
 /**
  * What the store is handed: the pages as they stand, how much of the log
@@ -56,9 +64,9 @@ export const pagesFold: {
  */
 export type PagesView = {
   readonly state: Pages;
-  readonly status: ViewStatus;
+  readonly status: LogStatus;
   /** Resolves once the event is durable and folded. */
-  dispatch(type: PageEvent["type"], payload: unknown): Promise<unknown>;
+  dispatch(v: number, type: PageEvent["type"], payload: unknown): Promise<unknown>;
 };
 
 /** The page as it stands right now, empty if nothing has been written to it. */
@@ -204,18 +212,18 @@ export function locateBlock(
 }
 
 /**
- * How much of the folder this ledger is kept in could be read, and what the fold
- * could not use. Nothing here is an error to clear — a device that is still
+ * How much of the folder this ledger is kept in could be read, and what in it
+ * was skipped. Nothing here is an error to clear — a session whose log is still
  * syncing is a normal state that usually heals itself — but none of it may be
  * skipped without the user being able to find out.
  */
-export function getLogStatus(view: PagesView): ViewStatus {
+export function getLogStatus(view: PagesView): LogStatus {
   return view.status;
 }
 
 /**
  * Appends one of this fold's events: the payload checked against the schema,
- * and the version left to the view, which takes it from `HANDLES`.
+ * and the version taken from `HANDLES`.
  *
  * Both halves of one hazard. A payload literal that drifts from the schema
  * folds to nothing, and a `v` typed out by hand next to a `HANDLES` that says
@@ -227,7 +235,7 @@ function append<T extends PageEvent["type"]>(
   type: T,
   payload: Extract<PageEvent, { type: T }>["payload"],
 ): Promise<unknown> {
-  return view.dispatch(type, payload);
+  return view.dispatch(HANDLES[type], type, payload);
 }
 
 /**

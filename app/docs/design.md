@@ -1,6 +1,6 @@
 # Design
 
-Why pbnotes stores things the way it does. It has two companions: [multi-writer.md](../../packages/ledger/multi-writer.md) is the design of the shared folder in full, and [block-sync.md](block-sync.md) is what sharing it does to blocks and pages.
+Why pbnotes stores things the way it does. It has two companions: [multi-writer.md](../../packages/append-only-log/multi-writer.md) is the design of the shared folder in full, and [block-sync.md](block-sync.md) is what sharing it does to blocks and pages.
 
 ## Why the `projects` table exists
 
@@ -41,7 +41,7 @@ Not hidden away. A dot-directory means *you can safely ignore this*, which is wh
 
 A project folder holds **one directory per device**, each holding numbered segments, `0000000000000001.log` upward. Only the newest is written to; the rest are sealed, and `seq` keeps counting across them within that device.
 
-The directory per device is what makes the folder safe to leave in Dropbox: **one writer per file, forever**, so two machines never touch the same path and a sync tool never has a divergence to resolve. `seq` therefore counts within a device rather than across the folder — it detects damage, and ordering is the hybrid logical clock's job. See [multi-writer.md](../../packages/ledger/multi-writer.md), which is the design in full: what a foreign log may and may not be repaired to, and how the clock is floored and bounded. What the reducer still gets wrong when two machines edit the same page at once is in [block-sync.md](block-sync.md).
+The directory per device is what makes the folder safe to leave in Dropbox: **one writer per file, forever**, so two machines never touch the same path and a sync tool never has a divergence to resolve. `seq` therefore counts within a device rather than across the folder — it detects damage, and ordering is the hybrid logical clock's job. See [multi-writer.md](../../packages/append-only-log/multi-writer.md), which is the design in full: what a foreign log may and may not be repaired to, and how the clock is floored and bounded. What the reducer still gets wrong when two machines edit the same page at once is in [block-sync.md](block-sync.md).
 
 The one file at the top of a project folder is `LEDGER`, a marker that says the folder is a ledger and which version of the format it holds. A log opens only on a folder that has it, so the app cannot start writing into the wrong directory, and a build refuses a folder written in a format newer than itself and does not misread it. Any other file found at the top is reported rather than folded.
 

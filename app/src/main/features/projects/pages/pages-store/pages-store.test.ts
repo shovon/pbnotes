@@ -8,33 +8,24 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rename } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rename, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as store from "./pages-store.ts";
 import type { PagesView } from "./pages-store.ts";
-import {
-  MARKER,
-  closeLedgers,
-  createLedger,
-  defineFold,
-  logSize,
-  segmentName,
-} from "@pbnotes/ledger";
-import type { LedgerRef } from "@pbnotes/ledger";
+import { closeLedgers, onChange, pagesOf } from "../../../../ledgers.ts";
+import type { LedgerRef } from "../../../../ledgers.ts";
 import { NAMESPACE } from "../../../../../shared/blocks/blocks.ts";
 import { lastLeaf, locate } from "../../../../../shared/pages.ts";
 import type { Block } from "../../../../../shared/pages.ts";
 
 /**
- * The glue, as `index.ts` is for the app: the store exports a fold and is
- * handed a view, and never learns that either came from a ledger. Each call
- * asks for the view again, because a test closes the ledgers part way through
- * to stand in for a restart, and a view of a closed one is of nothing.
+ * The glue, as `index.ts` is for the app: the store is handed a view, and
+ * never learns that it came from a ledger. Each call asks for the view again,
+ * because a test closes the ledgers part way through to stand in for a
+ * restart, and a view of a closed one is of nothing.
  */
-const pagesOf = defineFold("pages", store.pagesFold);
-
 const on =
   <A extends unknown[], R>(run: (view: PagesView, ...args: A) => R) =>
   async (project: LedgerRef, ...args: A): Promise<Awaited<R>> =>
@@ -60,10 +51,12 @@ async function project(): Promise<LedgerRef> {
     // As `index.ts` hands it over: the project folder is the ledger.
     path: await mkdtemp(path.join(tmpdir(), "pbnotes-project-")),
   };
-  // As `index.ts` does for a folder nothing has been written in yet: a log
-  // opens only on a ledger, and never makes one.
-  await createLedger(it.path);
+  // Empty, so the first open makes it a ledger, as picking a new project does.
   return it;
+}
+
+async function size(file: string): Promise<number> {
+  return (await stat(file)).size;
 }
 
 /** The device directories in a log folder, which also holds its marker. */
@@ -76,14 +69,13 @@ async function devicesIn(directory: string): Promise<string[]> {
 /**
  * The first segment of the only device writing in a project's log folder.
  *
- * The layout is `<project>/<device>/<segment>`, and the device id is not fixed
- * here: these tests run with no binding, so each projection mints one. What
- * matters to a test is that exactly one machine wrote, which is asserted.
+ * The layout is `<project>/<session>/<segment>`, and every open mints a new
+ * session. What matters to a test is that exactly one wrote, which is asserted.
  */
 async function segment(directory: string): Promise<string> {
   const devices = await devicesIn(directory);
   assert.equal(devices.length, 1, "one device should have written here");
-  return path.join(directory, devices[0], segmentName(1));
+  return path.join(directory, devices[0], "0000000000000001.log");
 }
 
 test("the log is written into the folder it is handed", async () => {
@@ -94,13 +86,13 @@ test("the log is written into the folder it is handed", async () => {
   // the top of the project folder is the marker, which every machine writes the same.
   assert.deepEqual(
     (await readdir(it.path)).sort(),
-    [MARKER, ...(await devicesIn(it.path))].sort(),
+    ["LEDGER", ...(await devicesIn(it.path))].sort(),
   );
   const [device] = await devicesIn(it.path);
   assert.deepEqual(await readdir(path.join(it.path, device)), [
     "0000000000000001.log",
   ]);
-  assert.ok((await logSize(await segment(it.path))) > 0);
+  assert.ok((await size(await segment(it.path))) > 0);
 
   await closeLedgers();
 });
@@ -133,7 +125,8 @@ test("opening a day that was never written to appends nothing", async () => {
   const it = await project();
 
   assert.deepEqual(await getPage(it, TODAY), { title: TODAY, blocks: [] });
-  assert.equal(await logSize(await segment(it.path)), 0);
+  // Not even a directory: a session's appears with its first write.
+  assert.deepEqual(await devicesIn(it.path), []);
 
   await closeLedgers();
 });
@@ -354,7 +347,7 @@ test("indenting the first of its siblings appends nothing", async () => {
   const it = await project();
   const first = (await addBlock(it, TODAY, "first")).blocks[0].id;
   await addBlock(it, TODAY, "second");
-  const before = await logSize(await segment(it.path));
+  const before = await size(await segment(it.path));
 
   const page = await indentBlock(it, first);
   assert.deepEqual(
@@ -362,7 +355,7 @@ test("indenting the first of its siblings appends nothing", async () => {
     ["first", "second"],
   );
   assert.equal(
-    await logSize(await segment(it.path)),
+    await size(await segment(it.path)),
     before,
     "a keystroke that changed nothing is not a fact",
   );
@@ -555,7 +548,7 @@ test("indent then outdent puts the page back as it was", async () => {
 test("outdenting a top-level block appends nothing", async () => {
   const it = await project();
   const first = (await addBlock(it, TODAY, "top level")).blocks[0].id;
-  const before = await logSize(await segment(it.path));
+  const before = await size(await segment(it.path));
 
   const page = await outdentBlock(it, first);
   assert.deepEqual(
@@ -563,7 +556,7 @@ test("outdenting a top-level block appends nothing", async () => {
     ["top level"],
   );
   assert.equal(
-    await logSize(await segment(it.path)),
+    await size(await segment(it.path)),
     before,
     "a keystroke that changed nothing is not a fact",
   );
@@ -822,5 +815,46 @@ test("a block is written under the id it was drawn with, and never a second time
   await assert.rejects(addBlock(it, TOMORROW, "again", undefined, id));
   assert.deepEqual((await getPage(it, TOMORROW)).blocks, []);
 
+  await closeLedgers();
+});
+
+test("the fold leaves the pages alone for what this build cannot read", () => {
+  const state = {};
+  const created = { page: TODAY, id: randomUUID(), text: "x" };
+  for (const event of [
+    { type: `${NAMESPACE}block.created`, v: 2, payload: created },
+    { type: "block.created", v: 1, payload: created },
+    { type: `${NAMESPACE}block.renamed`, v: 1, payload: created },
+    { type: "__proto__", v: 1, payload: created },
+  ]) {
+    assert.equal(store.pagesFold.reduce(state, event), state, event.type);
+  }
+  assert.notEqual(
+    store.pagesFold.reduce(state, {
+      type: `${NAMESPACE}block.created`,
+      v: 1,
+      payload: created,
+    }),
+    state,
+  );
+});
+
+test("two sessions on one folder see each other's writes", async () => {
+  const a = await project();
+  // Another id on the same folder: a second instance, as far as a ledger knows.
+  const b = { id: randomUUID(), path: a.path };
+  await getPage(b, TODAY);
+
+  const arrived = new Promise<void>((resolve) =>
+    onChange((id) => id === b.id && resolve()),
+  );
+  await addBlock(a, TODAY, "from a");
+  await arrived;
+  assert.deepEqual(
+    (await getPage(b, TODAY)).blocks.map((block) => block.text),
+    ["from a"],
+  );
+
+  onChange(() => undefined);
   await closeLedgers();
 });

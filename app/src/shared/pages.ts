@@ -13,7 +13,7 @@
  * records what the user did, and looking at a page is not something they did.
  */
 
-import type { ViewStatus } from './log';
+import type { LogStatus } from './log';
 
 export type Block = {
   id: string;
@@ -209,7 +209,7 @@ export type PagesApi = {
    * They must be visible all the same: skipping something without a word is
    * how a single-writer log loses a machine's notes silently.
    */
-  status(): Promise<ViewStatus>;
+  status(): Promise<LogStatus>;
   /**
    * Appends a `block.created` event for a block the caller has already named.
    * `id` is a fresh UUID of the caller's own: the view draws the block before

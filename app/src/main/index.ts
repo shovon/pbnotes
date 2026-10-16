@@ -7,28 +7,12 @@ import {
   registerProjectIpc,
   requireProject,
 } from "./features/projects/projects-ipc";
-import {
-  beforeOpen,
-  bindDevice,
-  closeLedgers,
-  createLedger,
-  defineFold,
-  deviceOf,
-  inspect,
-  onArrival,
-} from "@pbnotes/ledger";
-import {
-  deviceId,
-  recall,
-  remember,
-  rotateDeviceId,
-} from "./device-store";
+import { closeLedgers, onChange, pagesOf, writerOf } from "./ledgers";
 import {
   refreshPages,
   registerPageIpc,
   resetTrail,
 } from "./features/projects/pages/pages-ipc";
-import { pagesFold } from "./features/projects/pages/pages-store/pages-store";
 import { findImage, saveImage } from "./features/projects/pages/images/images";
 import { IMAGE_SCHEME } from "../shared/pages";
 import {
@@ -50,12 +34,6 @@ if (started) {
 if (!app.commandLine.hasSwitch("user-data-dir")) {
   app.setPath("userData", path.join(app.getPath("appData"), "pbnotes"));
 }
-
-// Every fold the app has, registered here and nowhere else: a feature exports
-// its fold and never learns what it was registered with. At module load,
-// because a ledger that is already open has replayed without a fold that
-// arrives after it.
-const pagesOf = defineFold("pages", pagesFold);
 
 // Before the app is ready, or it is too late. `standard` gives the URL a
 // host, which is always `images`; the handler is in `pages-ipc`.
@@ -131,28 +109,6 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on("ready", () => {
   openDatabase();
-  // Who we are in a shared log folder, and what we remember about it. Has to
-  // happen before any log is opened: a device that appends before it knows its
-  // own identity writes in somebody else's directory.
-  bindDevice({
-    device: deviceId(),
-    recall,
-    remember,
-    rotate: rotateDeviceId,
-  });
-  // A project folder is its ledger, so what the user writes lives with the
-  // folder they picked: it backs up, syncs and moves with it, and outlives
-  // the app. Never `userData`: wiping that must not lose a word.
-  //
-  // A log opens only on a folder that holds a `LEDGER` marker, and never
-  // makes one. What a project folder gets before it is opened is decided
-  // here: a folder nothing has been written in is made a ledger, because that
-  // is what picking a new project means. Anything else that is not one is
-  // left alone, and the open that follows refuses it and says why.
-  beforeOpen(async (directory) => {
-    const found = await inspect(directory);
-    if (found === "missing") await createLedger(directory);
-  });
   // A different project is open, so a trail through the last one is over.
   registerProjectIpc(resetTrail);
   // Pages are handed their view of what is open, and the images beside it,
@@ -168,7 +124,7 @@ app.on("ready", () => {
       const project = await requireProject();
       return saveImage(
         project.path,
-        await deviceOf(project),
+        await writerOf(project),
         bytes,
         mime,
       );
@@ -183,12 +139,13 @@ app.on("ready", () => {
         : undefined;
     },
   });
-  // Another device's events landed in a project's folder. Every fold has taken
-  // them in by now, so nothing is fed to a feature here: each one is only told
-  // to draw again, and only when the project is the one on screen — which is
-  // settled here, so no feature has to ask. The ledger holds one listener, and
-  // this is it — a new feature adds its line here.
-  onArrival((projectId) => {
+  // A project's pages moved: another session's events landed in its folder,
+  // or the fold caught up with a write of ours. Every fold has taken them in
+  // by now, so nothing is fed to a feature here: each one is only told to draw
+  // again, and only when the project is the one on screen — which is settled
+  // here, so no feature has to ask. `ledgers.ts` holds one listener, and this
+  // is it — a new feature adds its line here.
+  onChange((projectId) => {
     if (currentProject()?.id !== projectId) return;
     refreshPages();
   });
