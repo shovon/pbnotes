@@ -182,6 +182,7 @@ export class Ledger {
   #timer?: ReturnType<typeof setTimeout>;
   #polling: Promise<void>;
   #closed = false;
+  #writer?: Writer;
 
   constructor(root: string, pollMs: number) {
     this.#root = root;
@@ -189,7 +190,12 @@ export class Ledger {
     this.ready = this.#polling = this.#tick();
   }
 
+  /** This ledger's one writer; its directory appears on the first `post`. */
   writer(): Writer {
+    return (this.#writer ??= this.#newWriter());
+  }
+
+  #newWriter(): Writer {
     const id = randomUUID();
     const dir = join(this.#root, id);
     let seq = 0;
@@ -202,7 +208,7 @@ export class Ledger {
       if (this.#closed) return Promise.reject(new Error("ledger closed"));
       const p = chain.then(async () => {
         // A failed append may have left half a record; appending after it would read as damage.
-        if (broken) throw new Error("writer broken by an earlier failed write; open a new one", { cause: broken });
+        if (broken) throw new Error("writer broken by an earlier failed write; reopen the ledger", { cause: broken });
         const now = Date.now();
         const hlc = (this.#hlc = now > this.#hlc.l ? { l: now, c: 0 } : { l: this.#hlc.l, c: this.#hlc.c + 1 });
         const date = new Date(now);
