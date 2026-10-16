@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { locate, today } from '../../shared/pages';
+import { locate } from '@pbnotes/pages';
+import { today } from '../../shared/pages';
 import type { PagesState } from '../../shared/pages';
 import type { Availability } from '../../shared/projects';
 import type { Act } from '../ui';

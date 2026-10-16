@@ -1,4 +1,5 @@
-import type { Page, PagesApi } from '../../../../shared/pages';
+import type { Page } from '@pbnotes/pages';
+import type { PagesApi } from '../../../../shared/pages';
 import type { Act } from '../../../ui';
 import PageView from '../PageView';
 

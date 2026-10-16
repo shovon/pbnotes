@@ -12,7 +12,7 @@
 import path from "node:path";
 import { openOrCreate } from "@pbnotes/append-only-log";
 import type { Ledger } from "@pbnotes/append-only-log";
-import { pagesFold } from "./features/projects/pages/pages-store/pages-store.ts";
+import { pagesFold } from "@pbnotes/pages";
 import type { PagesView } from "./features/projects/pages/pages-store/pages-store.ts";
 
 /** Enough to find a ledger: what to remember it by, and the folder it is. */

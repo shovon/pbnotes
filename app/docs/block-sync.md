@@ -28,7 +28,7 @@ On disk each of these is under a namespace, `github.com/shovon/pbnotes#block.cre
 
 This is a sync property rather than a tidiness one. A page on a post-creation event is a copy of where the block sat when the user typed — correct on the machine that wrote it, and stale as soon as another machine moves the block. `state[page]` would then miss and `reduce` would return the state unchanged, which is a keystroke lost in silence. Addressed by id, the same event folds correctly no matter what else has happened to the block. It is also what any cross-page move has to be built on, so the shape is settled before the feature that needs it exists, rather than after.
 
-Payloads went to `v: 2`. A `v1` payload needs no upcast — it has a field the fold no longer reads — but the bump matters in the other direction: an older build handed a `v2` event would look up `state[undefined]` and drop it without a word, and at `v: 2` its `HANDLES` gate refuses the event instead. Since #50 nothing reports a refused event: the gate is `pagesFold` in `pages-store.ts`, and the ledger's status no longer counts what a fold skipped.
+Payloads went to `v: 2`. A `v1` payload needs no upcast — it has a field the fold no longer reads — but the bump matters in the other direction: an older build handed a `v2` event would look up `state[undefined]` and drop it without a word, and at `v: 2` its `HANDLES` gate refuses the event instead. Since #50 nothing reports a refused event: the gate is `pagesFold` in `@pbnotes/pages`, and the ledger's status no longer counts what a fold skipped.
 
 The price is retroactive history. A late-arriving event slots into the middle of the order and the page reshuffles under the user after a sync. Every file-sync notes app has this; it is survivable, and it is the thing to watch for in dogfooding.
 
@@ -43,7 +43,7 @@ The status (`LogStatus`: each writing session's state, and the paths skipped) is
 None of these block convergence — every device agrees on the same answer. They are about the answer being the one a person expected. Ranked by how much they will actually bite.
 
 1. **`block.outdented` moves blocks it does not name.** Trailing siblings become children, so its effect is defined over whoever the siblings happened to be at fold time, which differs per device. Carrying the explicit ids it moves makes it mergeable. Payload `v: 3` — `v: 2` is the one that dropped `page`. **Do this one before relying on sync daily.**
-2. **`block.deleted` has no tombstone.** Device A deletes X while device B writes a block `after: X`. The fallback in `reduce` (`src/shared/blocks/blocks.ts`) keeps the content — the right instinct — but the block lands at the bottom of the page instead of where it was written. A tombstone restores the placement.
+2. **`block.deleted` has no tombstone.** Device A deletes X while device B writes a block `after: X`. The fallback in `reduce` (`packages/pages/blocks.ts`) keeps the content — the right instinct — but the block lands at the bottom of the page instead of where it was written. A tombstone restores the placement.
 3. **`block.indented` no-ops when its `parent` is gone**, silently dropping the user's intent. Deterministic, so both devices drop it identically. Still surprising.
 4. **Text is last-writer-wins per block.** Concurrent edits to one block lose one side. The loser is still on disk forever, so it can be surfaced rather than pretended away.
 
@@ -55,7 +55,7 @@ None of these block convergence — every device agrees on the same answer. They
 
 ## Tests
 
-The ledger's tests cover the order, the stalls and convergence, with events of their own that are not blocks. The block fold is tested without a log in `src/shared/blocks/blocks.test.ts`, and through one in `src/main/features/projects/pages/pages-store/pages-store.test.ts`. Both write from a single device. Nothing yet tests two devices' block events interleaving, so each deferred item above lands with a test that folds its events in both orders.
+The ledger's tests cover the order, the stalls and convergence, with events of their own that are not blocks. The block fold is tested without a log in `packages/pages/blocks.test.ts` and `packages/pages/pages.test.ts`, and through one in `src/main/features/projects/pages/pages-store/pages-store.test.ts`. Both write from a single device. Nothing yet tests two devices' block events interleaving, so each deferred item above lands with a test that folds its events in both orders.
 
 ## Order of work
 

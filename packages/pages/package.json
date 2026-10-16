@@ -1,0 +1,21 @@
+{
+  "name": "@pbnotes/pages",
+  "version": "0.1.0",
+  "description": "What pbnotes events mean: the pages fold, the queries over it, and the commands that write it.",
+  "private": true,
+  "type": "module",
+  "main": "./pages.ts",
+  "exports": "./pages.ts",
+  "scripts": {
+    "test": "node --test '*.test.ts'"
+  },
+  "dependencies": {
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/mdast": "^4.0.4"
+  },
+  "license": "MIT"
+}

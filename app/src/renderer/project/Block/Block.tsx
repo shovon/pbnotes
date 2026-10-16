@@ -4,7 +4,7 @@ import Markdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import { IMAGE_SCHEME } from '../../../shared/pages';
-import { remarkPlugins } from '../../../shared/wikilink/wikilink';
+import { remarkPlugins } from '@pbnotes/pages';
 
 /**
  * KaTeX throws on malformed TeX by default, which would take the whole page

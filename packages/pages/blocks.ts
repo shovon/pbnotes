@@ -8,19 +8,72 @@
  *
  * Nothing here touches a log, a file, a device or a window. It is the domain:
  * an event schema, the tree operations a fold is made of, and the fold itself.
- * `pages-store.ts` is the wiring that points a log at it. The split is the
- * reason this file is readable — and the reason it runs under plain
- * `node --test` with nothing around it.
+ * `pages.ts` is what a caller points a log at. The split is the reason this
+ * file is readable — and the reason it runs under plain `node --test` with
+ * nothing around it.
  *
- * In `shared`, against the convention that it holds types and constants,
- * because both sides fold with it. Main folds the log, and its fold is the
- * truth. The renderer folds only the writes it has sent and not yet heard
- * back about, over what main last said, so that a key shows its result
- * without waiting for the disk — see `predict`. Two folds that have to agree
- * are one fold, or they drift.
+ * Both sides of the app fold with it, and so does anyone else reading a
+ * folder. The app's main process folds the log, and its fold is the truth.
+ * The renderer folds only the writes it has sent and not yet heard back
+ * about, over what main last said, so that a key shows its result without
+ * waiting for the disk — see `predict`. Two folds that have to agree are one
+ * fold, or they drift: that is why this is a package and not a copy.
  */
-import { locate } from "../pages.ts";
-import type { Block, Page } from "../pages.ts";
+
+export type Block = {
+  id: string;
+  text: string;
+  /** Nested beneath this one, in the order they fold. Empty for a leaf. */
+  children: Block[];
+};
+
+export type Page = {
+  /**
+   * What names the page: a local `YYYY-MM-DD` for a journal day, otherwise
+   * whatever a link called it, exactly as typed. Case matters — `#Mira` and
+   * `#mira` are two pages — because the title is a key in a log that keeps
+   * everything forever, and folding case together later is a choice the fold
+   * can make; lowercasing now would lose the casing for good.
+   */
+  title: string;
+  /** In the order they belong on the page, which is the order they fold. */
+  blocks: Block[];
+};
+
+/**
+ * Where a block sits: the array it is in, its index in that array, and the
+ * block it hangs under. Undefined `parent` means the top level of the page.
+ *
+ * Exported because a caller needs the same walk the fold does — the app's
+ * main to find the sibling an indent moves a block under, its renderer to
+ * work out where a caret goes — and two copies of one tree walk that have to
+ * agree drift.
+ */
+export function locate(
+  blocks: Block[],
+  id: string,
+  parent?: Block,
+): { siblings: Block[]; at: number; parent?: Block } | undefined {
+  const at = blocks.findIndex((block) => block.id === id);
+  if (at !== -1) return { siblings: blocks, at, parent };
+  for (const block of blocks) {
+    const hit = locate(block.children, id, block);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+/**
+ * The deepest last descendant — the block that renders directly above
+ * whatever comes after this one's subtree. Itself, for a leaf.
+ */
+export function lastLeaf(block: Block): Block {
+  let last = block;
+  while (last.children.length > 0) {
+    last = last.children[last.children.length - 1];
+  }
+  return last;
+}
 
 /** Title → the blocks on it: a journal day or a page a link named. */
 export type Pages = Record<string, Block[]>;
@@ -86,8 +139,12 @@ export type PageEvent =
  * An identifier and not a link. Once a log holds it, it is on disk forever,
  * and it stays these bytes wherever the repository goes.
  *
+ * Public contract, with `HANDLES`: programs other than the app read these
+ * names. A name and a `v`, once written, never mean anything else — a new
+ * meaning is a new `v` or a new name. See the README.
+ *
  * ponytail: here because this is the only fold there is. A second feature's
- * fold takes this out to a module of its own in `shared`.
+ * fold takes this out to a package of its own.
  */
 export const NAMESPACE = "github.com/shovon/pbnotes#";
 
@@ -103,7 +160,7 @@ type Named<T extends string> = `${typeof NAMESPACE}${T}`;
  * new event type without a version here, or a version here for an event type
  * that does not exist, stops the build.
  *
- * The gate itself is `pagesFold` in `pages-store.ts`. Its job is the case a
+ * The gate itself is `pagesFold` in `pages.ts`. Its job is the case a
  * single-writer log could never produce: a newer build on another machine
  * writing something this one does not understand. Those events are skipped.
  */

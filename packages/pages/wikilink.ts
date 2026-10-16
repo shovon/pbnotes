@@ -130,13 +130,11 @@ function split(node: Text): RootContent[] {
  * first: `$…$` becomes a node without text children, so a `#` inside a
  * formula never becomes a link.
  *
- * In `shared`, against the rule that this folder holds types and constants,
- * for the reason `locate` gives in `pages.ts`: both sides genuinely need it.
- * The renderer renders a block with it; main reads a block with it to find
- * the pages it links to, which is how a page lists what links to it. Two
- * parsers that have to agree on what a link is would be one more than
- * anyone can keep in step — a `#foo` in a code span would render as text
- * and count as a reference. No `node:` imports, so the rule's reason holds.
+ * Exported because whoever renders a block has to read it the same way
+ * `reading.ts` does to find the pages it links to, which is how a page lists
+ * what links to it. Two parsers that have to agree on what a link is would be
+ * one more than anyone can keep in step — a `#foo` in a code span would
+ * render as text and count as a reference.
  */
 export const remarkPlugins = [remarkMath, remarkWikilink];
 

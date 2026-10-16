@@ -12,13 +12,13 @@ import { mkdtemp, readFile, readdir, rename, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import * as pages from "@pbnotes/pages";
+import { lastLeaf, locate, NAMESPACE } from "@pbnotes/pages";
+import type { Block } from "@pbnotes/pages";
 import * as store from "./pages-store.ts";
 import type { PagesView } from "./pages-store.ts";
 import { closeLedgers, onChange, pagesOf } from "../../../../ledgers.ts";
 import type { LedgerRef } from "../../../../ledgers.ts";
-import { NAMESPACE } from "../../../../../shared/blocks/blocks.ts";
-import { lastLeaf, locate } from "../../../../../shared/pages.ts";
-import type { Block } from "../../../../../shared/pages.ts";
 
 /**
  * The glue, as `index.ts` is for the app: the store is handed a view, and
@@ -31,16 +31,16 @@ const on =
   async (project: LedgerRef, ...args: A): Promise<Awaited<R>> =>
     await run(await pagesOf(project), ...args);
 
-const addBlock = on(store.addBlock);
-const deleteBlock = on(store.deleteBlock);
-const editBlock = on(store.editBlock);
-const getPage = on(store.getPage);
-const getPages = on(store.getPages);
-const getPreviews = on(store.getPreviews);
-const getReferences = on(store.getReferences);
+const addBlock = on(pages.addBlock);
+const deleteBlock = on(pages.deleteBlock);
+const editBlock = on(pages.editBlock);
+const getPage = on(pages.getPage);
+const getPages = on(pages.getPages);
+const getPreviews = on(pages.getPreviews);
+const getReferences = on(pages.getReferences);
 const getState = on(store.getState);
-const indentBlock = on(store.indentBlock);
-const outdentBlock = on(store.outdentBlock);
+const indentBlock = on(pages.indentBlock);
+const outdentBlock = on(pages.outdentBlock);
 
 const TODAY = "2026-09-21";
 const TOMORROW = "2026-09-22";
@@ -816,27 +816,6 @@ test("a block is written under the id it was drawn with, and never a second time
   assert.deepEqual((await getPage(it, TOMORROW)).blocks, []);
 
   await closeLedgers();
-});
-
-test("the fold leaves the pages alone for what this build cannot read", () => {
-  const state = {};
-  const created = { page: TODAY, id: randomUUID(), text: "x" };
-  for (const event of [
-    { type: `${NAMESPACE}block.created`, v: 2, payload: created },
-    { type: "block.created", v: 1, payload: created },
-    { type: `${NAMESPACE}block.renamed`, v: 1, payload: created },
-    { type: "__proto__", v: 1, payload: created },
-  ]) {
-    assert.equal(store.pagesFold.reduce(state, event), state, event.type);
-  }
-  assert.notEqual(
-    store.pagesFold.reduce(state, {
-      type: `${NAMESPACE}block.created`,
-      v: 1,
-      payload: created,
-    }),
-    state,
-  );
 });
 
 test("two sessions on one folder see each other's writes", async () => {
