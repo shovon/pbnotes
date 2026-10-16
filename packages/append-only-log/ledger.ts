@@ -55,6 +55,9 @@ const cmpHlc = (a: Hlc, b: Hlc) => a.l - b.l || a.c - b.c;
 const cmp = (a: LogEvent, b: LogEvent) =>
   cmpHlc(a.hlc, b.hlc) || (a.device < b.device ? -1 : a.device > b.device ? 1 : 0);
 
+/** A fresh frozen copy per event: consumers can't see or depend on log internals, and one reducer can't mutate what others fold. */
+const toEvent = ({ type, v, at, payload }: LogEvent): Event => Object.freeze({ type, v, at, payload });
+
 const segmentName = (n: number) => `${String(n).padStart(16, "0")}.log`;
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const localDay = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -160,6 +163,7 @@ export async function openOrCreate(path: string, pollMs = 1000): Promise<Ledger>
   return ledger;
 }
 
+type Entry = { log: LogEvent; event: Event };
 type Sub = { dirty: number; wake: () => void };
 /** Read position in one writer directory. Only advanced past records that were accepted or skipped as duplicates. */
 type Cursor = { seg: number; offset: number; last: number; state: DeviceState; detail?: string; suspect?: number };
@@ -169,7 +173,7 @@ export class Ledger {
   readonly ready: Promise<void>;
   #root: string;
   #pollMs: number;
-  #events: LogEvent[] = [];
+  #events: Entry[] = [];
   #cursors = new Map<string, Cursor>();
   #ignored: string[] = [];
   #hlc: Hlc = { l: 0, c: 0 };
@@ -230,11 +234,11 @@ export class Ledger {
         day = localDay(date);
         // A concurrent scan may already have read this record; only one of us ingests it.
         const c = this.#cursor(id);
-        if (e.seq > c.last) {
-          Object.assign(c, { seg: segment, offset: bytes, last: e.seq });
-          this.#ingest([e]);
-        }
-        return e;
+        if (e.seq <= c.last) return toEvent(e);
+        Object.assign(c, { seg: segment, offset: bytes, last: e.seq });
+        const entry = { log: e, event: toEvent(e) };
+        this.#ingest([entry]);
+        return entry.event;
       });
       chain = p.catch(() => {});
       this.#pending.add(chain);
@@ -266,7 +270,7 @@ export class Ledger {
         while (cps.at(-1)!.i > from) cps.pop();
         let { i, s } = cps.at(-1)!;
         for (; i < this.#events.length; i++) {
-          s = reduce(s, this.#events[i]);
+          s = reduce(s, this.#events[i].event);
           if ((i + 1) % CHECKPOINT_EVERY === 0) cps.push({ i: i + 1, s });
         }
         yield s;
@@ -324,7 +328,7 @@ export class Ledger {
       else if (d.name !== "LEDGER") ignored.push(join(this.#root, d.name));
     }
     this.#ignored = ignored;
-    this.#ingest(fresh);
+    this.#ingest(fresh.map((e) => ({ log: e, event: toEvent(e) })));
   }
 
   /**
@@ -400,17 +404,18 @@ export class Ledger {
     }
   }
 
-  #ingest(fresh: LogEvent[]) {
+  #ingest(fresh: Entry[]) {
     if (!fresh.length) return;
     const now = Date.now();
     let min = fresh[0];
-    for (const e of fresh) {
+    for (const x of fresh) {
+      const e = x.log;
       if (e.hlc.l <= now + MAX_CLOCK_SKEW_MS && cmpHlc(e.hlc, this.#hlc) > 0) this.#hlc = e.hlc;
-      if (cmp(e, min) < 0) min = e;
-      this.#events.push(e);
+      if (cmp(e, min.log) < 0) min = x;
+      this.#events.push(x);
     }
     // ponytail: full sort per batch (cheap on nearly-sorted arrays); k-way merge if posts get hot
-    this.#events.sort(cmp);
+    this.#events.sort((a, b) => cmp(a.log, b.log));
     const from = this.#events.indexOf(min);
     for (const s of this.#subs) {
       s.dirty = Math.min(s.dirty, from);

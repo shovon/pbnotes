@@ -63,6 +63,22 @@ test("records are format 1: crc32 hex, space, JSON with the old key order", asyn
   assert.equal(JSON.parse(json).device, w.id);
 });
 
+test("consumers only ever see { type, v, at, payload }, frozen", { timeout: 5000 }, async () => {
+  const dir = await fresh();
+  await put(dir, "b", 1, recs([ev("b", 1, 1000)])); // arrives by scan
+  const l = await openOrCreate(dir, 20);
+  const seen: Event[] = [];
+  const it = l.onEvent<number>(0, (n, e) => (seen.push(e), n + 1))[Symbol.asyncIterator]();
+  const posted = await l.writer().post(1, "t", { x: 1 }); // arrives by post
+  await until(it, (n) => n === 2);
+  for (const e of [posted, ...seen]) {
+    assert.deepEqual(Object.keys(e), ["type", "v", "at", "payload"]);
+    assert(Object.isFrozen(e));
+  }
+  assert.throws(() => ((seen[0] as any).type = "changed"));
+  await l.close();
+});
+
 test("late event rewinds via checkpoint; torn tail stalls until finished", { timeout: 5000 }, async () => {
   const dir = await fresh();
   await put(dir, "a", 1, recs(Array.from({ length: 2500 }, (_, i) => ev("a", i + 1, 2 * (i + 1)))));
