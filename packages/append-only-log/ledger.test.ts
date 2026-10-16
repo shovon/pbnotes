@@ -63,6 +63,19 @@ test("records are format 1: crc32 hex, space, JSON with the old key order", asyn
   assert.equal(JSON.parse(json).device, w.id);
 });
 
+test("one writer per ledger, and its directory waits for the first post", async () => {
+  const dir = await fresh();
+  const l = await openOrCreate(dir);
+  const w = l.writer();
+  assert.equal(l.writer(), w);
+  assert.deepEqual(await readdir(dir), ["LEDGER"]);
+  await w.post(1, "a", {});
+  await l.writer().post(1, "b", {});
+  await l.close();
+  assert.deepEqual((await readdir(dir)).sort(), ["LEDGER", w.id].sort());
+  assert.equal((await readFile(join(dir, w.id, seg(1)), "utf8")).split("\n").length, 3);
+});
+
 test("consumers only ever see { type, v, at, payload }, frozen", { timeout: 5000 }, async () => {
   const dir = await fresh();
   await put(dir, "b", 1, recs([ev("b", 1, 1000)])); // arrives by scan
