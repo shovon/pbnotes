@@ -2,13 +2,13 @@
 
 *Status: the reducer semantics are deferred. See [Deferred](#deferred-what-the-reducer-still-gets-wrong).*
 
-[multi-writer.md](../../packages/ledger/multi-writer.md) is the spec for the ledger: how several machines write events into one folder and every one of them folds the same order. It says nothing about what an event means. This is the other half: what that order does to blocks and pages, and the rules the block model keeps so that a sync does not lose what someone typed.
+[multi-writer.md](../../packages/append-only-log/multi-writer.md) is the spec for the ledger: how several machines write events into one folder and every one of them folds the same order. It says nothing about what an event means. This is the other half: what that order does to blocks and pages, and the rules the block model keeps so that a sync does not lose what someone typed.
 
 The ledger gives convergence. Every device folds the same events in the same order and lands on the same pages. What is left for the block model is intention: whether the page everyone agrees on is the one a person expected.
 
 ## What a misordered event does to a page
 
-The ledger orders events with a hybrid logical clock and not a plain counter, because a counter lets a device that has not read the folder yet sort its events before history (see "Why not a plain Lamport counter" in [multi-writer.md](../../packages/ledger/multi-writer.md)). That is the ledger's half of the argument. This is what it would cost a block.
+The ledger orders events with a hybrid logical clock and not a plain counter, because a counter lets a device that has not read the folder yet sort its events before history (see "Why not a plain Lamport counter" in [multi-writer.md](../../packages/append-only-log/multi-writer.md)). That is the ledger's half of the argument. This is what it would cost a block.
 
 `reduce` is written for events that arrive in causal order, and it fails quietly when they do not:
 
@@ -24,11 +24,11 @@ The same goes for an event delivered twice. A second `block.created` with an exi
 
 Only `block.created` carries a page. `block.edited`, `.deleted`, `.indented` and `.outdented` carry the block id and nothing else, and the fold finds the block wherever it is.
 
-On disk each of these is under a namespace, `github.com/shovon/pbnotes#block.created` and so on; this document leaves the namespace off for short. The first logs were written with the bare names. Those logs were rewritten once (#39), and a bare name is no longer read (#40): `reduce` ignores it and it is reported in `ViewStatus` as an event this build cannot use. A build from before #37 does not read the namespaced names: it skips those events and reports them in `ViewStatus` as ones it cannot use.
+On disk each of these is under a namespace, `github.com/shovon/pbnotes#block.created` and so on; this document leaves the namespace off for short. The first logs were written with the bare names. Those logs were rewritten once (#39), and a bare name is no longer read (#40): `reduce` ignores it. A build from before #37 does not read the namespaced names: it skips those events.
 
 This is a sync property rather than a tidiness one. A page on a post-creation event is a copy of where the block sat when the user typed — correct on the machine that wrote it, and stale as soon as another machine moves the block. `state[page]` would then miss and `reduce` would return the state unchanged, which is a keystroke lost in silence. Addressed by id, the same event folds correctly no matter what else has happened to the block. It is also what any cross-page move has to be built on, so the shape is settled before the feature that needs it exists, rather than after.
 
-Payloads went to `v: 2`. A `v1` payload needs no upcast — it has a field the fold no longer reads — but the bump matters in the other direction: an older build handed a `v2` event would look up `state[undefined]` and drop it without a word, and at `v: 2` its `HANDLES` gate refuses the event and `ViewStatus` reports it instead.
+Payloads went to `v: 2`. A `v1` payload needs no upcast — it has a field the fold no longer reads — but the bump matters in the other direction: an older build handed a `v2` event would look up `state[undefined]` and drop it without a word, and at `v: 2` its `HANDLES` gate refuses the event instead. Since #50 nothing reports a refused event: the gate is `pagesFold` in `pages-store.ts`, and the ledger's status no longer counts what a fold skipped.
 
 The price is retroactive history. A late-arriving event slots into the middle of the order and the page reshuffles under the user after a sync. Every file-sync notes app has this; it is survivable, and it is the thing to watch for in dogfooding.
 
@@ -36,7 +36,7 @@ The price is retroactive history. A late-arriving event slots into the middle of
 
 A device whose clock is more than a day ahead is reported as `clockSuspect`, and its events do not move anyone else's clock. That protects the order. It does not repair `page`: the page date is a local calendar day chosen by the renderer, so a machine set to 2031 files notes under 2031 and no clock discipline in the log layer can find them again. The status is the only signal the user will get.
 
-The status (`ViewStatus`: each device's state, the paths skipped, the events this build could not fold) is carried alongside the page through the `pages:*` channels. A fold that moved because a file arrived has main send its state over `pages:changed`, the same message a write from this device produces. A re-fold that read the same bytes sends nothing.
+The status (`LogStatus`: each writing session's state, and the paths skipped) is carried alongside the page through the `pages:*` channels. A fold that moved because a file arrived has main send its state over `pages:changed`, the same message a write from this device produces. A yield that is the state already held sends nothing.
 
 ## Deferred: what the reducer still gets wrong
 

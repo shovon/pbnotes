@@ -53,7 +53,7 @@
   },
   "dependencies": {
     "@pbnotes/files": "*",
-    "@pbnotes/ledger": "*",
+    "@pbnotes/append-only-log": "*",
     "electron-squirrel-startup": "^1.0.1",
     "katex": "^0.16.47",
     "react": "^19.2.8",

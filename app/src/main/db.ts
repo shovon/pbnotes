@@ -69,6 +69,11 @@ const MIGRATIONS: string[] = [
 
   // That move has run on every machine there is (#43), and its code is gone.
   `ALTER TABLE projects DROP COLUMN ledger_move;`,
+
+  // Every session writes in a directory of its own (#50), so there is no
+  // identity to keep and no tip to remember.
+  `DROP TABLE log_state;
+   DROP TABLE device;`,
 ];
 
 let db: DatabaseSync | null = null;

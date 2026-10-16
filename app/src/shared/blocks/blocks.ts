@@ -103,10 +103,9 @@ type Named<T extends string> = `${typeof NAMESPACE}${T}`;
  * new event type without a version here, or a version here for an event type
  * that does not exist, stops the build.
  *
- * The gate itself is `Projection`'s. Its job is the case a single-writer log
- * could never produce: a newer build on another machine writing something this
- * one does not understand. Those events are skipped, as they always were, but
- * counted and reported rather than silently leaving holes in the page.
+ * The gate itself is `pagesFold` in `pages-store.ts`. Its job is the case a
+ * single-writer log could never produce: a newer build on another machine
+ * writing something this one does not understand. Those events are skipped.
  */
 export const HANDLES: Record<PageEvent["type"], number> = {
   [`${NAMESPACE}block.created`]: 1,
@@ -232,7 +231,7 @@ function onBlock(
  * part of itself, the exact silence this log is built against.
  *
  * At run time it is reachable and ordinary: an event type some other build
- * wrote, already counted into `ViewStatus` by the gate. The view is left as it
+ * wrote, already refused by the gate in `pagesFold`. The view is left as it
  * was either way.
  */
 function foreign(_event: never, state: Pages): Pages {
@@ -265,8 +264,7 @@ export function reduce(
   event: { type: string; payload: unknown },
 ): Pages {
   // Ours are under the namespace and nothing else is: a bare `block.created`
-  // is not this event (#40). The gate does not claim one either, so a log
-  // that holds one reports it.
+  // is not this event (#40), and the gate in `pagesFold` refuses one too.
   if (!event.type.startsWith(NAMESPACE)) return state;
   // The one cast in the fold: "if this is one of ours, this is its shape."
   // `foreign` below is where that turns out not to be true.

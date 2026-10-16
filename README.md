@@ -38,6 +38,6 @@ npm run lint
 npm run make   # build distributables
 ```
 
-`packages/ledger/` (`@pbnotes/ledger`, the event log) and `packages/files/` (`@pbnotes/files`, hash-named files beside it) are packages the app depends on through the workspace. Neither has dependencies of its own; `npm test` in either folder runs its tests.
+`packages/append-only-log/` (`@pbnotes/append-only-log`, the event log) and `packages/files/` (`@pbnotes/files`, hash-named files beside it) are packages the app depends on through the workspace. Neither has dependencies of its own; `npm test` in either folder runs its tests.
 
 The reasoning behind the design is in [app/docs/](app/docs/), starting with [design.md](app/docs/design.md).
