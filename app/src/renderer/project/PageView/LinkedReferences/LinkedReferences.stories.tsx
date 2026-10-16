@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import type { Block, Page, PagesApi } from '../../../../shared/pages';
+import type { Block, Page } from '@pbnotes/pages';
+import type { PagesApi } from '../../../../shared/pages';
 import LinkedReferences from './LinkedReferences';
 
 /** Every call resolves `undefined`, like the preview's stub bridge. */

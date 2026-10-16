@@ -3,12 +3,12 @@
  * to, the blocks it refers to, and what a ref to it shows.
  *
  * Text in, data out. Nothing here knows a project, a ledger or a view —
- * `pages-store.ts` fetches the fold and asks these about the blocks in it.
+ * `pages.ts` fetches the fold and asks these about the blocks in it.
  */
 import { unified } from "unified";
 import remarkParse from "remark-parse";
-import type { Block } from "../../../../shared/pages.ts";
-import { remarkPlugins } from "../../../../shared/wikilink/wikilink.ts";
+import type { Block } from "./blocks.ts";
+import { remarkPlugins } from "./wikilink.ts";
 
 /**
  * The pages a text links to and the blocks it refers to, read with the same parser that renders it, so

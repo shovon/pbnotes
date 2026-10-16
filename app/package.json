@@ -54,14 +54,12 @@
   "dependencies": {
     "@pbnotes/files": "*",
     "@pbnotes/append-only-log": "*",
+    "@pbnotes/pages": "*",
     "electron-squirrel-startup": "^1.0.1",
     "katex": "^0.16.47",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
-    "rehype-katex": "^7.0.1",
-    "remark-math": "^6.0.0",
-    "remark-parse": "^11.0.0",
-    "unified": "^11.0.5"
+    "rehype-katex": "^7.0.1"
   }
 }

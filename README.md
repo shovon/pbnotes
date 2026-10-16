@@ -38,6 +38,6 @@ npm run lint
 npm run make   # build distributables
 ```
 
-`packages/append-only-log/` (`@pbnotes/append-only-log`, the event log) and `packages/files/` (`@pbnotes/files`, hash-named files beside it) are packages the app depends on through the workspace. Neither has dependencies of its own; `npm test` in either folder runs its tests.
+`packages/append-only-log/` (`@pbnotes/append-only-log`, the event log), `packages/files/` (`@pbnotes/files`, hash-named files beside it) and `packages/pages/` (`@pbnotes/pages`, what the events mean, for the app and for any other program that reads a folder) are packages the app depends on through the workspace. The first two have no dependencies of their own, and `pages` depends only on the Markdown parser it reads links with. `npm test` in any of these folders runs its tests.
 
 The reasoning behind the design is in [app/docs/](app/docs/), starting with [design.md](app/docs/design.md).

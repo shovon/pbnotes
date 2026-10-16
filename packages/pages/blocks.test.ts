@@ -3,7 +3,7 @@
  *
  * The fold on its own: one event in, the whole view out, with no log, no
  * device and no project directory anywhere near it. That this file needs none
- * of those is the point of `blocks.ts` being separate from the store.
+ * of those is the point of `blocks.ts` being separate from `pages.ts`.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,8 +15,7 @@ import {
   predict,
   reduce,
 } from "./blocks.ts";
-import type { PageEvent, Pages } from "./blocks.ts";
-import type { Block } from "../pages.ts";
+import type { Block, PageEvent, Pages } from "./blocks.ts";
 
 const TODAY = "2026-09-21";
 

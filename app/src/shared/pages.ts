@@ -1,6 +1,7 @@
 /**
  * The pages contract: types and channel names shared by main, preload and
- * renderer, and the state main sends the renderer to draw. Like
+ * renderer, and the state main sends the renderer to draw. What a page and a
+ * block are, and the fold over them, are `@pbnotes/pages`. Like
  * `projects.ts`, this file is bundled into the renderer too, so it stays free
  * of `node:` imports.
  *
@@ -13,71 +14,8 @@
  * records what the user did, and looking at a page is not something they did.
  */
 
+import type { Page } from '@pbnotes/pages';
 import type { LogStatus } from './log';
-
-export type Block = {
-  id: string;
-  text: string;
-  /** Nested beneath this one, in the order they fold. Empty for a leaf. */
-  children: Block[];
-};
-
-/**
- * Where a block sits: the array it is in, its index in that array, and the
- * block it hangs under. Undefined `parent` means the top level of the page.
- *
- * A function in `shared`, against the convention that this file holds types
- * and constants. It is here because both sides genuinely need it — main to
- * find the sibling an indent moves a block under, the renderer to work out
- * where a caret goes — and two copies of one tree walk that have to agree is
- * exactly the drift `projection.ts` warns about. Pure, no `node:` imports, so
- * the reason the convention exists still holds.
- */
-export function locate(
-  blocks: Block[],
-  id: string,
-  parent?: Block,
-): { siblings: Block[]; at: number; parent?: Block } | undefined {
-  const at = blocks.findIndex((block) => block.id === id);
-  if (at !== -1) return { siblings: blocks, at, parent };
-  for (const block of blocks) {
-    const hit = locate(block.children, id, block);
-    if (hit) return hit;
-  }
-  return undefined;
-}
-
-/**
- * The deepest last descendant — the block that renders directly above
- * whatever comes after this one's subtree. Itself, for a leaf.
- */
-export function lastLeaf(block: Block): Block {
-  let last = block;
-  while (last.children.length > 0) {
-    last = last.children[last.children.length - 1];
-  }
-  return last;
-}
-
-export type Page = {
-  /**
-   * What names the page: a local `YYYY-MM-DD` for a journal day, otherwise
-   * whatever a link called it, exactly as typed. Case matters — `#Mira` and
-   * `#mira` are two pages — because the title is a key in a log that keeps
-   * everything forever, and folding case together later is a choice the fold
-   * can make; lowercasing now would lose the casing for good.
-   */
-  title: string;
-  /** In the order they belong on the page, which is the order they fold. */
-  blocks: Block[];
-};
-
-/**
- * What makes a title a journal day. The renderer picks the day, so main never
- * has to hold an opinion about the user's timezone; main uses this only to
- * tell the journal apart from the pages that links name.
- */
-export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * The scheme an image in a note is loaded through. The page is served from a
@@ -92,8 +30,9 @@ export const IMAGE_SCHEME = 'pbnotes-image';
  * is UTC and hands the wrong page to anyone whose evening is already
  * tomorrow in Greenwich — or whose morning is still yesterday.
  *
- * A function in `shared` for the reason `locate` is: main puts today at the
- * top of the journal, and the renderer writes a dropped image there.
+ * A function in `shared` because both sides need the same day: main puts
+ * today at the top of the journal, and the renderer writes a dropped image
+ * there.
  */
 export function today(now = new Date()): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');

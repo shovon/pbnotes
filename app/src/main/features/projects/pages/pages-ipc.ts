@@ -14,12 +14,11 @@ import {
   addBlock,
   deleteBlock,
   editBlock,
-  getLogStatus,
-  getState,
   indentBlock,
   locateBlock,
   outdentBlock,
-} from "./pages-store/pages-store";
+} from "@pbnotes/pages";
+import { getLogStatus, getState } from "./pages-store/pages-store";
 import type { PagesView } from "./pages-store/pages-store";
 import { back, go, rezoom } from "./trail/trail";
 

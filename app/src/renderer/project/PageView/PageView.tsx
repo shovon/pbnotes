@@ -1,8 +1,7 @@
 import { Fragment, useState } from 'react';
-import { indented, NAMESPACE, outdented, predict } from '../../../shared/blocks/blocks';
-import type { PageEvent } from '../../../shared/blocks/blocks';
-import { lastLeaf, locate } from '../../../shared/pages';
-import type { Block as BlockType, Page, PagesApi } from '../../../shared/pages';
+import { indented, lastLeaf, locate, NAMESPACE, outdented, predict } from '@pbnotes/pages';
+import type { Block as BlockType, Page, PageEvent } from '@pbnotes/pages';
+import type { PagesApi } from '../../../shared/pages';
 import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
