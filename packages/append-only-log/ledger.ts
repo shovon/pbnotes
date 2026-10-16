@@ -27,7 +27,8 @@ export type LogEvent<T = unknown> = {
 export type Event<T = unknown> = Pick<LogEvent<T>, "type" | "v" | "at" | "payload">;
 
 export type Writer = {
-  id: string;
+  /** Absolute when the ledger was opened with an absolute path. Created on the first `post`; side files go in subfolders of it. */
+  directory: string;
   post(v: number, type: string, payload: unknown): Promise<Event>;
 };
 
@@ -251,7 +252,7 @@ export class Ledger {
       chain.then(() => this.#pending.delete(chain));
       return p;
     };
-    return { id, post };
+    return { directory: dir, post };
   }
 
   /**

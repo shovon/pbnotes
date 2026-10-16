@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { appendFile, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { crc32 } from "node:zlib";
 import { encode, inspect, openOrCreate, type Event, type LogEvent } from "./ledger.ts";
 
@@ -55,12 +55,12 @@ test("records are format 1: crc32 hex, space, JSON with the old key order", asyn
   const w = l.writer();
   await w.post(2, "block.created", { text: "héllo" });
   await l.close();
-  assert.deepEqual(await readdir(join(dir, w.id)), [seg(1)]);
-  const line = await readFile(join(dir, w.id, seg(1)), "utf8");
+  assert.deepEqual(await readdir(w.directory), [seg(1)]);
+  const line = await readFile(join(w.directory, seg(1)), "utf8");
   const json = line.slice(9, -1);
   assert.equal(line.slice(0, 9), crc32(json).toString(16).padStart(8, "0") + " ");
   assert.deepEqual(Object.keys(JSON.parse(json)), ["seq", "device", "hlc", "id", "type", "v", "at", "payload"]);
-  assert.equal(JSON.parse(json).device, w.id);
+  assert.equal(join(dir, JSON.parse(json).device), w.directory);
 });
 
 test("one writer per ledger, and its directory waits for the first post", async () => {
@@ -68,12 +68,14 @@ test("one writer per ledger, and its directory waits for the first post", async 
   const l = await openOrCreate(dir);
   const w = l.writer();
   assert.equal(l.writer(), w);
+  assert.deepEqual(Object.keys(w).sort(), ["directory", "post"]);
+  assert.equal(dirname(w.directory), dir);
   assert.deepEqual(await readdir(dir), ["LEDGER"]);
   await w.post(1, "a", {});
   await l.writer().post(1, "b", {});
   await l.close();
-  assert.deepEqual((await readdir(dir)).sort(), ["LEDGER", w.id].sort());
-  assert.equal((await readFile(join(dir, w.id, seg(1)), "utf8")).split("\n").length, 3);
+  assert.deepEqual((await readdir(dir)).sort(), ["LEDGER", basename(w.directory)].sort());
+  assert.equal((await readFile(join(w.directory, seg(1)), "utf8")).split("\n").length, 3);
 });
 
 test("consumers only ever see { type, v, at, payload }, frozen", { timeout: 5000 }, async () => {
