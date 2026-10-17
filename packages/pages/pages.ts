@@ -23,7 +23,7 @@ import {
   outdented,
   reduce,
 } from "./blocks.ts";
-import type { Block, Page, PageEvent, Pages } from "./blocks.ts";
+import type { Block, BlockCreated, Page, PageEvent, Pages } from "./blocks.ts";
 import { linking, read } from "./reading.ts";
 
 export {
@@ -61,6 +61,21 @@ export { remarkPlugins, remarkWikilink } from "./wikilink.ts";
  * journal apart from the pages that links name.
  */
 export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Today as `YYYY-MM-DD`, in the user's local time. Not `toISOString()`, which
+ * is UTC and hands the wrong page to anyone whose evening is already
+ * tomorrow in Greenwich — or whose morning is still yesterday.
+ *
+ * Here because everyone who writes the journal needs the same day: the app's
+ * main puts today at the top of the journal, its renderer writes a dropped
+ * image there, and the CLI appends to it.
+ */
+export function today(now = new Date()): string {
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
 
 /**
  * The pages fold, for whoever runs it over a ledger: `ledger.onEvent(
@@ -208,6 +223,29 @@ function append<T extends PageEvent["type"]>(
 }
 
 /**
+ * The `block.created` event for these arguments, built from them alone: the
+ * payload typed against the schema and `v` from `HANDLES`, the same bytes
+ * `addBlock` writes. Checks nothing against any page, so a writer that holds
+ * no fold (the CLI) can still write a valid event — as long as it trusts its
+ * own `after` and `id`, which a fresh `randomUUID()` and no `after` always are.
+ */
+export function blockCreated(
+  page: string,
+  text: string,
+  after?: string,
+  id: string = globalThis.crypto.randomUUID(),
+): { v: number; type: PageEvent["type"]; payload: BlockCreated } {
+  const type = `${NAMESPACE}block.created` as const;
+  return {
+    v: HANDLES[type],
+    type,
+    // Left off entirely when absent, so an appended block writes the same
+    // bytes it always did.
+    payload: { page, id, text, ...(after ? { after } : {}) },
+  };
+}
+
+/**
  * Writes a new block, at the end of the page or directly beneath `after`.
  *
  * Refuses an `after` that is not on this page, for the same reason `editBlock`
@@ -234,14 +272,8 @@ export async function addBlock(
 
   // dispatch appends before it folds, so this resolves only once the event is
   // durable — the page handed back can never show something a crash takes.
-  await append(view, `${NAMESPACE}block.created`, {
-    page: title,
-    id,
-    text,
-    // Left off entirely when absent, so an appended block writes the same
-    // bytes it always did.
-    ...(after ? { after } : {}),
-  });
+  const e = blockCreated(title, text, after, id);
+  await view.dispatch(e.v, e.type, e.payload);
   return pageOf(view, title);
 }
 

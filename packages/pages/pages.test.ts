@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBlock, editBlock, getPages, NAMESPACE, pagesFold } from "./pages.ts";
+import { addBlock, blockCreated, editBlock, getPages, NAMESPACE, pagesFold } from "./pages.ts";
 import type { Pages, PagesView } from "./pages.ts";
 
 const TODAY = "2026-09-21";
@@ -56,4 +56,14 @@ test("a writer with its own log gets the app's checks and the app's fold", async
   await assert.rejects(editBlock(view, "nope", "x"));
   assert.equal(view.events.length, 2);
   assert.deepEqual(getPages(view)[0].blocks[0].text, "hello #Mira");
+});
+
+test("blockCreated is the event addBlock writes, with or without an after", async () => {
+  const view = memory();
+  await addBlock(view, TODAY, "first", undefined, "a");
+  await addBlock(view, TODAY, "second", "a", "b");
+  assert.deepEqual(view.events, [
+    blockCreated(TODAY, "first", undefined, "a"),
+    blockCreated(TODAY, "second", "a", "b"),
+  ]);
 });
