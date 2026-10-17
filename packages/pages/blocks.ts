@@ -79,6 +79,16 @@ export function lastLeaf(block: Block): Block {
 export type Pages = Record<string, Block[]>;
 
 /**
+ * The blocks on a page, empty for one nothing has been written to. An own
+ * property only: a title is whatever was typed, and `state["toString"]` is a
+ * function every object inherits. Spreading that throws, and a fold that
+ * throws on an event the log keeps forever never opens again (#62).
+ */
+export function blocksOn(pages: Pages, title: string): Block[] {
+  return Object.hasOwn(pages, title) ? pages[title] : [];
+}
+
+/**
  * Where the user wrote a block. The only event that carries a page, because
  * it is the only one that says anything about one: a block's page is settled
  * when it is created and no event moves it to another.
@@ -333,7 +343,7 @@ export function reduce(
   switch (it.type) {
     case "block.created": {
       const { page, id, text, after } = it.payload;
-      const blocks = state[page] ?? [];
+      const blocks = blocksOn(state, page);
       const block: Block = { id, text, children: [] };
       // `addBlock` refuses an `after` the page does not have, so missing it
       // here means a log written by something else. Append rather than drop: a
@@ -373,6 +383,11 @@ export function reduce(
         // so what lands under `parent` is the whole subtree, not a stripped
         // root.
         const moving = found.siblings[found.at];
+        // Under itself or its own subtree: the detach would take `parent`
+        // with it, and both would leave the page. Two machines each indenting
+        // one block under the other before they sync is how this gets
+        // written (#62).
+        if (parent === id || locate(moving.children, parent)) return undefined;
         return mapChildren(without(found.blocks, id), parent, (children) => [
           ...children,
           moving,
@@ -476,5 +491,5 @@ export function predict(page: Page, events: PageEvent[]): Page {
   for (const event of events) {
     if (!landed(state, event)) state = reduce(state, event);
   }
-  return { ...page, blocks: state[page.title] ?? [] };
+  return { ...page, blocks: blocksOn(state, page.title) };
 }
