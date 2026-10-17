@@ -5,6 +5,7 @@ import type { Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import { IMAGE_SCHEME } from '../../../shared/pages';
 import { remarkPlugins } from '@pbnotes/pages';
+import { bracketEdit } from './brackets/brackets';
 
 /**
  * KaTeX throws on malformed TeX by default, which would take the whole page
@@ -329,6 +330,26 @@ export function BlockEditor({
       }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') onCancel();
+        /**
+         * Brackets close as they are typed. First, so Backspace in `[|]`
+         * takes the pair rather than falling through to the block rules.
+         * `execCommand` rather than setting `value`: it keeps native undo,
+         * and takes the pair back in one step.
+         */
+        const box = event.currentTarget;
+        const edit =
+          !event.nativeEvent.isComposing &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          bracketEdit(event.key, box.value, box.selectionStart, box.selectionEnd);
+        if (edit) {
+          event.preventDefault();
+          box.setSelectionRange(edit.from, edit.to);
+          if (edit.text) document.execCommand('insertText', false, edit.text);
+          else if (edit.from !== edit.to) document.execCommand('delete');
+          box.setSelectionRange(...edit.select);
+          return;
+        }
         /**
          * Read before the key applies, so the box has to have been empty
          * *already* — the press that clears a full box is an ordinary
