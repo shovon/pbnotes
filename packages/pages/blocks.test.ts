@@ -145,3 +145,37 @@ test("a prediction is the fold, and folding it over a page that has it changes n
   assert.deepEqual(predict(under, [indent]), under);
   assert.deepEqual(predict(out, [outdent]), out);
 });
+
+/**
+ * #62: a title is whatever was typed, so it can be the name of something
+ * every object inherits. A fold that throws on one never gets past it, on
+ * any machine, for as long as the log keeps the event.
+ */
+test("a page named after an Object.prototype property folds like any other", () => {
+  for (const title of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    const state = reduce(
+      {},
+      event(`${NAMESPACE}block.created`, 1, { page: title, id: "b1", text: "hi" }),
+    );
+    assert.deepEqual(state[title], [{ id: "b1", text: "hi", children: [] }], title);
+    assert.deepEqual(Object.keys(state), [title], title);
+  }
+});
+
+/**
+ * #62: two machines each indent one block under the other before they sync.
+ * The second move would detach its own parent, so it folds to nothing, like
+ * an indent whose parent is gone.
+ */
+test("an indent under itself or its own subtree changes nothing", () => {
+  const indent = (id: string, parent: string) =>
+    event(`${NAMESPACE}block.indented`, 2, { id, parent });
+  const two = [
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "x", text: "x" }),
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "y", text: "y" }),
+  ].reduce(reduce, {} as Pages);
+
+  assert.equal(reduce(two, indent("y", "y")), two);
+  const nested = reduce(two, indent("y", "x"));
+  assert.equal(reduce(nested, indent("x", "y")), nested);
+});

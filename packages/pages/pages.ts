@@ -14,6 +14,7 @@
  * fold still gets wrong then, is `app/docs/block-sync.md`.
  */
 import {
+  blocksOn,
   find,
   HANDLES,
   indented,
@@ -27,6 +28,7 @@ import { linking, read } from "./reading.ts";
 
 export {
   beside,
+  blocksOn,
   find,
   HANDLES,
   indented,
@@ -92,7 +94,7 @@ export type PagesView = {
 
 /** The page as it stands right now, empty if nothing has been written to it. */
 function pageOf(view: PagesView, title: string): Page {
-  return { title, blocks: view.state[title] ?? [] };
+  return { title, blocks: blocksOn(view.state, title) };
 }
 
 export function getPage(view: PagesView, title: string): Page {
@@ -224,7 +226,7 @@ export async function addBlock(
   after?: string,
   id: string = globalThis.crypto.randomUUID(),
 ): Promise<Page> {
-  const blocks = view.state[title] ?? [];
+  const blocks = blocksOn(view.state, title);
   if (after && !locate(blocks, after)) {
     throw new Error("No such block");
   }
