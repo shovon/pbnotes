@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBlock, blockCreated, editBlock, getPages, NAMESPACE, pagesFold } from "./pages.ts";
+import { addBlock, blockCreated, editBlock, getPages, inCode, NAMESPACE, pagesFold, searchPages } from "./pages.ts";
 import type { Pages, PagesView } from "./pages.ts";
 
 const TODAY = "2026-09-21";
@@ -66,4 +66,29 @@ test("blockCreated is the event addBlock writes, with or without an after", asyn
     blockCreated(TODAY, "first", undefined, "a"),
     blockCreated(TODAY, "second", "a", "b"),
   ]);
+});
+
+test("searchPages finds titles written on and titles only linked, prefix matches first", async () => {
+  const view = memory();
+  await addBlock(view, "Foo Page", "see [[the food plan]] and #seafood");
+  await addBlock(view, TODAY, "[[FOOTNOTES]]");
+  assert.deepEqual(searchPages(view, " foo"), [
+    "Foo Page",
+    "FOOTNOTES",
+    "seafood",
+    "the food plan",
+  ]);
+  assert.deepEqual(searchPages(view, "", 2), [TODAY, "Foo Page"]);
+  assert.deepEqual(searchPages(view, "nothing"), []);
+});
+
+test("inCode is true in code spans, fences of either kind and math, and nowhere else", () => {
+  const text = "a [[x]] `[[y` b\n\n~~~\n[[z\n~~~\n\n$[[m]]$ [[w\n\n```\n[[open";
+  const at = (needle: string) => text.indexOf(needle) - 2;
+  assert.equal(inCode(text, at("x]]")), false);
+  assert.equal(inCode(text, at("y")), true);
+  assert.equal(inCode(text, at("z")), true);
+  assert.equal(inCode(text, at("m]]")), true);
+  assert.equal(inCode(text, at("w")), false);
+  assert.equal(inCode(text, at("open")), true);
 });

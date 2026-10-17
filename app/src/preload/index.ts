@@ -37,6 +37,7 @@ const pages: PagesApi = {
   back: () => ipcRenderer.invoke(PAGE_CHANNELS.back),
   rezoom: (block) => ipcRenderer.invoke(PAGE_CHANNELS.rezoom, block),
   locate: (blockId) => ipcRenderer.invoke(PAGE_CHANNELS.locate, blockId),
+  search: (query) => ipcRenderer.invoke(PAGE_CHANNELS.search, query),
   status: () => ipcRenderer.invoke(PAGE_CHANNELS.status),
   addBlock: (id, title, text, after) =>
     ipcRenderer.invoke(PAGE_CHANNELS.addBlock, id, title, text, after),

@@ -17,6 +17,7 @@ import {
   indentBlock,
   locateBlock,
   outdentBlock,
+  searchPages,
   today,
 } from "@pbnotes/pages";
 import { getLogStatus, getState } from "./pages-store/pages-store";
@@ -204,6 +205,10 @@ export function registerPageIpc(from: Open): void {
 
   ipcMain.handle(PAGE_CHANNELS.locate, async (_event, blockId: unknown) =>
     locateBlock(await open.require(), requireString(blockId, "blockId")),
+  );
+
+  ipcMain.handle(PAGE_CHANNELS.search, async (_event, query: unknown) =>
+    searchPages(await open.require(), requireString(query, "query")),
   );
 
   ipcMain.handle(PAGE_CHANNELS.status, async () =>

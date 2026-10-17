@@ -95,6 +95,21 @@ export function read(text: string): Reading {
 }
 
 /**
+ * Whether `offset` in `text` falls inside code or math, where nothing becomes
+ * a link. Asked by the editor before it offers to complete one, through the
+ * same parse the renderer reads with, so the two cannot disagree about where
+ * code starts. An unclosed fence runs to the end, as it renders.
+ */
+export function inCode(text: string, offset: number): boolean {
+  const inside = (node: Node): boolean =>
+    ["code", "inlineCode", "math", "inlineMath"].includes(node.type)
+      ? node.position!.start.offset <= offset &&
+        offset < node.position!.end.offset
+      : (node.children ?? []).some(inside);
+  return inside(md.parse(text) as Node);
+}
+
+/**
  * The blocks that link to `title`, each with its subtree intact. A block
  * that links is taken whole and not searched inside: its children are
  * already on show under it, and listing one of them again for a link of its
