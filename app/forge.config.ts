@@ -1,11 +1,16 @@
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
+import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
+import { PublisherGithub } from '@electron-forge/publisher-github';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { execFileSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -27,15 +32,39 @@ const config: ForgeConfig = {
     appCopyright: 'Copyright © 2026 Sal Rahman',
   },
   rebuildConfig: {},
+  hooks: {
+    // Ad-hoc sign the whole bundle before the makers zip it up. The packager
+    // renames and edits the app after Electron's own signature, so without this
+    // Apple Silicon refuses to open it as "damaged" (#68). The Developer ID
+    // follow-up replaces this with `osxSign`.
+    postPackage: async (_config, { platform, outputPaths }) => {
+      if (platform !== 'darwin') return;
+      for (const dir of outputPaths) {
+        for (const app of readdirSync(dir).filter((f) => f.endsWith('.app'))) {
+          execFileSync('codesign', ['--force', '--deep', '--sign', '-', path.join(dir, app)], { stdio: 'inherit' });
+        }
+      }
+    },
+  },
   makers: [
     new MakerSquirrel({
       setupIcon: 'assets/icon.ico',
       // Add/Remove Programs fetches its icon, so this has to be a URL.
       iconUrl: 'https://raw.githubusercontent.com/shovon/pbnotes/main/app/assets/icon.ico',
     }),
+    // The DMG is the download people expect; the ZIP is what auto-update would
+    // consume later (#67).
+    new MakerDMG({ icon: 'assets/icon.icns' }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({ options: { icon: 'assets/icon.png' } }),
     new MakerDeb({ options: { icon: 'assets/icon.png' } }),
+  ],
+  // Drafts, so a Release is only public once someone has checked it (#67).
+  publishers: [
+    new PublisherGithub({
+      repository: { owner: 'shovon', name: 'pbnotes' },
+      draft: true,
+    }),
   ],
   plugins: [
     new VitePlugin({

@@ -25,6 +25,22 @@ Pb Notes is a place to think out loud and keep what you learn: daily journal pag
 
 Text is last-writer-wins per block: if two machines edit the same block before syncing, the later edit is the one kept.
 
+## Install
+
+macOS only for now. Download the `.dmg` from the [latest release](https://github.com/shovon/pbnotes/releases/latest), open it and drag Pb Notes to Applications.
+
+The app is not yet signed with an Apple Developer ID, so macOS will not open it the first time. To allow it, once:
+
+1. Open Pb Notes. macOS says it could not verify the app. Click **Done**.
+2. Open System Settings → Privacy & Security, scroll down to the message about Pb Notes and click **Open Anyway**.
+3. Open Pb Notes again and confirm.
+
+If macOS instead says Pb Notes "is damaged and can't be opened", run this in Terminal, then open it again:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/Pb Notes.app"
+```
+
 ## Development
 
 The repo is an npm workspace: `app/` and the packages under `packages/`. Install once, at the root:
