@@ -6,6 +6,9 @@ import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
+import { execFileSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
+import path from 'node:path';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -27,6 +30,20 @@ const config: ForgeConfig = {
     appCopyright: 'Copyright © 2026 Sal Rahman',
   },
   rebuildConfig: {},
+  hooks: {
+    // Ad-hoc sign the whole bundle before the makers zip it up. The packager
+    // renames and edits the app after Electron's own signature, so without this
+    // Apple Silicon refuses to open it as "damaged" (#68). The Developer ID
+    // follow-up replaces this with `osxSign`.
+    postPackage: async (_config, { platform, outputPaths }) => {
+      if (platform !== 'darwin') return;
+      for (const dir of outputPaths) {
+        for (const app of readdirSync(dir).filter((f) => f.endsWith('.app'))) {
+          execFileSync('codesign', ['--force', '--deep', '--sign', '-', path.join(dir, app)], { stdio: 'inherit' });
+        }
+      }
+    },
+  },
   makers: [
     new MakerSquirrel({
       setupIcon: 'assets/icon.ico',
