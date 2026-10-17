@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
-import { remarkWikilink } from './wikilink.ts';
+import { remarkPlugins, remarkWikilink } from './wikilink.ts';
 
 type Node = { type: string; value?: string; children?: Node[] };
 
@@ -184,4 +184,23 @@ test('a note with none of them is untouched', () => {
     labels(parse('Nothing to see, [a link](https://example.com).')),
     [],
   );
+});
+
+/** Read the way a note is read, strikethrough included. */
+const full = unified().use(remarkParse).use(remarkPlugins);
+const parseNote = (source: string) => full.runSync(full.parse(source)) as Node;
+
+/** Every node of a type, in document order. */
+const all = (node: Node, type: string): Node[] => [
+  ...(node.type === type ? [node] : []),
+  ...(node.children ?? []).flatMap((child) => all(child, type)),
+];
+
+/** A link struck through is still a link; tildes in code, math or alone stay
+    what was typed. */
+test('~~strikethrough~~ wraps its words, links and all', () => {
+  const tree = parseNote('~~done [[Mira]]~~ `~~a~~` $~~b~~$ ~c~');
+  assert.deepEqual(all(tree, 'delete').map(read), ['done [[Mira]]']);
+  assert.deepEqual(pages(tree), ['Mira']);
+  assert.match(read(tree), /~~a~~.*~~b~~.*~c~/);
 });
