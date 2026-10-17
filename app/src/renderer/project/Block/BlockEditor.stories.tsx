@@ -62,3 +62,16 @@ export const Paragraphs: Story = {
       'Ordered the replacement hinge. Two weeks, apparently.\n\nThe other one is fine, which is the annoying part.',
   },
 };
+
+/** Type `[[` and the project's pages are offered under it, narrowed by what
+    follows: Up and Down to move, Enter, Tab or a click to pick, Escape to
+    leave the text as typed. Not offered inside backticks. */
+export const Linking: Story = {
+  args: {
+    initial: 'Asked about the hinge, see ',
+    findPages: async (query) =>
+      ['Hinges', 'Shed', 'Mira', 'The good coffee', '2026-09-24'].filter(
+        (title) => title.toLowerCase().includes(query.toLowerCase()),
+      ),
+  },
+};

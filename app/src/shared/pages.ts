@@ -68,6 +68,7 @@ export const PAGE_CHANNELS = {
   back: 'pages:back',
   rezoom: 'pages:rezoom',
   locate: 'pages:locate',
+  search: 'pages:search',
   addBlock: 'pages:add-block',
   addImage: 'pages:add-image',
   editBlock: 'pages:edit-block',
@@ -83,7 +84,7 @@ export const PAGE_CHANNELS = {
  * call names a project: main holds which one is open, and everything here is
  * about that one.
  *
- * Nothing but `locate` and `status` answers with content. A write or a step
+ * Nothing but `locate`, `search` and `status` answers with content. A write or a step
  * along the trail resolves once main has sent the state it led to, so by the
  * time a caller carries on, `onChanged` has already heard it. Writes are
  * recorded one at a time, in the order they were sent, so one may name a
@@ -123,6 +124,12 @@ export type PagesApi = {
    * one whose block was deleted: that is an answer, not an error.
    */
   locate(blockId: string): Promise<{ page: string } | undefined>;
+  /**
+   * The titles of the project's pages that contain `query`, ignoring case:
+   * those starting with it first, then A to Z, a handful at most. What the
+   * `[[` autocomplete lists (#29); #28 will search block text through it too.
+   */
+  search(query: string): Promise<string[]>;
   /**
    * How much of the project's log folder could be read, and what the fold
    * could not use.

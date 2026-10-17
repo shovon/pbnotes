@@ -1,10 +1,23 @@
-import { createContext, useContext, useMemo } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import { IMAGE_SCHEME } from '../../../shared/pages';
 import { remarkPlugins } from '@pbnotes/pages';
+import { bracketEdit } from './brackets/brackets';
+import type { Edit } from './brackets/brackets';
+import { completeLink, linkQuery } from './linkQuery/linkQuery';
+import type { LinkQuery } from './linkQuery/linkQuery';
 
 /**
  * KaTeX throws on malformed TeX by default, which would take the whole page
@@ -238,6 +251,45 @@ export function Block({
 }
 
 /**
+ * Applies an edit through `execCommand` rather than by setting `value`: it
+ * keeps native undo, and takes the edit back in one step.
+ */
+function apply(box: HTMLTextAreaElement, edit: Edit): void {
+  box.setSelectionRange(edit.from, edit.to);
+  if (edit.text) document.execCommand('insertText', false, edit.text);
+  else if (edit.from !== edit.to) document.execCommand('delete');
+  box.setSelectionRange(...edit.select);
+}
+
+/**
+ * Where the `[[` at `offset` sits in the box, as the top and left of the line
+ * below it: a textarea will not say where a character is, so a hidden copy of
+ * it, styled the same and holding the text up to there, is measured instead.
+ * Remeasured as the query grows, because a long one wraps the `[[` with it.
+ */
+function under(box: HTMLTextAreaElement, offset: number) {
+  const mirror = document.createElement('div');
+  const style = getComputedStyle(box);
+  for (const name of style) {
+    mirror.style.setProperty(name, style.getPropertyValue(name));
+  }
+  Object.assign(mirror.style, {
+    position: 'absolute',
+    visibility: 'hidden',
+    top: '0',
+    left: '0',
+    height: 'auto',
+  });
+  mirror.textContent = box.value.slice(0, offset);
+  const mark = mirror.appendChild(document.createElement('span'));
+  mark.textContent = '[[';
+  box.after(mirror);
+  const point = { top: mark.offsetTop + mark.offsetHeight, left: mark.offsetLeft };
+  mirror.remove();
+  return point;
+}
+
+/**
  * The box while it is being written in. One implementation for both the new
  * block and an existing one, so the commit rules cannot drift apart: blur
  * commits, Escape unmounts the box before blur can fire and so discards —
@@ -265,6 +317,7 @@ export function BlockEditor({
   onBackspace,
   onIndent,
   onCancel,
+  findPages,
 }: {
   initial?: string;
   /** Where to put the caret; the end of the text if it is past it. */
@@ -302,83 +355,217 @@ export function BlockEditor({
    */
   onIndent?: (text: string, caret: number, by: 1 | -1) => void;
   onCancel: () => void;
+  /**
+   * The titles to offer after `[[` for what is typed after it (#29). Left
+   * off, nothing is offered.
+   */
+  findPages?: (query: string) => Promise<string[]>;
 }) {
+  const box = useRef<HTMLTextAreaElement | null>(null);
+  /* Once per caret rather than on every render: the list re-renders the box
+     as it is typed in, and the caret it was opened with is long gone. */
+  const mount = useCallback(
+    (element: HTMLTextAreaElement | null) => {
+      box.current = element;
+      if (!element || caret === undefined) return;
+      const at = Math.min(caret, element.value.length);
+      element.setSelectionRange(at, at);
+    },
+    [caret],
+  );
+
+  /**
+   * The `[[` being typed, the titles that match it and which one is picked.
+   * Escape closes the list for that one `[[` and leaves the text alone.
+   */
+  const [link, setLink] = useState<LinkQuery | null>(null);
+  const [dismissed, setDismissed] = useState<number>();
+  const [titles, setTitles] = useState<string[]>([]);
+  const [active, setActive] = useState(0);
+  const [point, setPoint] = useState({ top: 0, left: 0 });
+  const listId = useId();
+  const shown = link && link.at !== dismissed ? link : null;
+  const open = shown !== null && titles.length > 0;
+
+  /* Keyed on the query, not on `findPages`: the stories hand over a fresh
+     one on every render. A late answer to an older query is dropped. */
+  useEffect(() => {
+    if (!shown || !findPages) return setTitles([]);
+    let live = true;
+    findPages(shown.query).then(
+      (found) => {
+        if (!live) return;
+        setTitles(found ?? []);
+        setActive(0);
+      },
+      () => live && setTitles([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [shown?.at, shown?.query]);
+
+  /** Follows the caret, on every keystroke and every click. */
+  const sync = (element: HTMLTextAreaElement) => {
+    const { value, selectionStart, selectionEnd } = element;
+    const found =
+      selectionStart === selectionEnd ? linkQuery(value, selectionEnd) : null;
+    setLink(found);
+    if (!found) setDismissed(undefined);
+    else setPoint(under(element, found.at));
+  };
+
+  const pick = (title: string) => {
+    const element = box.current;
+    if (!element || !shown) return;
+    apply(element, completeLink(element.value, element.selectionEnd, shown, title));
+    sync(element);
+  };
+
   return (
-    /* Grows with what is typed instead of standing at a fixed height with a
-       scrollbar inside it — a block is as tall as its text in both states. */
-    <textarea
-      className={`${blockBox} field-sizing-content min-h-[calc(1.5em+--spacing(1))] resize-none outline-none placeholder:text-muted`}
-      autoFocus
-      /* Runs on mount, before or after autoFocus — focusing a textarea keeps
-         whatever selection it already has, so either order lands here. */
-      ref={(element) => {
-        if (!element || caret === undefined) return;
-        const at = Math.min(caret, element.value.length);
-        element.setSelectionRange(at, at);
-      }}
-      /* One line to start with; the CSS grows the box from there. */
-      rows={1}
-      defaultValue={initial}
-      placeholder={placeholder}
-      /* The window losing focus blurs the box too, but that is the user
-         looking elsewhere, not leaving the block: the browser hands focus
-         back to this same box when the window returns, so stay open. */
-      onBlur={(event) => {
-        if (!document.hasFocus()) return;
-        onCommit(event.target.value.trim());
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') onCancel();
-        /**
-         * Read before the key applies, so the box has to have been empty
-         * *already* — the press that clears a full box is an ordinary
-         * Backspace, and only the next one deletes.
-         *
-         * `isComposing` again: an IME uses Backspace to walk back through a
-         * half-built character, and the buffer it is walking through may not
-         * be in `value` yet.
-         */
-        if (
-          onBackspace &&
-          event.key === 'Backspace' &&
-          !event.currentTarget.value &&
-          !event.nativeEvent.isComposing
-        ) {
-          event.preventDefault();
-          onBackspace();
-        }
-        /**
-         * Tab moves the block a level in rather than moving focus, and
-         * Shift+Tab a level out. Both are swallowed even when the move turns
-         * out to be impossible: a block at the edge of what it can do should
-         * sit still, not throw the user out of the box they are writing in.
-         */
-        if (onIndent && event.key === 'Tab') {
-          event.preventDefault();
-          onIndent(
-            event.currentTarget.value.trim(),
-            event.currentTarget.selectionStart,
-            event.shiftKey ? -1 : 1,
-          );
-        }
-        /**
-         * `isComposing` is not a nicety: an IME takes Enter to choose among
-         * candidates, and committing the block there would make a whole
-         * class of languages untypeable a character or two at a time.
-         *
-         * Guarded on `onContinue` as well, so a box with nowhere to continue
-         * to keeps Enter as an ordinary newline rather than swallowing it.
-         */
-        if (
-          onContinue &&
-          event.key === 'Enter' &&
-          !event.shiftKey &&
-          !event.nativeEvent.isComposing
-        ) {
-          event.preventDefault();
-          onContinue(event.currentTarget.value.trim());
-        }
-      }}
-    />
+    <div className="relative">
+      {/* Grows with what is typed instead of standing at a fixed height with
+          a scrollbar inside it — a block is as tall as its text in both
+          states. */}
+      <textarea
+        className={`${blockBox} field-sizing-content min-h-[calc(1.5em+--spacing(1))] resize-none outline-none placeholder:text-muted`}
+        autoFocus
+        /* Runs on mount, before or after autoFocus — focusing a textarea keeps
+           whatever selection it already has, so either order lands here. */
+        ref={mount}
+        onSelect={(event) => sync(event.currentTarget)}
+        aria-autocomplete="list"
+        aria-controls={open ? listId : undefined}
+        aria-activedescendant={open ? `${listId}-${active}` : undefined}
+        /* One line to start with; the CSS grows the box from there. */
+        rows={1}
+        defaultValue={initial}
+        placeholder={placeholder}
+        /* The window losing focus blurs the box too, but that is the user
+           looking elsewhere, not leaving the block: the browser hands focus
+           back to this same box when the window returns, so stay open. */
+        onBlur={(event) => {
+          if (!document.hasFocus()) return;
+          onCommit(event.target.value.trim());
+        }}
+        onKeyDown={(event) => {
+          /* The list takes its keys before the box does, while it has
+             something in it to pick. */
+          if (open && shown && !event.nativeEvent.isComposing) {
+            const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+            if (step) {
+              event.preventDefault();
+              setActive((active + step + titles.length) % titles.length);
+              return;
+            }
+            if (event.key === 'Enter' || event.key === 'Tab') {
+              event.preventDefault();
+              pick(titles[active]);
+              return;
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setDismissed(shown.at);
+              return;
+            }
+          }
+          if (event.key === 'Escape') onCancel();
+          /**
+           * Brackets close as they are typed. First, so Backspace in `[|]`
+           * takes the pair rather than falling through to the block rules.
+           */
+          const target = event.currentTarget;
+          const edit =
+            !event.nativeEvent.isComposing &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            bracketEdit(event.key, target.value, target.selectionStart, target.selectionEnd);
+          if (edit) {
+            event.preventDefault();
+            apply(target, edit);
+            return;
+          }
+          /**
+           * Read before the key applies, so the box has to have been empty
+           * *already* — the press that clears a full box is an ordinary
+           * Backspace, and only the next one deletes.
+           *
+           * `isComposing` again: an IME uses Backspace to walk back through a
+           * half-built character, and the buffer it is walking through may not
+           * be in `value` yet.
+           */
+          if (
+            onBackspace &&
+            event.key === 'Backspace' &&
+            !event.currentTarget.value &&
+            !event.nativeEvent.isComposing
+          ) {
+            event.preventDefault();
+            onBackspace();
+          }
+          /**
+           * Tab moves the block a level in rather than moving focus, and
+           * Shift+Tab a level out. Both are swallowed even when the move turns
+           * out to be impossible: a block at the edge of what it can do should
+           * sit still, not throw the user out of the box they are writing in.
+           */
+          if (onIndent && event.key === 'Tab') {
+            event.preventDefault();
+            onIndent(
+              event.currentTarget.value.trim(),
+              event.currentTarget.selectionStart,
+              event.shiftKey ? -1 : 1,
+            );
+          }
+          /**
+           * `isComposing` is not a nicety: an IME takes Enter to choose among
+           * candidates, and committing the block there would make a whole
+           * class of languages untypeable a character or two at a time.
+           *
+           * Guarded on `onContinue` as well, so a box with nowhere to continue
+           * to keeps Enter as an ordinary newline rather than swallowing it.
+           */
+          if (
+            onContinue &&
+            event.key === 'Enter' &&
+            !event.shiftKey &&
+            !event.nativeEvent.isComposing
+          ) {
+            event.preventDefault();
+            onContinue(event.currentTarget.value.trim());
+          }
+        }}
+      />
+      {open && (
+        /* Under the `[[` rather than the caret, so it holds still while the
+           query is typed, and pulled back in when that is near the right edge.
+           Mouse-down rather than click, and kept from taking focus: a blur
+           would commit the block before the pick lands in it. */
+        <ul
+          id={listId}
+          role="listbox"
+          aria-label="Pages"
+          className="absolute z-10 w-64 overflow-hidden rounded-sm border border-line bg-bg py-1 shadow-md"
+          style={{ top: point.top, left: `clamp(0px, ${point.left}px, 100% - 16rem)` }}
+        >
+          {titles.map((title, index) => (
+            <li
+              key={title}
+              id={`${listId}-${index}`}
+              role="option"
+              aria-selected={index === active}
+              className={`cursor-pointer truncate px-2 py-0.5 ${index === active ? 'bg-accent text-on-accent' : ''}`}
+              onMouseEnter={() => setActive(index)}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                pick(title);
+              }}
+            >
+              {title}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

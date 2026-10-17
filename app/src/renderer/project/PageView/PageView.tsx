@@ -410,6 +410,7 @@ export default function PageView({
   const newBlockEditor = (
     <BlockEditor
       placeholder="Write something…"
+      findPages={pages.search}
       onCancel={() => setWriting(null)}
       onBackspace={cancelNew}
       onCommit={(text) => commitNew(text, { then: 'stop' })}
@@ -435,6 +436,7 @@ export default function PageView({
       <BlockEditor
         initial={block.text}
         caret={caret}
+        findPages={pages.search}
         onCancel={() => setEditingId(null)}
         onCommit={(text) => commitEdit(block, text)}
         onBackspace={() => commitDelete(block)}

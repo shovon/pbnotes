@@ -52,7 +52,7 @@ export type {
   PageEvent,
   Pages,
 } from "./blocks.ts";
-export { linking, read } from "./reading.ts";
+export { inCode, linking, read } from "./reading.ts";
 export { remarkPlugins, remarkWikilink } from "./wikilink.ts";
 
 /**
@@ -194,6 +194,46 @@ export function getPreviews({ state }: PagesView): [string, string | null][] {
     const found = find(state, id);
     return [id, found ? read(found.siblings[found.at].text).preview : null];
   });
+}
+
+/**
+ * The page titles that contain `query`, ignoring case: the ones that start
+ * with it first, then the rest, each A to Z, at most `limit` of them. A page
+ * is any title with blocks on it and any title a link names, since naming a
+ * page is all it takes for one to exist.
+ *
+ * Titles only for now. #28 searches block text through the same call.
+ *
+ * ponytail: walks every block on each call, with `read` memoised. Keep a
+ * title set in the fold if a ledger ever gets big enough for that to show.
+ */
+export function searchPages(
+  { state }: PagesView,
+  query: string,
+  limit = 10,
+): string[] {
+  const titles = new Set<string>();
+  const collect = (blocks: Block[]): void => {
+    for (const block of blocks) {
+      for (const title of read(block.text).links) titles.add(title);
+      collect(block.children);
+    }
+  };
+  for (const [title, blocks] of Object.entries(state)) {
+    if (blocks.length > 0) titles.add(title);
+    collect(blocks);
+  }
+  const q = query.trim().toLowerCase();
+  return [...titles]
+    .map((title) => ({ title, at: title.toLowerCase().indexOf(q) }))
+    .filter(({ at }) => at !== -1)
+    .sort(
+      (a, b) =>
+        Number(a.at !== 0) - Number(b.at !== 0) ||
+        a.title.localeCompare(b.title),
+    )
+    .slice(0, limit)
+    .map(({ title }) => title);
 }
 
 /** The page a block is on, or undefined for a block the ledger lacks. */
