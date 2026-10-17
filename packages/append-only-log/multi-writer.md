@@ -1,6 +1,6 @@
 # Multi-writer logs
 
-*Status: implemented, with one part superseded.* Since #45 a device keeps no identity: every session that writes gets a directory of its own under a fresh id, so what this spec says about a device binding, its recorded tip and clock floor, and rotating to a new id no longer applies, and nor do `createLedger`, `adoptLedger`, `Projection`, `EventLog` or `unhandled`. Read "device" as "writing session". `openOrCreate` in `ledger.ts` creates a ledger in a missing or empty folder and refuses everything else.
+*Status: implemented, with one part superseded.* Since #45 a device keeps no identity, and since #61 a writer directory has one writer at a time and may be resumed. `ledger.writer()` writes to a directory under a fresh id. `openWriter` derives the id from a key, the boot ID, the OS user and the folder, holds an OS lock on it while it writes, and carries on from the last record on disk. So what this spec says about a device binding, its recorded tip and clock floor, and rotating to a new id no longer applies, and nor do `createLedger`, `adoptLedger`, `Projection`, `EventLog` or `unhandled`. Read "device" as "writer directory". `openOrCreate` in `ledger.ts` creates a ledger in a missing or empty folder and refuses everything else.
 
 This is the spec for the ledger: an append-only event log that several devices write to through a shared folder, and the fold that reads it. It says nothing about what an event means. That belongs to whoever defines the events and the reducer, called the consumer here.
 
@@ -10,9 +10,9 @@ This spec makes the folder safe for a sync tool that no one is supervising. It i
 
 ## The invariant
 
-> **One writer per file, forever.**
+> **A writer directory has one writer at a time. A writer resumes from what is on disk.**
 
-Everything else follows from it. Two machines never touch the same path, so a sync tool never has a divergence to resolve, so conflicted copies stop being a case to handle and start being impossible.
+The ledger enforces both halves (#61). The lock is local to one machine, which is why a resumed directory's name includes the boot ID: two machines never derive the same name. Everything else follows from it. Two machines never touch the same path, so a sync tool never has a divergence to resolve, so conflicted copies stop being a case to handle and start being impossible.
 
 ## Device identity
 

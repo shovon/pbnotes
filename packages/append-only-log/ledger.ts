@@ -1,7 +1,10 @@
-import { mkdir, open, readdir, readFile } from "node:fs/promises";
-import type { Dirent } from "node:fs";
-import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { lstat, mkdir, open, readdir, readFile, realpath } from "node:fs/promises";
+import { readFileSync, type Dirent } from "node:fs";
+import { basename, join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { tmpdir, userInfo } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { crc32 } from "node:zlib";
 
 // On-disk format 1. Must stay byte-compatible with existing ledgers.
@@ -11,7 +14,7 @@ export type Hlc = { l: number; c: number };
 export type LogEvent<T = unknown> = {
   /** 1, 2, 3… gap-free within one writer directory. Detects damage; does not order. */
   seq: number;
-  /** The writer directory (one writing session). Named `device` for format compatibility. */
+  /** The writer directory (one writer at a time). Named `device` for format compatibility. */
   device: string;
   /** Orders the merged log (ties broken by `device`). */
   hlc: Hlc;
@@ -146,7 +149,8 @@ async function createMarker(path: string) {
   }
 }
 
-const REFUSALS: Record<Exclude<Verdict, "ledger" | "missing">, string> = {
+const REFUSALS: Record<Exclude<Verdict, "ledger">, string> = {
+  missing: "is missing or empty; only openOrCreate makes a ledger",
   newer: "was written by a newer ledger format; upgrade to open it",
   unmarked: "holds ledger segments but no LEDGER marker; refusing to touch it",
   "not-a-ledger": "is not a ledger (or its LEDGER marker is malformed); refusing to write into it",
@@ -158,10 +162,199 @@ export async function openOrCreate(path: string, pollMs = 1000): Promise<Ledger>
     await createMarker(path);
     verdict = await inspect(path);
   }
-  if (verdict !== "ledger") throw new Error(`${path} ${REFUSALS[verdict as keyof typeof REFUSALS]}`);
+  if (verdict !== "ledger") throw new Error(`${path} ${REFUSALS[verdict]}`);
   const ledger = new Ledger(path, pollMs);
   await ledger.ready;
   return ledger;
+}
+
+/** Where a writer carries on from. Zeroes start a new directory. */
+type Start = { seq: number; segment: number; bytes: number; day: string };
+const NEW: Start = { seq: 0, segment: 0, bytes: 0, day: "" };
+
+const nextHlc = (h: Hlc, now: number): Hlc => (now > h.l ? { l: now, c: 0 } : { l: h.l, c: h.c + 1 });
+
+/**
+ * Appends to one writer directory. `tick` advances the caller's clock, `written`
+ * sees each record once it is on disk. `idle()` settles after every post so far.
+ */
+function newWriter(
+  dir: string,
+  start: Start,
+  tick: (now: number) => Hlc,
+  closed: () => string | undefined,
+  written: (e: LogEvent, segment: number, bytes: number) => Event = toEvent,
+) {
+  const id = basename(dir);
+  let { seq, segment, bytes, day } = start;
+  let broken: unknown;
+  let chain: Promise<unknown> = Promise.resolve();
+  const post = (v: number, type: string, payload: unknown) => {
+    const why = closed();
+    if (why) return Promise.reject(new Error(why));
+    const p = chain.then(async () => {
+      // A failed append may have left half a record; appending after it would read as damage.
+      if (broken) throw new Error("writer broken by an earlier failed write; reopen the ledger", { cause: broken });
+      const now = Date.now();
+      const hlc = tick(now);
+      const date = new Date(now);
+      const e: LogEvent = { seq: seq + 1, device: id, hlc, id: randomUUID(), type, v, at: date.toISOString(), payload };
+      const rec = encode(e);
+      const len = Buffer.byteLength(rec);
+      // Never roll an empty segment; a record over the cap gets a segment of its own.
+      const roll = segment === 0 || (bytes > 0 && (bytes + len > MAX_SEGMENT_BYTES || localDay(date) !== day));
+      try {
+        if (roll) {
+          if (segment === 0) await mkdir(dir, { recursive: true });
+          segment++;
+          bytes = 0;
+        }
+        const fh = await open(join(dir, segmentName(segment)), "a");
+        try {
+          await fh.writeFile(rec);
+          await fh.sync();
+        } finally {
+          await fh.close();
+        }
+        if (roll) await fsyncDir(dir);
+      } catch (err) {
+        broken = err;
+        throw err;
+      }
+      seq++;
+      bytes += len;
+      day = localDay(date);
+      return written(e, segment, bytes);
+    });
+    chain = p.catch(() => {});
+    return p;
+  };
+  return { writer: { directory: dir, post } as Writer, idle: () => chain };
+}
+
+let cachedBootId: string | null | undefined;
+function bootId(): string | null {
+  if (cachedBootId !== undefined) return cachedBootId;
+  try {
+    const raw =
+      process.platform === "darwin" ? execFileSync("/usr/sbin/sysctl", ["-n", "kern.bootsessionuuid"], { encoding: "utf8" })
+      : process.platform === "linux" ? readFileSync("/proc/sys/kernel/random/boot_id", "utf8")
+      : "";
+    return (cachedBootId = raw.trim() || null);
+  } catch {
+    return (cachedBootId = null);
+  }
+}
+
+/** A UUIDv8 holding the first 122 bits of sha256(parts joined by NUL). */
+function uuidv8(parts: string[]) {
+  const b = createHash("sha256").update(parts.join("\0")).digest().subarray(0, 16);
+  b[6] = (b[6] & 0x0f) | 0x80;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = b.toString("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+/** Takes the exclusive lock for one writer directory, or returns undefined if this user can't have it now. */
+async function lock(name: string, uid: number): Promise<DatabaseSync | undefined> {
+  // Per user: on Linux tmpdir() is usually the shared /tmp.
+  const folder = join(tmpdir(), `pbnotes-locks-${uid}`);
+  try {
+    await mkdir(folder, { mode: 0o700 });
+  } catch (err: any) {
+    if (err.code !== "EEXIST") return;
+  }
+  try {
+    const st = await lstat(folder);
+    if (!st.isDirectory() || st.uid !== uid) return;
+  } catch {
+    return;
+  }
+  let db: DatabaseSync | undefined;
+  try {
+    db = new DatabaseSync(join(folder, `${name}.lock`));
+    db.exec("PRAGMA busy_timeout = 0");
+    db.exec("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE");
+    return db;
+  } catch {
+    db?.close();
+  }
+}
+
+/** Where to carry on in `dir`, or undefined if its tail is torn or unreadable. */
+async function resumePoint(dir: string): Promise<{ start: Start; hlc: Hlc } | undefined> {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch (err: any) {
+    return err.code === "ENOENT" ? { start: NEW, hlc: { l: 0, c: 0 } } : undefined;
+  }
+  const segs = names.filter((n) => SEGMENT.test(n)).sort();
+  if (!segs.length) return { start: NEW, hlc: { l: 0, c: 0 } };
+  let buf: Buffer;
+  try {
+    // ponytail: reads the whole last segment (up to 16 MiB); read backwards from the end if that gets slow
+    buf = await readFile(join(dir, segs.at(-1)!));
+  } catch {
+    return;
+  }
+  // An empty segment is torn too: there is no record to carry `seq` on from.
+  if (!buf.length || buf[buf.length - 1] !== 10) return;
+  const e = decode(buf.toString("utf8", buf.lastIndexOf(10, buf.length - 2) + 1, buf.length - 1));
+  if (!e) return;
+  const segment = Number(segs.at(-1)!.slice(0, 16));
+  return { start: { seq: e.seq, segment, bytes: buf.length, day: localDay(new Date(e.at)) }, hlc: e.hlc };
+}
+
+/**
+ * Appends to the ledger at `path` without reading it, carrying on in the same
+ * writer directory each run for this key (per machine, boot, user and folder).
+ * Falls back to a fresh random directory if that one is held or its tail is
+ * torn. Never creates a ledger. `options` are for tests: two machines sharing a
+ * `bootId` and key would write one directory at once.
+ */
+export async function openWriter(
+  path: string,
+  key: string,
+  options: { bootId?: string; uid?: number } = {},
+): Promise<Writer & AsyncDisposable> {
+  const verdict = await inspect(path);
+  if (verdict !== "ledger") throw new Error(`${path} ${REFUSALS[verdict]}`);
+
+  const boot = options.bootId ?? bootId();
+  const uid = options.uid ?? userInfo().uid;
+  let held: DatabaseSync | undefined;
+  let resume: { start: Start; hlc: Hlc } | undefined;
+  let name: string = randomUUID();
+  if (boot !== null) {
+    const keyed = uuidv8([boot, String(uid), await realpath(path), key]);
+    held = await lock(keyed, uid);
+    if (held) resume = await resumePoint(join(path, keyed));
+    if (resume) name = keyed;
+    else {
+      held?.close();
+      held = undefined;
+    }
+  }
+
+  let clock = resume?.hlc ?? { l: 0, c: 0 };
+  let disposed = false;
+  const { writer, idle } = newWriter(
+    join(path, name),
+    resume?.start ?? NEW,
+    (now) => (clock = nextHlc(clock, now)),
+    () => (disposed ? "writer disposed" : undefined),
+  );
+  return {
+    ...writer,
+    async [Symbol.asyncDispose]() {
+      disposed = true;
+      // Hold the lock until every post is on disk, or the next writer could resume mid-record.
+      await idle();
+      held?.close();
+      held = undefined;
+    },
+  };
 }
 
 type Entry = { log: LogEvent; event: Event };
@@ -179,7 +372,7 @@ export class Ledger {
   #ignored: string[] = [];
   #hlc: Hlc = { l: 0, c: 0 };
   #subs = new Set<Sub>();
-  #pending = new Set<Promise<unknown>>();
+  #idle?: () => Promise<unknown>;
   #timer?: ReturnType<typeof setTimeout>;
   #polling: Promise<void>;
   #closed = false;
@@ -197,62 +390,23 @@ export class Ledger {
   }
 
   #newWriter(): Writer {
-    const id = randomUUID();
-    const dir = join(this.#root, id);
-    let seq = 0;
-    let segment = 0;
-    let bytes = 0;
-    let day = "";
-    let broken: unknown;
-    let chain: Promise<unknown> = Promise.resolve();
-    const post = (v: number, type: string, payload: unknown) => {
-      if (this.#closed) return Promise.reject(new Error("ledger closed"));
-      const p = chain.then(async () => {
-        // A failed append may have left half a record; appending after it would read as damage.
-        if (broken) throw new Error("writer broken by an earlier failed write; reopen the ledger", { cause: broken });
-        const now = Date.now();
-        const hlc = (this.#hlc = now > this.#hlc.l ? { l: now, c: 0 } : { l: this.#hlc.l, c: this.#hlc.c + 1 });
-        const date = new Date(now);
-        const e: LogEvent = { seq: seq + 1, device: id, hlc, id: randomUUID(), type, v, at: date.toISOString(), payload };
-        const rec = encode(e);
-        const len = Buffer.byteLength(rec);
-        // Never roll an empty segment; a record over the cap gets a segment of its own.
-        const roll = segment === 0 || (bytes > 0 && (bytes + len > MAX_SEGMENT_BYTES || localDay(date) !== day));
-        try {
-          if (roll) {
-            if (segment === 0) await mkdir(dir, { recursive: true });
-            segment++;
-            bytes = 0;
-          }
-          const fh = await open(join(dir, segmentName(segment)), "a");
-          try {
-            await fh.writeFile(rec);
-            await fh.sync();
-          } finally {
-            await fh.close();
-          }
-          if (roll) await fsyncDir(dir);
-        } catch (err) {
-          broken = err;
-          throw err;
-        }
-        seq++;
-        bytes += len;
-        day = localDay(date);
+    const { writer, idle } = newWriter(
+      join(this.#root, randomUUID()),
+      NEW,
+      (now) => (this.#hlc = nextHlc(this.#hlc, now)),
+      () => (this.#closed ? "ledger closed" : undefined),
+      (e, segment, bytes) => {
         // A concurrent scan may already have read this record; only one of us ingests it.
-        const c = this.#cursor(id);
+        const c = this.#cursor(e.device);
         if (e.seq <= c.last) return toEvent(e);
         Object.assign(c, { seg: segment, offset: bytes, last: e.seq });
         const entry = { log: e, event: toEvent(e) };
         this.#ingest([entry]);
         return entry.event;
-      });
-      chain = p.catch(() => {});
-      this.#pending.add(chain);
-      chain.then(() => this.#pending.delete(chain));
-      return p;
-    };
-    return { directory: dir, post };
+      },
+    );
+    this.#idle = idle;
+    return writer;
   }
 
   /**
@@ -304,7 +458,7 @@ export class Ledger {
     this.#closed = true;
     clearTimeout(this.#timer);
     await this.#polling;
-    await Promise.allSettled(this.#pending);
+    await this.#idle?.();
     for (const s of this.#subs) s.wake();
   }
 
@@ -339,7 +493,7 @@ export class Ledger {
   }
 
   /**
-   * Every directory is foreign here (#45): never truncate, never throw. A stop
+   * Every directory is foreign here, even one a writer is appending to: never truncate, never throw. A stop
    * leaves the cursor at the last good record and is retried on the next poll,
    * so gaps that sync fills clear by themselves.
    */
