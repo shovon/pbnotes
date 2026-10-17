@@ -7,7 +7,7 @@ import {
   protocol,
 } from "electron";
 import { pathToFileURL } from "node:url";
-import { IMAGE_SCHEME, PAGE_CHANNELS, today } from "../../../../shared/pages";
+import { IMAGE_SCHEME, PAGE_CHANNELS } from "../../../../shared/pages";
 import type { Place } from "../../../../shared/pages";
 import { requireString } from "../../../ipc";
 import {
@@ -17,6 +17,7 @@ import {
   indentBlock,
   locateBlock,
   outdentBlock,
+  today,
 } from "@pbnotes/pages";
 import { getLogStatus, getState } from "./pages-store/pages-store";
 import type { PagesView } from "./pages-store/pages-store";

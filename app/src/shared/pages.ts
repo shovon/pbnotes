@@ -26,21 +26,6 @@ import type { LogStatus } from './log';
 export const IMAGE_SCHEME = 'pbnotes-image';
 
 /**
- * Today as `YYYY-MM-DD`, in the user's local time. Not `toISOString()`, which
- * is UTC and hands the wrong page to anyone whose evening is already
- * tomorrow in Greenwich — or whose morning is still yesterday.
- *
- * A function in `shared` because both sides need the same day: main puts
- * today at the top of the journal, and the renderer writes a dropped image
- * there.
- */
-export function today(now = new Date()): string {
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
-/**
  * A stop on the trail: a page, or one block of a page as the root of the
  * view. Both are places you go back to, so they share the one history.
  */

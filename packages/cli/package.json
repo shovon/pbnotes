@@ -1,0 +1,18 @@
+{
+  "name": "@pbnotes/cli",
+  "version": "0.1.0",
+  "description": "pbnotes append: write one block to the end of today's journal page, without opening the app.",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pbnotes": "./cli.ts"
+  },
+  "scripts": {
+    "test": "node --test '*.test.ts'"
+  },
+  "dependencies": {
+    "@pbnotes/ledger": "*",
+    "@pbnotes/pages": "*"
+  },
+  "license": "MIT"
+}
