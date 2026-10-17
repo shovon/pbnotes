@@ -8,4 +8,4 @@ export type {
   DeviceState,
   DeviceStatus,
   LogStatus,
-} from '@pbnotes/append-only-log';
+} from '@pbnotes/ledger';

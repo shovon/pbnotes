@@ -3,7 +3,7 @@
 What the events in a pbnotes folder mean. The app folds them with this, and any other program that reads or writes the folder should do the same. A program that copies the fold drifts from the app, and when two folds disagree about one folder, one of them is wrong about the user's notes.
 
 ```ts
-import { openOrCreate } from '@pbnotes/append-only-log';
+import { openOrCreate } from '@pbnotes/ledger';
 import { getPages, getReferences, pagesFold } from '@pbnotes/pages';
 
 const ledger = await openOrCreate(folder);
@@ -16,7 +16,7 @@ To write, hand `addBlock`, `editBlock`, `deleteBlock`, `indentBlock` or `outdent
 
 ## What it does not depend on
 
-- **The log.** The fold takes `{ type, v, payload }` and the commands write through `dispatch`. This package does not import `@pbnotes/append-only-log`, so events can come from anywhere.
+- **The log.** The fold takes `{ type, v, payload }` and the commands write through `dispatch`. This package does not import `@pbnotes/ledger`, so events can come from anywhere.
 - **Node.** There are no `node:` imports. The app's renderer bundles this package, and it runs under plain `node --test`.
 
 ## The event names are a contract

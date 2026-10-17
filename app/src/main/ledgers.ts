@@ -1,7 +1,7 @@
 /**
  * Each project's ledger, opened once, and the pages fold running over it.
  *
- * `@pbnotes/append-only-log` opens one folder and folds it; which folders are
+ * `@pbnotes/ledger` opens one folder and folds it; which folders are
  * open, what happens when one moves, and how a write reaches the view before
  * its reply does are the app's, and live here. Shell, not a feature: `pages/`
  * is handed the view this builds and never sees a ledger or a path.
@@ -10,8 +10,8 @@
  * it under `node --test`.
  */
 import path from "node:path";
-import { openOrCreate } from "@pbnotes/append-only-log";
-import type { Ledger } from "@pbnotes/append-only-log";
+import { openOrCreate } from "@pbnotes/ledger";
+import type { Ledger } from "@pbnotes/ledger";
 import { pagesFold } from "@pbnotes/pages";
 import type { PagesView } from "./features/projects/pages/pages-store/pages-store.ts";
 

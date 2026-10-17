@@ -77,7 +77,7 @@
           {
             "paths": [
               {
-                "name": "@pbnotes/append-only-log",
+                "name": "@pbnotes/ledger",
                 "allowTypeImports": true,
                 "message": "The ledger runs on Node. Outside main, take its types only, with `import type`."
               }
