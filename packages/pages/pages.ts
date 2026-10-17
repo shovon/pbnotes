@@ -4,7 +4,7 @@
  * of: not a ledger, not its id, not where it is kept. A program that gets its
  * events some other way can fold them with this all the same.
  *
- * No plumbing, and no import of any — not `@pbnotes/append-only-log`, and no
+ * No plumbing, and no import of any — not `@pbnotes/ledger`, and no
  * `node:` module, because the app's renderer bundles this too. What a block
  * *is* — the event schema and the fold over it — is `blocks.ts`. What is
  * left here is the fold as it is handed to whoever runs it, the commands that

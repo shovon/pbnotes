@@ -1,5 +1,5 @@
 {
-  "name": "@pbnotes/append-only-log",
+  "name": "@pbnotes/ledger",
   "version": "0.1.0",
   "description": "A ledger: write events to it, fold the ones it has and the ones that arrive.",
   "private": true,
