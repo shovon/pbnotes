@@ -36,7 +36,7 @@ The price is retroactive history. A late-arriving event slots into the middle of
 
 A device whose clock is more than a day ahead is reported as `clockSuspect`, and its events do not move anyone else's clock. That protects the order. It does not repair `page`: the page date is a local calendar day chosen by the renderer, so a machine set to 2031 files notes under 2031 and no clock discipline in the log layer can find them again. The status is the only signal the user will get.
 
-The status (`LogStatus`: each writing session's state, and the paths skipped) is carried alongside the page through the `pages:*` channels. A fold that moved because a file arrived has main send its state over `pages:changed`, the same message a write from this device produces. A yield that is the state already held sends nothing.
+The status (`LogStatus`: each writer directory's state, and the paths skipped) is carried alongside the page through the `pages:*` channels. A fold that moved because a file arrived has main send its state over `pages:changed`, the same message a write from this device produces. A yield that is the state already held sends nothing.
 
 ## Deferred: what the reducer still gets wrong
 
