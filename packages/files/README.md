@@ -38,4 +38,4 @@ The ledger's spec says the same under "Layout" in `packages/ledger/multi-writer.
 
 ## The device id
 
-The caller supplies it. This package never mints, stores or changes one. Beside a ledger, pass the id the open log writes as, and ask for it after the log is open: a log can change this machine's id when it opens, and a file has to go under the id it settled on.
+The caller supplies it. This package never mints, stores or changes one. Beside a ledger, pass the name of the writer's directory, `basename(writer.directory)`, so that a file goes in the same directory as the events that name it.
