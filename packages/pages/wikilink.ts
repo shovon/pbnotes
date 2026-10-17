@@ -1,5 +1,8 @@
 import type { Root, RootContent, Text } from 'mdast';
+import type { Processor } from 'unified';
 import remarkMath from 'remark-math';
+import { gfmStrikethrough } from 'micromark-extension-gfm-strikethrough';
+import { gfmStrikethroughFromMarkdown } from 'mdast-util-gfm-strikethrough';
 
 /**
  * A hashtag and a link are the same idea here, so there is one plugin and
@@ -126,9 +129,24 @@ function split(node: Text): RootContent[] {
 }
 
 /**
- * The two remark plugins a note is read with, in the order they run. Math
+ * `~~foo~~`, and only that piece of GFM: `remark-gfm` would also bring
+ * tables, task lists, footnotes and bare-URL autolinks, each of which changes
+ * how existing notes look. A single `~` stays text, so `~5 min` is safe.
+ * Rendering needs nothing more — the `delete` node already becomes `<del>`.
+ */
+function remarkStrikethrough(this: Processor) {
+  const data = this.data();
+  (data.micromarkExtensions ??= []).push(
+    gfmStrikethrough({ singleTilde: false }),
+  );
+  (data.fromMarkdownExtensions ??= []).push(gfmStrikethroughFromMarkdown());
+}
+
+/**
+ * The remark plugins a note is read with, in the order they run. Math
  * first: `$…$` becomes a node without text children, so a `#` inside a
- * formula never becomes a link.
+ * formula never becomes a link. Strikethrough is syntax, like math; the
+ * walk then descends into a `delete` as into any other formatting.
  *
  * Exported because whoever renders a block has to read it the same way
  * `reading.ts` does to find the pages it links to, which is how a page lists
@@ -136,7 +154,7 @@ function split(node: Text): RootContent[] {
  * one more than anyone can keep in step — a `#foo` in a code span would
  * render as text and count as a reference.
  */
-export const remarkPlugins = [remarkMath, remarkWikilink];
+export const remarkPlugins = [remarkMath, remarkStrikethrough, remarkWikilink];
 
 export function remarkWikilink() {
   return function walk(node: Root | RootContent): void {
