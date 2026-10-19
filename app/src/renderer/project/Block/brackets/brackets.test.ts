@@ -62,3 +62,19 @@ test('` does not pair after a word, and a fence comes out clean', () => {
   assert.equal(type('`', '`|`'), '``|');
   assert.equal(type('`', '``|'), null);
 });
+
+test('$ pairs with itself, and an empty pair becomes display math', () => {
+  assert.equal(type('$', 'a |b'), 'a $|$b');
+  assert.equal(type('$', '$x^2|$'), '$x^2$|');
+  assert.equal(type('$', '$|$'), '$$|$$');
+  assert.equal(type('$', '$$x|$$'), '$$x$|$');
+  assert.equal(type('$', 'a |x| b'), 'a $|x|$ b');
+  assert.equal(type('Backspace', 'a $|$ b'), 'a | b');
+  assert.equal(type('Backspace', 'a $$|$$ b'), 'a | b');
+});
+
+test('$ does not pair after a word, a backslash or another $', () => {
+  assert.equal(type('$', 'US|'), null);
+  assert.equal(type('$', '\\|'), null);
+  assert.equal(type('$', '$x$|'), null);
+});
