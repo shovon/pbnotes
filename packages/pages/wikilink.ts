@@ -1,8 +1,10 @@
-import type { Root, RootContent, Text } from 'mdast';
+import type { Link, Root, RootContent, Text } from 'mdast';
 import type { Processor } from 'unified';
 import remarkMath from 'remark-math';
 import { gfmStrikethrough } from 'micromark-extension-gfm-strikethrough';
 import { gfmStrikethroughFromMarkdown } from 'mdast-util-gfm-strikethrough';
+import { gfmAutolinkLiteral } from 'micromark-extension-gfm-autolink-literal';
+import { gfmAutolinkLiteralFromMarkdown } from 'mdast-util-gfm-autolink-literal';
 
 /**
  * A hashtag and a link are the same idea here, so there is one plugin and
@@ -41,10 +43,9 @@ import { gfmStrikethroughFromMarkdown } from 'mdast-util-gfm-strikethrough';
  * `Ask #Mira.` leaves the full stop behind and `#work/` leaves the slash.
  * `\p{L}` over `\w` for the same keystrokes, so `#café` and `#日本語` work.
  *
- * The lookbehind is what keeps a pasted URL from sprouting a link: nothing is
- * autolinking bare URLs, so `https://example.com/#top` arrives as a text node
- * the walk does descend into, and `#top` would be coloured. It blocks `a#b`
- * mid-word and `####Foo` on the same rule.
+ * The lookbehind blocks `a#b` mid-word and `####Foo`. A URL's `#top` no
+ * longer reaches it as text — the URL is a link by then, see `split` — but
+ * the `/` stays in it for the URL written inside brackets, `[[a/#b]]`.
  *
  * `((ID))` is a block ref, with a group of its own. An id has no spaces or
  * parentheses in it, so `f((x))` in prose about code is the only thing it
@@ -96,37 +97,86 @@ function blockRef(id: string, ...label: RootContent[]): RootContent {
 
 const text = (value: string): Text => ({ type: 'text', value });
 
-/** One text node becomes text, link, text… — or stays itself if there is no
-    match, so an untouched note keeps the nodes it parsed to. */
-function split(node: Text): RootContent[] {
+/**
+ * A bare URL as GFM reads it, `https://example.com`, `www.example.com` or
+ * `mira@example.com`: a link labelled with its own URL, scheme aside. Some
+ * come from micromark and some from a pass after it, without a position, so
+ * the label is the one thing they share. `<https://…>` and `[https://…](…)`
+ * pass for one too, which is harmless: read back as text they are the same.
+ */
+function bare(node: RootContent): node is Link {
+  if (node.type !== 'link' || node.children.length !== 1) return false;
+  const [label] = node.children;
+  if (label.type !== 'text') return false;
+  return [label.value, `http://${label.value}`, `mailto:${label.value}`]
+    .includes(node.url);
+}
+
+/**
+ * A run of text and bare URLs becomes text, link, text… — or stays itself if
+ * nothing in it matches, so an untouched note keeps the nodes it parsed to.
+ *
+ * The run is read as the one string it was typed as, because micromark finds
+ * URLs before this walk finds links, and each would cut the other short:
+ * `[[https://example.com]]` arrives as `[[`, a link, `]]`, and the page goes
+ * missing; `https://a.com/((b))` holds a block ref that is not one. Whichever
+ * starts first wins and swallows what overlaps it. A URL swallowed by a link
+ * becomes part of its label; a link that starts inside a URL is never seen.
+ */
+function split(run: (Text | Link)[]): RootContent[] {
+  let value = '';
+  const urls: { start: number; end: number; node: Link }[] = [];
+  for (const node of run) {
+    const start = value.length;
+    value += node.type === 'text' ? node.value : read(node);
+    if (node.type === 'link') urls.push({ start, end: value.length, node });
+  }
+  const re = new RegExp(PATTERN);
   const out: RootContent[] = [];
   let at = 0;
-  for (const match of node.value.matchAll(PATTERN)) {
-    if (match.index > at) {
-      out.push(text(node.value.slice(at, match.index)));
+  let next = 0;
+  let matched = false;
+  for (;;) {
+    re.lastIndex = at;
+    const match = re.exec(value);
+    const url = urls[next];
+    if (url && (!match || url.start < match.index)) {
+      if (url.start > at) out.push(text(value.slice(at, url.start)));
+      out.push(url.node);
+      at = url.end;
+      next++;
+      continue;
     }
-    // Each branch fills only its own groups, so which one is defined says
-    // which form matched. The bare branch captures nothing: the whole match
-    // is the label, and the page is the match minus its `#`. Give that branch
-    // a group and the forms above it break.
-    if (match[2] !== undefined) {
-      out.push(wikilink(match[2].trim(), text(`[[${match[1]}]]`)));
-    } else if (match[4] !== undefined) {
-      const label = match[3] ? `#${match[4]}` : match[0];
-      out.push(wikilink(match[4].trim(), text(label)));
-    } else if (match[5] !== undefined) {
-      out.push(blockRef(match[5]));
-    } else {
-      out.push(wikilink(match[0].slice(1), text(match[0])));
-    }
+    if (!match) break;
+    matched = true;
+    if (match.index > at) out.push(text(value.slice(at, match.index)));
+    out.push(linkFor(match));
     at = match.index + match[0].length;
+    while (urls[next] && urls[next].start < at) next++;
   }
-  if (out.length === 0) return [node];
-  if (at < node.value.length) {
-    out.push(text(node.value.slice(at)));
-  }
+  if (!matched) return run;
+  if (at < value.length) out.push(text(value.slice(at)));
   return out;
 }
+
+/** Each branch fills only its own groups, so which one is defined says which
+    form matched. The bare branch captures nothing: the whole match is the
+    label, and the page is the match minus its `#`. Give that branch a group
+    and the forms above it break. */
+function linkFor(match: RegExpExecArray): RootContent {
+  if (match[2] !== undefined) {
+    return wikilink(match[2].trim(), text(`[[${match[1]}]]`));
+  }
+  if (match[4] !== undefined) {
+    const label = match[3] ? `#${match[4]}` : match[0];
+    return wikilink(match[4].trim(), text(label));
+  }
+  if (match[5] !== undefined) return blockRef(match[5]);
+  return wikilink(match[0].slice(1), text(match[0]));
+}
+
+/** The text a link reads as. A bare URL's label is one text node. */
+const read = (node: Link) => (node.children[0] as Text).value;
 
 /**
  * `~~foo~~`, and only that piece of GFM: `remark-gfm` would also bring
@@ -143,10 +193,24 @@ function remarkStrikethrough(this: Processor) {
 }
 
 /**
+ * Bare URLs, `https://example.com` and `www.example.com`, the way GitHub
+ * links them: trailing punctuation left out, parentheses balanced, code and
+ * math left alone. An email address becomes a `mailto:` link the same way.
+ * The walk below has the last word on where a URL ends, see `split`.
+ */
+function remarkAutolinkLiteral(this: Processor) {
+  const data = this.data();
+  (data.micromarkExtensions ??= []).push(gfmAutolinkLiteral());
+  (data.fromMarkdownExtensions ??= []).push(gfmAutolinkLiteralFromMarkdown());
+}
+
+/**
  * The remark plugins a note is read with, in the order they run. Math
  * first: `$…$` becomes a node without text children, so a `#` inside a
  * formula never becomes a link. Strikethrough is syntax, like math; the
- * walk then descends into a `delete` as into any other formatting.
+ * walk then descends into a `delete` as into any other formatting. Bare URLs
+ * come before the walk too, which takes them back apart where they cut into
+ * a link.
  *
  * Exported because whoever renders a block has to read it the same way
  * `reading.ts` does to find the pages it links to, which is how a page lists
@@ -154,28 +218,46 @@ function remarkStrikethrough(this: Processor) {
  * one more than anyone can keep in step — a `#foo` in a code span would
  * render as text and count as a reference.
  */
-export const remarkPlugins = [remarkMath, remarkStrikethrough, remarkWikilink];
+export const remarkPlugins = [
+  remarkMath,
+  remarkStrikethrough,
+  remarkAutolinkLiteral,
+  remarkWikilink,
+];
 
 export function remarkWikilink() {
-  return function walk(node: Root | RootContent): void {
-    if (!('children' in node)) return;
-    node.children = node.children.flatMap((child) => {
-      if (child.type === 'text') return split(child);
-      // An alias whose target has no space: remark already made it a link,
-      // to the URL `[[Foo]]`. Its label keeps whatever formatting it had,
-      // and is not walked — a tag inside it would be a link inside a link.
-      const alias = child.type === 'link' && /^\[\[(.*)\]\]$/.exec(child.url);
-      if (alias) {
-        const label = [text('[['), ...child.children, text(']]')];
-        return wikilink(alias[1].trim(), ...label);
-      }
-      // `[foo](((ID)))`: an id has no space, so remark always makes a link
-      // of this one and there is no text form to catch.
-      const ref =
-        child.type === 'link' && /^\(\(([^()\s]+)\)\)$/.exec(child.url);
-      if (ref) return blockRef(ref[1], ...child.children);
-      walk(child);
-      return child;
-    }) as typeof node.children;
-  };
+  return walk;
+}
+
+function walk(node: Root | RootContent): void {
+  if (!('children' in node)) return;
+  const children: RootContent[] = [];
+  let run: (Text | Link)[] = [];
+  for (const child of node.children) {
+    if (child.type === 'text' || bare(child)) {
+      run.push(child);
+      continue;
+    }
+    children.push(...split(run), visit(child));
+    run = [];
+  }
+  children.push(...split(run));
+  node.children = children as typeof node.children;
+}
+
+function visit(child: RootContent): RootContent {
+  // An alias whose target has no space: remark already made it a link,
+  // to the URL `[[Foo]]`. Its label keeps whatever formatting it had,
+  // and is not walked — a tag inside it would be a link inside a link.
+  const alias = child.type === 'link' && /^\[\[(.*)\]\]$/.exec(child.url);
+  if (alias) {
+    const label = [text('[['), ...child.children, text(']]')];
+    return wikilink(alias[1].trim(), ...label);
+  }
+  // `[foo](((ID)))`: an id has no space, so remark always makes a link
+  // of this one and there is no text form to catch.
+  const ref = child.type === 'link' && /^\(\(([^()\s]+)\)\)$/.exec(child.url);
+  if (ref) return blockRef(ref[1], ...child.children);
+  walk(child);
+  return child;
 }
