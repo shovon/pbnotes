@@ -332,6 +332,8 @@ export default function ProjectView({ act }: Props) {
                 references={zoom ? undefined : references}
                 zoom={zoom}
                 onZoom={(block) => act(() => pages.rezoom(block))}
+                // No title is the journal: each day heads one of many.
+                linked={title === null}
                 act={act}
               />
             </div>
