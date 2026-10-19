@@ -38,3 +38,13 @@ test('Backspace in an empty pair deletes both', () => {
   assert.equal(type('Backspace', '[Foo|]'), null);
   assert.equal(type('Backspace', '|'), null);
 });
+
+test('( pairs like [', () => {
+  assert.equal(type('(', '[foo]|'), '[foo](|)');
+  assert.equal(type('[', '[foo](|)'), '[foo]([|])');
+  assert.equal(type('(', 'a|Foo|b'), 'a(|Foo|)b');
+  assert.equal(type(')', '(Foo|)'), '(Foo)|');
+  assert.equal(type(')', 'Foo|'), null);
+  assert.equal(type('Backspace', 'a(|)b'), 'a|b');
+  assert.equal(type('Backspace', '(|]'), null);
+});
