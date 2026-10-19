@@ -40,6 +40,12 @@ type Props = {
   zoom?: string;
   /** Moves the zoom to another block, or — with none — out to the page. */
   onZoom?: (block?: string) => void;
+  /**
+   * The title is a link to this page on its own: set in the journal, where
+   * a day is one of many. Left off for a page already showing alone, where
+   * the link would go nowhere.
+   */
+  linked?: boolean;
   act: Act;
 };
 
@@ -67,6 +73,7 @@ export default function PageView({
   reference = false,
   zoom,
   onZoom,
+  linked = false,
   act,
 }: Props) {
   /**
@@ -525,7 +532,18 @@ export default function PageView({
           ))}
         </nav>
       ) : (
-        <h2 className="mt-6 mb-3 border-b border-line pb-1.5 text-2xl font-semibold">{title}</h2>
+        <h2 className="mt-6 mb-3 border-b border-line pb-1.5 text-2xl font-semibold">
+          {/* A heading still, not a link in the text: no accent, and only
+              the underline on hover says it goes somewhere. The project
+              view follows it like any wikilink. */}
+          {linked ? (
+            <a className="wikilink hover:underline" href={`#${title}`}>
+              {title}
+            </a>
+          ) : (
+            title
+          )}
+        </h2>
       )}
 
       {/* The blank space under the page is part of the page: clicking it opens

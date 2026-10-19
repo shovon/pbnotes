@@ -98,9 +98,10 @@ export const Zoomed: Story = {
 
 /** The default view of a project: every written day, newest first, today at
     the top. The check is that the headings do the separating on their own —
-    two days of notes must not read as one long day. */
+    two days of notes must not read as one long day. Each heading is a link
+    to its day on its own, underlined only on hover. */
 export const Stacked: Story = {
-  args: { page: page('2026-09-24', []) },
+  args: { page: page('2026-09-24', []), linked: true },
   render: (args) => (
     <>
       <PageView {...args} />
