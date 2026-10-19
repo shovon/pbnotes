@@ -70,6 +70,14 @@ export const Math: Story = {
   },
 };
 
+/** Both spellings of a highlight, a link inside one, and the lookalikes that
+    stay text. */
+export const Highlight: Story = {
+  args: {
+    text: '==Call [[Mira]] back== before ^^Friday^^.\n\n- not highlighted: `==code==`, a = b, 2^3, ==mixed^^',
+  },
+};
+
 /** Half-typed TeX is the normal state of a block being written. It renders
     as flagged source rather than throwing the page away. */
 export const BrokenMath: Story = {
