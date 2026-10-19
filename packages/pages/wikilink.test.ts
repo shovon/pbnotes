@@ -204,3 +204,38 @@ test('~~strikethrough~~ wraps its words, links and all', () => {
   assert.deepEqual(pages(tree), ['Mira']);
   assert.match(read(tree), /~~a~~.*~~b~~.*~c~/);
 });
+
+/** The URLs a note links out to, in document order. */
+const urls = (node: Node): string[] =>
+  all(node, 'link').map((link) => (link as { url?: string }).url ?? '');
+
+/** A bare URL links the way GitHub links it: trailing punctuation left out,
+    `www.` given its scheme, code and math left as typed. */
+test('a bare URL is a link', () => {
+  const tree = parseNote(
+    'see https://example.com. and www.example.com, `https://a.com` $https://b.com$',
+  );
+  assert.deepEqual(urls(tree), ['https://example.com', 'http://www.example.com']);
+  assert.match(read(tree), /`?https:\/\/a\.com.*https:\/\/b\.com/);
+});
+
+/** Whichever starts first wins: a URL keeps its `#top` and `((b))`, and a
+    link around a URL keeps the page it names. */
+test('a URL and a link do not cut into each other', () => {
+  const tree = parseNote(
+    'https://example.com/#top https://a.com/((b)) [[https://c.com]] #[[www.d.com x]] #e',
+  );
+  assert.deepEqual(urls(tree), ['https://example.com/#top', 'https://a.com/((b))']);
+  assert.deepEqual(pages(tree), ['https://c.com', 'www.d.com x', 'e']);
+  assert.deepEqual(all(tree, 'blockRef'), []);
+});
+
+/** A note with no link in it keeps the nodes it parsed to, URLs included. */
+test('a URL on its own is left as micromark made it', () => {
+  const tree = parseNote('go to https://example.com now');
+  const [paragraph] = tree.children ?? [];
+  assert.deepEqual(
+    paragraph.children?.map((node) => node.type),
+    ['text', 'link', 'text'],
+  );
+});

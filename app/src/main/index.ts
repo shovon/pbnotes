@@ -80,10 +80,11 @@ const createWindow = () => {
   /**
    * Notes are Markdown, so they can carry links. A link must never navigate
    * the window away from the app — there is no way back from a renderer that
-   * has left — so anything outward opens in the real browser instead.
+   * has left — so anything outward opens in the real browser instead, and a
+   * bare email address, which becomes a `mailto:` link, in the mail app.
    */
   const openExternally = (url: string) => {
-    if (url.startsWith("https://") || url.startsWith("http://")) {
+    if (/^(https?:\/\/|mailto:)/.test(url)) {
       void shell.openExternal(url);
     }
   };
