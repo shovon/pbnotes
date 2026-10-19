@@ -239,3 +239,17 @@ test('a URL on its own is left as micromark made it', () => {
     ['text', 'link', 'text'],
   );
 });
+
+/** Both spellings highlight, links inside still count; code, math, single
+    markers, spaced markers and mismatched pairs stay what was typed. */
+test('==highlight== and ^^highlight^^ wrap their words, links and all', () => {
+  const tree = parseNote(
+    '==done [[Mira]]== ^^#Ada^^ `==a==` $==b==$ a = b 2^3 x == y == z ==c^^ ===d===',
+  );
+  assert.deepEqual(all(tree, 'highlight').map(read), ['done [[Mira]]', '#Ada']);
+  assert.deepEqual(pages(tree), ['Mira', 'Ada']);
+  assert.match(
+    read(tree),
+    /==a==.*==b==.*a = b 2\^3 x == y == z ==c\^\^ ===d===/,
+  );
+});
