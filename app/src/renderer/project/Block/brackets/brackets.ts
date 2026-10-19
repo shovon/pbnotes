@@ -1,5 +1,5 @@
 /**
- * What a key does to a `[`/`]` or `(`/`)` pair in the box, as a replacement of
+ * What a key does to a `[`/`]`, `(`/`)` or `` ` ``/`` ` `` pair in the box, as a replacement of
  * `value[from, to)` with `text` followed by a selection — or null to let the
  * key through. Kept apart from the textarea so the rules can be tested
  * without a DOM; the box applies the edit through `execCommand`, which is
@@ -7,8 +7,8 @@
  */
 export type Edit = { from: number; to: number; text: string; select: [number, number] };
 
-/** Opening character to closing one. `` ` `` is #57. */
-const PAIRS: Record<string, string> = { '[': ']', '(': ')' };
+/** Opening character to closing one. */
+const PAIRS: Record<string, string> = { '[': ']', '(': ')', '`': '`' };
 const CLOSERS = new Set(Object.values(PAIRS));
 
 export function bracketEdit(
@@ -18,17 +18,22 @@ export function bracketEdit(
   end: number,
 ): Edit | null {
   const close = PAIRS[key];
-  if (close) {
+  if (close && start !== end) {
     // Wrap a selection rather than replace it, and keep it selected, so a
     // second `[` makes it `[[selection]]`.
     const inner = value.slice(start, end);
     return { from: start, to: end, text: key + inner + close, select: [start + 1, end + 1] };
   }
   if (start !== end) return null;
-  // Typing over the closer that the opener already put there.
+  // Typing over the closer that the opener already put there. Before pairing,
+  // because a backtick is both, and the second one would open a new pair.
   if (CLOSERS.has(key) && value[start] === key) {
     return { from: start, to: start, text: '', select: [start + 1, start + 1] };
   }
+  // A backtick after a word is a quote mark, not code; after another backtick
+  // it is a fence, and ``` must not come out as ````.
+  if (close === key && /[\p{L}\p{N}_`]/u.test(value[start - 1] ?? '')) return null;
+  if (close) return { from: start, to: start, text: key + close, select: [start + 1, start + 1] };
   if (key === 'Backspace' && PAIRS[value[start - 1]] === value[start] && value[start]) {
     return { from: start - 1, to: start + 1, text: '', select: [start - 1, start - 1] };
   }

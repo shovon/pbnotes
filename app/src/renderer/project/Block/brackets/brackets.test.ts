@@ -48,3 +48,17 @@ test('( pairs like [', () => {
   assert.equal(type('Backspace', 'a(|)b'), 'a|b');
   assert.equal(type('Backspace', '(|]'), null);
 });
+
+test('` pairs with itself', () => {
+  assert.equal(type('`', 'a |b'), 'a `|`b');
+  assert.equal(type('`', '`foo|`'), '`foo`|');
+  assert.equal(type('`', 'a |Foo| b'), 'a `|Foo|` b');
+  assert.equal(type('Backspace', 'a `|` b'), 'a | b');
+});
+
+test('` does not pair after a word, and a fence comes out clean', () => {
+  assert.equal(type('`', 'foo|'), null);
+  assert.equal(type('`', '|'), '`|`');
+  assert.equal(type('`', '`|`'), '``|');
+  assert.equal(type('`', '``|'), null);
+});
