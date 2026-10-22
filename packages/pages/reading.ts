@@ -7,6 +7,7 @@
  */
 import { unified } from "unified";
 import remarkParse from "remark-parse";
+import { pageKey } from "./blocks.ts";
 import type { Block } from "./blocks.ts";
 import { remarkPlugins } from "./wikilink.ts";
 
@@ -110,14 +111,16 @@ export function inCode(text: string, offset: number): boolean {
 }
 
 /**
- * The blocks that link to `title`, each with its subtree intact. A block
- * that links is taken whole and not searched inside: its children are
- * already on show under it, and listing one of them again for a link of its
- * own would put the same words on the page twice.
+ * The blocks that link to `title`, in whatever case the link was written,
+ * each with its subtree intact. A block that links is taken whole and not
+ * searched inside: its children are already on show under it, and listing
+ * one of them again for a link of its own would put the same words on the
+ * page twice.
  */
 export function linking(blocks: Block[], title: string): Block[] {
+  const key = pageKey(title);
   return blocks.flatMap((block) =>
-    read(block.text).links.includes(title)
+    read(block.text).links.some((link) => pageKey(link) === key)
       ? [block]
       : linking(block.children, title),
   );

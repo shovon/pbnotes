@@ -3,10 +3,12 @@
  * so the three of them run under `node --test` with nothing around them;
  * `pages-ipc.ts` holds the trail these are applied to.
  */
+import { pageKey } from "@pbnotes/pages";
 import type { Place } from "../../../../../shared/pages.ts";
 
+/** By `pageKey`: `[[mira]]` followed from `Mira` is the page already showing. */
 const same = (a: Place | undefined, b: Place) =>
-  a?.page === b.page && a.block === b.block;
+  a !== undefined && pageKey(a.page) === pageKey(b.page) && a.block === b.block;
 
 /**
  * A link followed. One to the page already showing — every block listed

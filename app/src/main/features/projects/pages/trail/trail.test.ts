@@ -6,6 +6,8 @@ import { back, go, rezoom } from "./trail.ts";
 test("a link to where the view already is adds nothing", () => {
   const trail = go(go([], { page: "Mira" }), { page: "Mira" });
   assert.deepEqual(trail, [{ page: "Mira" }]);
+  // In any case (#83): it is the same page.
+  assert.equal(go(trail, { page: "mira" }), trail);
   // A zoom within the page is somewhere else, and back returns from it.
   const zoomed = go(trail, { page: "Mira", block: "b" });
   assert.deepEqual(back(zoomed), trail);

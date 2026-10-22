@@ -29,7 +29,7 @@ function memory(): PagesView & { events: unknown[] } {
 }
 
 test("the fold leaves the pages alone for what this build cannot read", () => {
-  const state = {};
+  const state = pagesFold.initial;
   const created = { page: TODAY, id: crypto.randomUUID(), text: "x" };
   for (const event of [
     { type: `${NAMESPACE}block.created`, v: 2, payload: created },

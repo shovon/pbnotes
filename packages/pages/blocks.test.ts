@@ -15,9 +15,13 @@ import {
   predict,
   reduce,
 } from "./blocks.ts";
+import { getPage, getReferences, searchPages } from "./pages.ts";
 import type { Block, PageEvent, Pages } from "./blocks.ts";
 
 const TODAY = "2026-09-21";
+
+/** Nothing written yet. */
+const empty = (): Pages => ({ blocks: {}, titles: {} });
 
 /** One event, straight into `reduce`, with no log or device around it. */
 function event(type: string, v: number, payload: unknown) {
@@ -34,7 +38,8 @@ function event(type: string, v: number, payload: unknown) {
 }
 
 test("the fold ignores events it does not know", async () => {
-  assert.deepEqual(reduce({}, event("something.else", 1, {})), {});
+  const state = empty();
+  assert.equal(reduce(state, event("something.else", 1, {})), state);
 });
 
 /**
@@ -47,7 +52,7 @@ test("the fold ignores events it does not know", async () => {
  */
 test("a v1 payload still folds, page and all", async () => {
   const created = reduce(
-    {},
+    empty(),
     event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "b1", text: "first" }),
   );
   const nested = reduce(
@@ -61,7 +66,7 @@ test("a v1 payload still folds, page and all", async () => {
     nested,
     event(`${NAMESPACE}block.edited`, 1, { page: TODAY, id: "b2", text: "rewritten" }),
   );
-  assert.deepEqual(edited[TODAY], [
+  assert.deepEqual(edited.blocks[TODAY], [
     {
       id: "b1",
       text: "first",
@@ -75,8 +80,8 @@ test("a v1 payload still folds, page and all", async () => {
     edited,
     event(`${NAMESPACE}block.edited`, 1, { page: "Mira", id: "b2", text: "again" }),
   );
-  assert.equal(elsewhere[TODAY][0].children[0].text, "again");
-  assert.deepEqual(Object.keys(elsewhere), [TODAY]);
+  assert.equal(elsewhere.blocks[TODAY][0].children[0].text, "again");
+  assert.deepEqual(Object.keys(elsewhere.blocks), [TODAY]);
 });
 
 /**
@@ -86,16 +91,17 @@ test("a v1 payload still folds, page and all", async () => {
  */
 test("an event is folded under its namespaced name and no other", () => {
   const payload = { page: TODAY, id: "b1", text: "first" };
-  const empty: Pages = {};
+  const none = empty();
 
-  assert.deepEqual(reduce(empty, event(`${NAMESPACE}block.created`, 1, payload)), {
-    [TODAY]: [{ id: "b1", text: "first", children: [] }],
+  assert.deepEqual(reduce(none, event(`${NAMESPACE}block.created`, 1, payload)), {
+    blocks: { [TODAY]: [{ id: "b1", text: "first", children: [] }] },
+    titles: { [TODAY]: TODAY },
   });
-  assert.equal(reduce(empty, event("block.created", 1, payload)), empty);
+  assert.equal(reduce(none, event("block.created", 1, payload)), none);
   // Only the exact prefix. A slash is what #37 first proposed and is not it.
   assert.equal(
-    reduce(empty, event("github.com/shovon/pbnotes/block.created", 1, payload)),
-    empty,
+    reduce(none, event("github.com/shovon/pbnotes/block.created", 1, payload)),
+    none,
   );
 
   assert.equal(Object.keys(HANDLES).length, 5);
@@ -154,11 +160,13 @@ test("a prediction is the fold, and folding it over a page that has it changes n
 test("a page named after an Object.prototype property folds like any other", () => {
   for (const title of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
     const state = reduce(
-      {},
+      empty(),
       event(`${NAMESPACE}block.created`, 1, { page: title, id: "b1", text: "hi" }),
     );
-    assert.deepEqual(state[title], [{ id: "b1", text: "hi", children: [] }], title);
-    assert.deepEqual(Object.keys(state), [title], title);
+    const key = title.toLowerCase();
+    assert.deepEqual(state.blocks[key], [{ id: "b1", text: "hi", children: [] }], title);
+    assert.deepEqual(Object.keys(state.blocks), [key], title);
+    assert.equal(state.titles[key], title, title);
   }
 });
 
@@ -173,9 +181,76 @@ test("an indent under itself or its own subtree changes nothing", () => {
   const two = [
     event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "x", text: "x" }),
     event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "y", text: "y" }),
-  ].reduce(reduce, {} as Pages);
+  ].reduce(reduce, empty());
 
   assert.equal(reduce(two, indent("y", "y")), two);
   const nested = reduce(two, indent("y", "x"));
   assert.equal(reduce(nested, indent("x", "y")), nested);
+});
+
+/** A `PagesView` over a state, for the queries; nothing here writes. */
+const view = (state: Pages) => ({ state, dispatch: async () => {} });
+
+/**
+ * #83: a link names a page before anything is written on it, and that is the
+ * spelling the page keeps — through a creation in other case, and after the
+ * link is edited away.
+ */
+test("a page keeps the first spelling that named it", () => {
+  const created = (id: string, page: string, text: string) =>
+    event(`${NAMESPACE}block.created`, 1, { page, id, text });
+  const edited = (id: string, text: string) =>
+    event(`${NAMESPACE}block.edited`, 2, { id, text });
+  const state = [
+    created("a", TODAY, "nothing yet"),
+    edited("a", "see [[Nonexistent page]]"),
+    created("b", "nonexistent page", "now something"),
+    edited("a", "never mind"),
+  ].reduce(reduce, empty());
+
+  const page = getPage(view(state), "NONEXISTENT PAGE");
+  assert.equal(page.title, "Nonexistent page");
+  assert.deepEqual(page.blocks.map((it) => it.id), ["b"]);
+});
+
+/**
+ * #83: `Mira`, `mira` and `#MIRA` are one page. Blocks filed under either
+ * spelling land on it in the order they were written, which is also what an
+ * existing ledger with both gets on its next open.
+ */
+test("titles that differ only in case are one page", () => {
+  const created = (id: string, page: string, text: string) =>
+    event(`${NAMESPACE}block.created`, 1, { page, id, text });
+  const state = [
+    created("m1", "Mira", "first"),
+    created("d1", TODAY, "met #MIRA"),
+    created("m2", "mira", "second"),
+    created("d2", TODAY, "and [[mira]] again"),
+  ].reduce(reduce, empty());
+
+  const page = getPage(view(state), "mIRA");
+  assert.equal(page.title, "Mira");
+  assert.deepEqual(page.blocks.map((it) => it.id), ["m1", "m2"]);
+
+  const references = getReferences(view(state), "mira");
+  assert.deepEqual(references.map((it) => it.title), [TODAY]);
+  assert.deepEqual(references[0].blocks.map((it) => it.id), ["d1", "d2"]);
+
+  assert.deepEqual(searchPages(view(state), "mi"), ["Mira"]);
+});
+
+/**
+ * #83: the renderer predicts a write onto the page it is showing, under the
+ * title main sent, while the event names the page as the user's link spelt
+ * it. Both have to land on the one page.
+ */
+test("a prediction files a block under any spelling of the page it is drawn on", () => {
+  const page = { title: "Mira", blocks: [] };
+  const create: PageEvent = {
+    type: `${NAMESPACE}block.created`,
+    payload: { page: "mira", id: "n", text: "new" },
+  };
+  const next = predict(page, [create]);
+  assert.equal(next.title, "Mira");
+  assert.deepEqual(next.blocks.map((it) => it.id), ["n"]);
 });
