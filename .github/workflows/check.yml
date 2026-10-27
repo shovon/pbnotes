@@ -1,0 +1,27 @@
+# Tests, lint and typecheck on every pull request and on main (#93), so a
+# small PR can be merged on a quick look at its diff.
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Node that Electron 44 runs, and the first with `await using`
+      # (`packages/cli`, `packages/ledger`). release.yml stays on 22 only
+      # because Forge packaging breaks on 24 and up.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm test --workspaces --if-present
+      - run: npm run lint -w app
+      - run: npx tsc --noEmit -p app
