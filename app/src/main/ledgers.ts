@@ -75,13 +75,16 @@ export function createLedgers(paces: Paces = PACES) {
 
   /**
    * Paces every open ledger by whether a window has focus. Gaining it also
-   * reads every folder in full, so what comes on screen never lags by the
-   * background pace. A ledger still opening takes the pace when it opens: the
-   * pace is read then, so the last call wins.
+   * reads the folder of the project on screen in full, so what comes on
+   * screen never lags by the background pace. The others are only paced: a
+   * full read of every project kept open this session, on every focus, would
+   * be paid for things nobody is looking at. A ledger still opening takes the
+   * pace when it opens: the pace is read then, so the last call wins.
    */
-  function setFocused(focused: boolean): void {
+  function setFocused(focused: boolean, onScreen?: string): void {
     pace = focused ? paces.focused : paces.background;
-    for (const entry of entries.values()) void repace(entry, focused);
+    for (const [projectId, entry] of entries)
+      void repace(entry, focused && projectId === onScreen);
   }
 
   async function repace(entry: Entry, refresh: boolean): Promise<void> {

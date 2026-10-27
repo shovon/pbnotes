@@ -275,3 +275,57 @@ test("after close, refresh and pace start no scan", { timeout: 5000 }, async () 
   await sleep(100);
   assert.equal(folded(l, "b"), undefined);
 });
+
+test("a directory first seen empty is active, so its first segment is read at once", { timeout: 5000 }, async () => {
+  const dir = await fresh();
+  const l = await openOrCreate(dir, slow(60_000));
+  const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
+  await until(it, () => true);
+
+  // As sync clients do: the folder first, its files a moment later.
+  await mkdir(join(dir, "new"));
+  await sleep(100);
+  await put(dir, "new", 1, recs([ev("new", 1, 1000)]));
+  await age(dir, "new", 1); // a sync client may keep the writing machine's old time
+  assert.deepEqual(await until(it, (s) => s.length === 1), ["new-1"]);
+  await l.close();
+});
+
+test("a wall clock set back does not stop quiet directories being read", { timeout: 5000 }, async (t) => {
+  const dir = await fresh();
+  await put(dir, "old", 1, recs([ev("old", 1, 1000)]));
+  await age(dir, "old", 1);
+  const l = await openOrCreate(dir, slow(300));
+  const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
+  await until(it, () => true);
+
+  // Ten minutes back, against a directory an hour old: still quiet, and on the wall clock last read in the future.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  t.mock.timers.setTime(Date.now() - 600_000);
+  await appendFile(join(dir, "old", seg(1)), recs([ev("old", 2, 2000)]));
+  await until(it, (s) => s.length === 2);
+  await l.close();
+});
+
+test("a cadence that is not one is refused, before anything is written", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "ledger-"));
+  const missing = join(parent, "new");
+  for (const bad of [1000, null, { everyMs: 0, quietAfterMs: 1, quietEveryMs: 1 }, { ...fast, quietEveryMs: NaN }, { everyMs: 20 }])
+    await assert.rejects(openOrCreate(missing, bad as unknown as Cadence), TypeError, JSON.stringify(bad));
+  assert.equal(await inspect(missing), "missing", "no marker was written");
+
+  const l = await openOrCreate(await fresh(), fast);
+  assert.throws(() => l.pace({ ...fast, everyMs: -1 }), TypeError);
+  await l.close();
+});
+
+test("refreshes asked for before one starts share it", { timeout: 5000 }, async () => {
+  const l = await openOrCreate(await fresh(), fast);
+  const a = l.refresh();
+  assert.equal(l.refresh(), a);
+  await a;
+  const b = l.refresh();
+  assert.notEqual(b, a, "once it has run, a refresh is a new scan");
+  await b;
+  await l.close();
+});

@@ -53,7 +53,18 @@ export type Cadence = {
 
 export const DEFAULT_CADENCE: Cadence = Object.freeze({ everyMs: 1000, quietAfterMs: 5 * 60_000, quietEveryMs: 30_000 });
 
-/** Whether a scan reads a directory: every time while it is active, now and then once it is quiet, never not at all. */
+/** A frozen copy of `k`, or a throw: a bad cadence spins or never reads, and nothing says so. */
+function checkCadence(k: Cadence): Cadence {
+  const ms = (n: unknown, min: number) => typeof n === "number" && Number.isFinite(n) && n >= min;
+  if (typeof k !== "object" || k === null || !ms(k.everyMs, 1) || !ms(k.quietAfterMs, 0) || !ms(k.quietEveryMs, 0))
+    throw new TypeError(`not a cadence: ${JSON.stringify(k)}; want { everyMs >= 1, quietAfterMs >= 0, quietEveryMs >= 0 } in ms`);
+  return Object.freeze({ everyMs: k.everyMs, quietAfterMs: k.quietAfterMs, quietEveryMs: k.quietEveryMs });
+}
+
+/**
+ * Whether a scan reads a directory: every time while it is active, now and then once it is quiet, never not at all.
+ * Times are monotonic (`performance.now()`), so a wall clock set back cannot stop the reads.
+ */
 const due = (d: { changedAt: number; checkedAt: number }, now: number, k: Cadence) =>
   now - d.changedAt < k.quietAfterMs || now - d.checkedAt >= k.quietEveryMs;
 
@@ -173,6 +184,7 @@ const REFUSALS: Record<Exclude<Verdict, "ledger">, string> = {
 };
 
 export async function openOrCreate(path: string, cadence: Cadence = DEFAULT_CADENCE): Promise<Ledger> {
+  checkCadence(cadence); // before anything is written
   let verdict = await inspect(path);
   if (verdict === "missing") {
     await createMarker(path);
@@ -392,8 +404,18 @@ type Cursor = {
   /** Stray files found in it on the last read. */
   ignored: string[];
 };
-/** What one read of a directory saw: its segments, and the one it read last, by size. */
-type Seen = { list: string; tail: string; mtime: number };
+/** What one read of a directory saw: its segments, and the one it read last, by size. `mtime` is that one's, if any. */
+type Seen = { list: string; tail: string; mtime?: number };
+/** One scan's time: monotonic for the cadence, wall clock only to age a modification time. */
+type Instant = { mono: number; wall: number };
+
+/**
+ * A directory's last change, guessed at first sight, in monotonic time. The newest segment's age stands in for it.
+ * With no segment to go by (empty, as sync often creates a folder before its files, or unreadable), it counts
+ * as just changed: a new session's first segment is about to land.
+ */
+const firstChange = (mtime: number | undefined, at: Instant) =>
+  mtime === undefined ? at.mono : at.mono - Math.max(0, at.wall - mtime);
 
 // ponytail: whole log lives in memory and is re-read on open; add on-disk snapshots when cold start gets slow
 export class Ledger {
@@ -410,25 +432,30 @@ export class Ledger {
   #timer?: ReturnType<typeof setTimeout>;
   /** The last scan asked for; each one waits for the one before it. */
   #polling: Promise<void> = Promise.resolve();
+  /** A full scan asked for and not yet started, which a later refresh shares. */
+  #queuedFull?: Promise<void>;
   #closed = false;
   #writer?: Writer;
 
   constructor(root: string, cadence: Cadence) {
     this.#root = root;
-    this.#cadence = cadence;
+    this.#cadence = checkCadence(cadence);
     this.ready = this.#run(true);
   }
 
-  /** Changes the cadence, from the next scan. */
+  /** Changes the cadence, from the next scan. Throws on a cadence that is not one. */
   pace(cadence: Cadence): void {
-    this.#cadence = cadence;
+    this.#cadence = checkCadence(cadence);
     // Without a timer a scan is running, and it schedules the next one at this pace.
     if (this.#timer === undefined) return;
     clearTimeout(this.#timer);
     this.#schedule();
   }
 
-  /** Scans now, reading every directory, quiet or not. Resolves once that scan is done. */
+  /**
+   * Scans now, reading every directory, quiet or not. Resolves once that scan is done. Calls made while one is
+   * waiting to start share it; one made while it runs gets another, since the running one may have read past a change.
+   */
   refresh(): Promise<void> {
     return this.#run(true);
   }
@@ -522,15 +549,18 @@ export class Ledger {
 
   /** Queues a scan behind any running one, and schedules the next once it is done, unless another was queued. */
   #run(all: boolean): Promise<void> {
+    if (all && this.#queuedFull) return this.#queuedFull;
     clearTimeout(this.#timer);
     this.#timer = undefined;
     const run: Promise<void> = this.#polling
       .catch(() => {})
       .then(async () => {
+        if (this.#queuedFull === run) this.#queuedFull = undefined;
         if (this.#closed) return;
         await this.#scan(all);
         if (this.#polling === run) this.#schedule();
       });
+    if (all) this.#queuedFull = run;
     this.#polling = run;
     return run;
   }
@@ -548,13 +578,13 @@ export class Ledger {
       return; // ponytail: root unlistable keeps the last view; LogStatus has no slot for it
     }
     top.sort((a, b) => (a.name < b.name ? -1 : 1));
-    const now = Date.now();
+    const at: Instant = { mono: performance.now(), wall: Date.now() };
     const ignored: string[] = [];
     const fresh: LogEvent[] = [];
     for (const d of top) {
       if (d.isDirectory()) {
         const c = this.#cursor(d.name);
-        if (all || due(c, now, this.#cadence)) await this.#readWriter(d.name, c, now, fresh);
+        if (all || due(c, at.mono, this.#cadence)) await this.#readWriter(d.name, c, at, fresh);
         ignored.push(...c.ignored); // a directory not read this time still has the strays it had
       } else if (d.name !== "LEDGER") ignored.push(join(this.#root, d.name));
     }
@@ -568,16 +598,15 @@ export class Ledger {
    * so gaps that sync fills clear by themselves. Sync filling one is a change,
    * so the directory is read on every scan while it heals.
    */
-  async #readWriter(device: string, c: Cursor, now: number, out: LogEvent[]) {
-    const seen: Seen = { list: "", tail: "", mtime: -Infinity };
+  async #readWriter(device: string, c: Cursor, at: Instant, out: LogEvent[]) {
+    const seen: Seen = { list: "", tail: "", mtime: undefined };
     try {
       await this.#readSegments(join(this.#root, device), c, seen, out);
     } finally {
-      c.checkedAt = now;
+      c.checkedAt = at.mono;
       const key = `${seen.list}|${seen.tail}`;
-      // First sight has nothing to compare with, so the newest segment's time stands in for the last change.
-      if (c.seen === undefined) c.changedAt = Math.min(seen.mtime, now);
-      else if (key !== c.seen) c.changedAt = now;
+      if (c.seen === undefined) c.changedAt = firstChange(seen.mtime, at);
+      else if (key !== c.seen) c.changedAt = at.mono;
       c.seen = key;
     }
   }

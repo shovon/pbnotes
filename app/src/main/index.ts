@@ -172,9 +172,12 @@ app.on("ready", () => {
   });
 
   // The folders are read less often while no window of the app has focus,
-  // and in full the moment one gains it. Switching between two of its windows
-  // blurs one and focuses the other, which only costs one extra read.
-  app.on("browser-window-focus", () => ledgers.setFocused(true));
+  // and the open project's in full the moment one gains it. Switching between
+  // two of its windows blurs one and focuses the other, which only costs one
+  // extra read.
+  app.on("browser-window-focus", () =>
+    ledgers.setFocused(true, projects.currentProject()?.id),
+  );
   app.on("browser-window-blur", () => ledgers.setFocused(false));
 
   createWindow(windowState);

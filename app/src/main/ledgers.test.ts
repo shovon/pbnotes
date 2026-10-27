@@ -58,7 +58,7 @@ async function until(ok: () => boolean): Promise<void> {
   while (!ok()) await sleep(5);
 }
 
-test("gaining focus reads every folder at once", { timeout: 5000 }, async (t) => {
+test("gaining focus reads the folder on screen at once", { timeout: 5000 }, async (t) => {
   const ledgers = make(t, { focused: NEVER, background: NEVER });
   const p = await project();
   await ledgers.pagesOf(p);
@@ -68,8 +68,24 @@ test("gaining focus reads every folder at once", { timeout: 5000 }, async (t) =>
   await sleep(A_WHILE);
   assert.equal(heard.count, 0, "no scan ran by itself");
 
-  ledgers.setFocused(true);
+  ledgers.setFocused(true, p.id);
   await until(() => heard.count === 1);
+});
+
+test("gaining focus reads only the project on screen in full", { timeout: 5000 }, async (t) => {
+  const ledgers = make(t, { focused: NEVER, background: NEVER });
+  const [shown, hidden] = [await project(), await project()];
+  await ledgers.pagesOf(shown);
+  await ledgers.pagesOf(hidden);
+  const moved: string[] = [];
+  ledgers.onChange((id) => moved.push(id));
+
+  await writeFromElsewhere(shown, "on screen");
+  await writeFromElsewhere(hidden, "kept open, not shown");
+  ledgers.setFocused(true, shown.id);
+  await until(() => moved.includes(shown.id));
+  await sleep(A_WHILE);
+  assert.deepEqual(moved, [shown.id], "the hidden project was not read");
 });
 
 test("losing focus slows the reads, and gaining it brings them back", { timeout: 5000 }, async (t) => {
@@ -87,7 +103,7 @@ test("losing focus slows the reads, and gaining it brings them back", { timeout:
   await sleep(A_WHILE);
   assert.equal(heard.count, 1, "not read at the background pace yet");
 
-  ledgers.setFocused(true);
+  ledgers.setFocused(true, p.id);
   await until(() => heard.count === 2);
   await writeFromElsewhere(p, "focused again");
   await until(() => heard.count === 3);
@@ -104,6 +120,6 @@ test("a ledger opened in the background opens at the background pace", { timeout
   await sleep(A_WHILE);
   assert.equal(heard.count, 0);
 
-  ledgers.setFocused(true);
+  ledgers.setFocused(true, p.id);
   await until(() => heard.count === 1);
 });
