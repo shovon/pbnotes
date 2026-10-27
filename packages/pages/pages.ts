@@ -75,7 +75,7 @@ export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
  * main puts today at the top of the journal, its renderer writes a dropped
  * image there, and the CLI appends to it.
  */
-export function today(now = new Date()): string {
+export function today(now: Date): string {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${now.getFullYear()}-${month}-${day}`;
@@ -285,13 +285,14 @@ function append<T extends PageEvent["type"]>(
  * payload typed against the schema and `v` from `HANDLES`, the same bytes
  * `addBlock` writes. Checks nothing against any page, so a writer that holds
  * no fold (the CLI) can still write a valid event — as long as it trusts its
- * own `after` and `id`, which a fresh `randomUUID()` and no `after` always are.
+ * own `after` and `id`, which a fresh id and no `after` always are. The id is
+ * the caller's to make: this reads no clock and no randomness of its own.
  */
 export function blockCreated(
   page: string,
   text: string,
-  after?: string,
-  id: string = globalThis.crypto.randomUUID(),
+  after: string | undefined,
+  id: string,
 ): { v: number; type: PageEvent["type"]; payload: BlockCreated } {
   const type = `${NAMESPACE}block.created` as const;
   return {
@@ -310,8 +311,10 @@ export function blockCreated(
  * refuses an unknown block: the fold would have to guess, and a log that keeps
  * everything forever should not be collecting events that mean nothing.
  *
- * The id is the caller's when it has one: the renderer draws a block before
- * it is written, and the block on disk has to be the one on screen. One the
+ * The id is always the caller's: the renderer draws a block before it is
+ * written, and the block on disk has to be the one on screen. Whoever has no
+ * id yet makes one where it wires things up, with whatever randomness it
+ * trusts; this reads none of its own. One the
  * ledger already has is refused — two blocks answering to one id is a page
  * that every later event about either of them folds wrongly.
  */
@@ -319,8 +322,8 @@ export async function addBlock(
   view: PagesView,
   title: string,
   text: string,
-  after?: string,
-  id: string = globalThis.crypto.randomUUID(),
+  after: string | undefined,
+  id: string,
 ): Promise<Page> {
   const blocks = blocksOn(view.state, title);
   if (after && !locate(blocks, after)) {

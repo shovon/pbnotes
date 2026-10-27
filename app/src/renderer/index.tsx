@@ -27,8 +27,13 @@ if (!container) {
   throw new Error('Root container #root was not found in index.html');
 }
 
+// The composition root: the one place the renderer reads the bridge. Every
+// view below is handed what it calls, so none of them knows about `window`.
+// The clock is handed down the same way, for which day is today.
+const { projects, pages } = window.pbnotes;
+
 createRoot(container).render(
   <StrictMode>
-    <App />
+    <App projects={projects} pages={pages} now={() => new Date()} />
   </StrictMode>,
 );

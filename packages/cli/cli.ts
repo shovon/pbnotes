@@ -8,6 +8,7 @@
  * folder that is not a ledger is refused by `openWriter`, which never creates
  * one.
  */
+import { randomUUID } from "node:crypto";
 import { text as readAll } from "node:stream/consumers";
 import { openWriter } from "@pbnotes/ledger";
 import { blockCreated, today } from "@pbnotes/pages";
@@ -21,7 +22,8 @@ if (command !== "append" || !folder) {
 try {
   const text = rest.length ? rest.join(" ") : (await readAll(process.stdin)).replace(/\n$/, "");
   await using w = await openWriter(folder, "pbnotes-cli");
-  const e = blockCreated(today(), text);
+  // The CLI is its own composition root: the clock and the id are chosen here.
+  const e = blockCreated(today(new Date()), text, undefined, randomUUID());
   await w.post(e.v, e.type, e.payload);
 } catch (err) {
   console.error((err as Error).message);

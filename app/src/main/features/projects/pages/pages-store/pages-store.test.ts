@@ -17,8 +17,12 @@ import { lastLeaf, locate, NAMESPACE } from "@pbnotes/pages";
 import type { Block } from "@pbnotes/pages";
 import * as store from "./pages-store.ts";
 import type { PagesView } from "./pages-store.ts";
-import { closeLedgers, onChange, pagesOf } from "../../../../ledgers.ts";
+import { createLedgers } from "../../../../ledgers.ts";
 import type { LedgerRef } from "../../../../ledgers.ts";
+
+// This file's own set of ledgers. Closing it stands in for a restart: the
+// next `pagesOf` opens the folder again, as a fresh process would.
+const { pagesOf, onChange, close: closeLedgers } = createLedgers();
 
 /**
  * The glue, as `index.ts` is for the app: the store is handed a view, and
@@ -31,7 +35,15 @@ const on =
   async (project: LedgerRef, ...args: A): Promise<Awaited<R>> =>
     await run(await pagesOf(project), ...args);
 
-const addBlock = on(pages.addBlock);
+// The domain makes no ids of its own; this file is the composition root here,
+// so it picks the randomness, for the calls that do not name a block.
+const addBlock = (
+  project: LedgerRef,
+  title: string,
+  text: string,
+  after?: string,
+  id: string = randomUUID(),
+) => on(pages.addBlock)(project, title, text, after, id);
 const deleteBlock = on(pages.deleteBlock);
 const editBlock = on(pages.editBlock);
 const getPage = on(pages.getPage);

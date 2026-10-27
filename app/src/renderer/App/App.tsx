@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Availability, Project } from '../../shared/projects';
+import type { PagesApi } from '../../shared/pages';
+import type { Availability, Project, ProjectsApi } from '../../shared/projects';
 import ProjectPicker from '../ProjectPicker/ProjectPicker';
 import ProjectView from '../project/ProjectView';
 import Welcome from '../Welcome/Welcome';
 import type { Act } from '../ui';
 
-const { projects: api } = window.pbnotes;
+/**
+ * Handed in by the composition root (`index.tsx`), never read off `window`.
+ * Only the project calls this view makes; `pages` is passed on to the
+ * project that is open.
+ */
+type Props = {
+  projects: Pick<ProjectsApi, 'list' | 'current' | 'availability' | 'open' | 'pick'>;
+  pages: PagesApi;
+  /** The clock, passed on to the project that is open. */
+  now: () => Date;
+};
 
 /**
  * Main rejects with messages meant for the user to read ("That directory is
@@ -20,7 +31,7 @@ function humanize(error: unknown): string {
   );
 }
 
-export default function App() {
+export default function App({ projects: api, pages, now }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [availability, setAvailability] = useState<Record<string, Availability>>(
     {},
@@ -180,6 +191,8 @@ export default function App() {
             key={project.id}
             availability={availability[project.id] ?? 'available'}
             act={act}
+            pages={pages}
+            now={now}
           />
         ) : (
           !loading && <Welcome onAdd={addProjects} />

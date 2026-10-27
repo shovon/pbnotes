@@ -28,7 +28,7 @@ async function journal(dir: string): Promise<string[]> {
   const it = l.onEvent(pagesFold.initial, pagesFold.reduce)[Symbol.asyncIterator]();
   const state = (await it.next()).value!;
   await l.close();
-  const page = getPages({ state, dispatch: async () => {} }).find((p) => p.title === today());
+  const page = getPages({ state, dispatch: async () => {} }).find((p) => p.title === today(new Date()));
   return page?.blocks.map((b) => b.text) ?? [];
 }
 

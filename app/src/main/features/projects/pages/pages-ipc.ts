@@ -82,103 +82,114 @@ export type Open = {
   findImage(name: string): Promise<string | undefined>;
 };
 
-let open: Open;
-
 /**
- * Where the view is. Main's to hold: the renderer asks for a step and draws
- * what comes back. Empty reads as the journal.
- */
-let trail: Place[] = [];
-
-/**
- * What is open changed, so the trail starts over at the journal: a trail is
- * a way through one set of pages and means nothing in another. Fed from
- * outside, like `refreshPages` — pages are never told what is open, only
- * that it is not what it was.
- */
-export function resetTrail(): void {
-  trail = [];
-}
-
-/** Takes one step along the trail and sends where it led. */
-function step(take: (trail: Place[]) => Place[]): Promise<void> {
-  trail = take(trail);
-  return publish();
-}
-
-/**
- * Sends every window what is showing now. The one way state reaches the
- * renderer: after a write, after a step along the trail, and after another
- * device's events are folded in.
+ * Registers the pages channels against `open`, and returns what the caller
+ * feeds in from outside: that the pages may be behind, and that what is open
+ * changed. The trail and the two queues live in here, one set per call.
  *
- * One at a time, in the order they were asked for. Reading the state takes
- * several turns, and two of them overlapping could send the older one last.
- * Each resolves once its own state is sent, which is what lets a handler
- * promise that the state arrives before its reply does.
- *
- * A ledger that cannot be read sends nothing: the windows keep what they
- * have, and the call that asked — `show`, or a write — has already said why.
- * A window closing between the read and the send is ordinary, which is the
- * only thing the guard is for.
+ * `now` is the clock that decides which day is today, handed in like
+ * everything else this reads from outside.
  */
-let sending: Promise<void> = Promise.resolve();
+export function registerPageIpc(
+  open: Open,
+  now: () => Date,
+): {
+  refreshPages(): void;
+  resetTrail(): void;
+} {
+  /**
+   * Where the view is. Main's to hold: the renderer asks for a step and draws
+   * what comes back. Empty reads as the journal.
+   */
+  let trail: Place[] = [];
 
-function publish(): Promise<void> {
-  sending = sending
-    .then(async () => {
-      const state = getState(await open.require(), trail, today());
-      for (const window of BrowserWindow.getAllWindows()) {
-        if (!window.isDestroyed()) {
-          window.webContents.send(PAGE_CHANNELS.changed, state);
+  /**
+   * What is open changed, so the trail starts over at the journal: a trail is
+   * a way through one set of pages and means nothing in another. Fed from
+   * outside, like `refreshPages` — pages are never told what is open, only
+   * that it is not what it was.
+   */
+  function resetTrail(): void {
+    trail = [];
+  }
+
+  /** Takes one step along the trail and sends where it led. */
+  function step(take: (trail: Place[]) => Place[]): Promise<void> {
+    trail = take(trail);
+    return publish();
+  }
+
+  /**
+   * Sends every window what is showing now. The one way state reaches the
+   * renderer: after a write, after a step along the trail, and after another
+   * device's events are folded in.
+   *
+   * One at a time, in the order they were asked for. Reading the state takes
+   * several turns, and two of them overlapping could send the older one last.
+   * Each resolves once its own state is sent, which is what lets a handler
+   * promise that the state arrives before its reply does.
+   *
+   * A ledger that cannot be read sends nothing: the windows keep what they
+   * have, and the call that asked — `show`, or a write — has already said why.
+   * A window closing between the read and the send is ordinary, which is the
+   * only thing the guard is for.
+   */
+  let sending: Promise<void> = Promise.resolve();
+
+  function publish(): Promise<void> {
+    sending = sending
+      .then(async () => {
+        const state = getState(await open.require(), trail, today(now()));
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (!window.isDestroyed()) {
+            window.webContents.send(PAGE_CHANNELS.changed, state);
+          }
         }
-      }
-    })
-    .catch((): void => undefined);
-  return sending;
-}
+      })
+      .catch((): void => undefined);
+    return sending;
+  }
 
-/**
- * The pages may be behind: something arrived in the open ledger's folder. Fed
- * from outside, so pages never subscribes to the ledger itself, and never
- * asks which ledger moved — whoever calls this has already settled that it is
- * the one on screen.
- */
-export function refreshPages(): void {
-  void publish();
-}
+  /**
+   * The pages may be behind: something arrived in the open ledger's folder. Fed
+   * from outside, so pages never subscribes to the ledger itself, and never
+   * asks which ledger moved — whoever calls this has already settled that it is
+   * the one on screen.
+   */
+  function refreshPages(): void {
+    void publish();
+  }
 
-/**
- * A write: `run` appends, and the state it led to is sent before the reply.
- * `open.require` is called as the call arrives, so where it goes is settled
- * then.
- *
- * One at a time, in the order they arrived. Each is checked against the fold
- * before it is appended, and the renderer draws a write before it is recorded
- * — so the next one can name a block the one before is still writing. Checked
- * early, that is "No such block" for a block the user is looking at. A write
- * that is refused does not hold up the ones behind it.
- */
-let writing: Promise<unknown> = Promise.resolve();
+  /**
+   * A write: `run` appends, and the state it led to is sent before the reply.
+   * `open.require` is called as the call arrives, so where it goes is settled
+   * then.
+   *
+   * One at a time, in the order they arrived. Each is checked against the fold
+   * before it is appended, and the renderer draws a write before it is recorded
+   * — so the next one can name a block the one before is still writing. Checked
+   * early, that is "No such block" for a block the user is looking at. A write
+   * that is refused does not hold up the ones behind it.
+   */
+  let writing: Promise<unknown> = Promise.resolve();
 
-function writes(
-  channel: string,
-  run: (view: PagesView, ...args: unknown[]) => Promise<unknown>,
-): void {
-  ipcMain.handle(channel, (_event, ...args: unknown[]) => {
-    const view = open.require();
-    // Waited on in turn, which may be later than it fails.
-    view.catch((): void => undefined);
-    const turn = writing.then(async () => {
-      await run(await view, ...args);
-      await publish();
+  function writes(
+    channel: string,
+    run: (view: PagesView, ...args: unknown[]) => Promise<unknown>,
+  ): void {
+    ipcMain.handle(channel, (_event, ...args: unknown[]) => {
+      const view = open.require();
+      // Waited on in turn, which may be later than it fails.
+      view.catch((): void => undefined);
+      const turn = writing.then(async () => {
+        await run(await view, ...args);
+        await publish();
+      });
+      writing = turn.catch((): void => undefined);
+      return turn;
     });
-    writing = turn.catch((): void => undefined);
-    return turn;
-  });
-}
+  }
 
-export function registerPageIpc(from: Open): void {
-  open = from;
 
   ipcMain.handle(PAGE_CHANNELS.show, async () => {
     // Asked for here as well as in `publish`, which swallows it: a view that
@@ -290,4 +301,6 @@ export function registerPageIpc(from: Open): void {
       window: BrowserWindow.fromWebContents(event.sender) ?? undefined,
     });
   });
+
+  return { refreshPages, resetTrail };
 }
