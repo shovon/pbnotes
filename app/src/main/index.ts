@@ -6,7 +6,7 @@ import path from "node:path";
 import started from "electron-squirrel-startup";
 import { openDatabase } from "./db";
 import { rendererSource } from "./renderer-source/renderer-source";
-import { mainWindowOptions } from "./window-options/window-options";
+import { mainWindowOptions, windowColors } from "./window-options/window-options";
 import { createProjectsStore } from "./features/projects/projects-store";
 import { registerProjectIpc } from "./features/projects/projects-ipc";
 import { createLedgers } from "./ledgers";
@@ -41,6 +41,7 @@ protocol.registerSchemesAsPrivileged([
 
 const createWindow = (windowState: WindowState) => {
   const { maximized, ...bounds } = windowState.restoreWindowBounds();
+  const colors = windowColors(nativeTheme.shouldUseDarkColors);
 
   const mainWindow = new BrowserWindow({
     // Secure defaults first (isolation, sandbox, the preload), then the size.
@@ -55,11 +56,24 @@ const createWindow = (windowState: WindowState) => {
     show: false,
     // No title bar: the window controls hover over the page instead. Nothing
     // ever lived up there but the app's own name, and the page is the app.
-    // `titleBarOverlay` is what gives Windows and Linux their controls back.
+    // `titleBarOverlay` is what gives Windows and Linux their controls back,
+    // painted in the top strip's own colours so they sit in it rather than
+    // on it. macOS draws its traffic lights on whatever is there.
     titleBarStyle: "hiddenInset",
-    titleBarOverlay: true,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#1b1b1d" : "#ffffff",
+    titleBarOverlay: colors.titleBarOverlay,
+    backgroundColor: colors.backgroundColor,
   });
+
+  // The page follows the system theme by itself; what the window paints
+  // around it has to be told.
+  const followTheme = () => {
+    const next = windowColors(nativeTheme.shouldUseDarkColors);
+    mainWindow.setBackgroundColor(next.backgroundColor);
+    if (process.platform !== "darwin")
+      mainWindow.setTitleBarOverlay(next.titleBarOverlay);
+  };
+  nativeTheme.on("updated", followTheme);
+  mainWindow.once("closed", () => nativeTheme.off("updated", followTheme));
 
   if (maximized) mainWindow.maximize();
   mainWindow.once("ready-to-show", () => mainWindow.show());
