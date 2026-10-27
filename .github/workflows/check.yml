@@ -13,10 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Same Node as release.yml.
+      # The Node that Electron 44 runs, and the first with `await using`
+      # (`packages/cli`, `packages/ledger`). release.yml stays on 22 only
+      # because Forge packaging breaks on 24 and up.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - run: npm ci
