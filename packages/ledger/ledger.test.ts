@@ -1,10 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appendFile, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, readdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { crc32 } from "node:zlib";
-import { encode, inspect, openOrCreate, type Event, type LogEvent } from "./ledger.ts";
+import { DEFAULT_CADENCE, encode, inspect, openOrCreate, type Cadence, type Event, type LogEvent } from "./ledger.ts";
+
+const fast: Cadence = { ...DEFAULT_CADENCE, everyMs: 20 };
 
 const ids = (s: string[], e: Event) => [...s, e.payload as string];
 
@@ -34,8 +37,8 @@ async function put(dir: string, device: string, n: number, body: string) {
 
 test("two machines converge, and a reply sorts after what it saw", { timeout: 5000 }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "ledger-"));
-  const a = await openOrCreate(dir, 20);
-  const b = await openOrCreate(dir, 20);
+  const a = await openOrCreate(dir, fast);
+  const b = await openOrCreate(dir, fast);
   const ia = a.onEvent<string[]>([], (s, e) => [...s, e.type])[Symbol.asyncIterator]();
   const ib = b.onEvent<string[]>([], (s, e) => [...s, e.type])[Symbol.asyncIterator]();
 
@@ -81,7 +84,7 @@ test("one writer per ledger, and its directory waits for the first post", async 
 test("consumers only ever see { type, v, at, payload }, frozen", { timeout: 5000 }, async () => {
   const dir = await fresh();
   await put(dir, "b", 1, recs([ev("b", 1, 1000)])); // arrives by scan
-  const l = await openOrCreate(dir, 20);
+  const l = await openOrCreate(dir, fast);
   const seen: Event[] = [];
   const it = l.onEvent<number>(0, (n, e) => (seen.push(e), n + 1))[Symbol.asyncIterator]();
   const posted = await l.writer().post(1, "t", { x: 1 }); // arrives by post
@@ -97,7 +100,7 @@ test("consumers only ever see { type, v, at, payload }, frozen", { timeout: 5000
 test("late event rewinds via checkpoint; torn tail stalls until finished", { timeout: 5000 }, async () => {
   const dir = await fresh();
   await put(dir, "a", 1, recs(Array.from({ length: 2500 }, (_, i) => ev("a", i + 1, 2 * (i + 1)))));
-  const l = await openOrCreate(dir, 20);
+  const l = await openOrCreate(dir, fast);
   const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
   await until(it, (s) => s.length === 2500);
 
@@ -159,7 +162,7 @@ test("status: stop at gaps and damage, heal when sync fills them", { timeout: 50
   await writeFile(join(dir, "gap", "images", "abc.png"), "");
   await writeFile(join(dir, "stray.log"), "");
 
-  const l = await openOrCreate(dir, 20);
+  const l = await openOrCreate(dir, fast);
   const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
   assert.deepEqual(await until(it, () => true), ["gap-1", "jump-1", "dmg-1", "dup-1", "dup-2", "z-1"]);
   const by = Object.fromEntries(l.status.devices.map((d) => [d.device, d]));
@@ -179,5 +182,150 @@ test("status: stop at gaps and damage, heal when sync fills them", { timeout: 50
   const healed = Object.fromEntries(l.status.devices.map((d) => [d.device, d]));
   assert.deepEqual(healed.gap, { device: "gap", folded: 3, state: "ok" });
   assert.deepEqual(healed.jump, { device: "jump", folded: 3, state: "ok" });
+  await l.close();
+});
+
+/** Makes a directory's segment look untouched for an hour, as an ended session's does. */
+const age = (dir: string, device: string, n: number) => {
+  const then = new Date(Date.now() - 3_600_000);
+  return utimes(join(dir, device, seg(n)), then, then);
+};
+const folded = (l: { status: { devices: { device: string; folded: number }[] } }, device: string) =>
+  l.status.devices.find((d) => d.device === device)?.folded;
+const slow = (quietEveryMs: number): Cadence => ({ everyMs: 20, quietAfterMs: 60_000, quietEveryMs });
+
+test("a quiet directory is skipped by a scan, read by refresh, and then active again", { timeout: 5000 }, async () => {
+  const dir = await fresh();
+  await put(dir, "old", 1, recs([ev("old", 1, 1000)]));
+  await writeFile(join(dir, "old", "stray.txt"), "");
+  await age(dir, "old", 1);
+  const l = await openOrCreate(dir, slow(60_000));
+  const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
+  assert.deepEqual(await until(it, () => true), ["old-1"]);
+
+  await appendFile(join(dir, "old", seg(1)), recs([ev("old", 2, 2000)]));
+  await sleep(200); // ten scans or so, none of which read it
+  assert.equal(folded(l, "old"), 1);
+  assert.deepEqual(l.status.ignored, [join(dir, "old", "stray.txt")], "a skipped directory keeps its strays listed");
+
+  // A new directory is read by the next scan, however quiet the others are.
+  await put(dir, "new", 1, recs([ev("new", 1, 500)]));
+  await age(dir, "new", 1);
+  await until(it, (s) => s.includes("new-1"));
+  assert.equal(folded(l, "old"), 1);
+
+  await l.refresh();
+  assert.equal(folded(l, "old"), 2);
+
+  // It changed when last read, so it is read on every scan again.
+  await appendFile(join(dir, "old", seg(1)), recs([ev("old", 3, 3000)]));
+  assert.deepEqual(await until(it, (s) => s.length === 4), ["new-1", "old-1", "old-2", "old-3"]);
+  await l.close();
+});
+
+test("a quiet directory is still read every quietEveryMs", { timeout: 5000 }, async () => {
+  const dir = await fresh();
+  await put(dir, "old", 1, recs([ev("old", 1, 1000)]));
+  await age(dir, "old", 1);
+  const l = await openOrCreate(dir, slow(300));
+  const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
+  await until(it, () => true);
+  const since = Date.now();
+  await appendFile(join(dir, "old", seg(1)), recs([ev("old", 2, 2000)]));
+  await until(it, (s) => s.length === 2);
+  assert(Date.now() - since < 1000);
+  await l.close();
+});
+
+test("a directory written recently when the ledger opens is read on every scan", { timeout: 5000 }, async () => {
+  const dir = await fresh();
+  await put(dir, "live", 1, recs([ev("live", 1, 1000)]));
+  const l = await openOrCreate(dir, slow(60_000));
+  const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
+  await until(it, () => true);
+  await appendFile(join(dir, "live", seg(1)), recs([ev("live", 2, 2000)]));
+  await until(it, (s) => s.length === 2);
+  await l.close();
+});
+
+test("pace changes how often it scans, from the next scan", { timeout: 5000 }, async () => {
+  const dir = await fresh();
+  const l = await openOrCreate(dir, fast);
+  const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
+  await until(it, () => true);
+
+  l.pace({ ...fast, everyMs: 60_000 });
+  await l.refresh(); // so no scan already in flight sees what comes next
+  await put(dir, "b", 1, recs([ev("b", 1, 1000)]));
+  await sleep(200);
+  assert.equal(folded(l, "b"), undefined);
+
+  l.pace(fast);
+  assert.deepEqual(await until(it, (s) => s.length === 1), ["b-1"]);
+  await l.close();
+});
+
+test("after close, refresh and pace start no scan", { timeout: 5000 }, async () => {
+  const dir = await fresh();
+  const l = await openOrCreate(dir, fast);
+  await l.close();
+  await put(dir, "b", 1, recs([ev("b", 1, 1000)]));
+  await l.refresh();
+  l.pace(fast);
+  await sleep(100);
+  assert.equal(folded(l, "b"), undefined);
+});
+
+test("a directory first seen empty is active, so its first segment is read at once", { timeout: 5000 }, async () => {
+  const dir = await fresh();
+  const l = await openOrCreate(dir, slow(60_000));
+  const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
+  await until(it, () => true);
+
+  // As sync clients do: the folder first, its files a moment later.
+  await mkdir(join(dir, "new"));
+  await sleep(100);
+  await put(dir, "new", 1, recs([ev("new", 1, 1000)]));
+  await age(dir, "new", 1); // a sync client may keep the writing machine's old time
+  assert.deepEqual(await until(it, (s) => s.length === 1), ["new-1"]);
+  await l.close();
+});
+
+test("a wall clock set back does not stop quiet directories being read", { timeout: 5000 }, async (t) => {
+  const dir = await fresh();
+  await put(dir, "old", 1, recs([ev("old", 1, 1000)]));
+  await age(dir, "old", 1);
+  const l = await openOrCreate(dir, slow(300));
+  const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
+  await until(it, () => true);
+
+  // Ten minutes back, against a directory an hour old: still quiet, and on the wall clock last read in the future.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  t.mock.timers.setTime(Date.now() - 600_000);
+  await appendFile(join(dir, "old", seg(1)), recs([ev("old", 2, 2000)]));
+  await until(it, (s) => s.length === 2);
+  await l.close();
+});
+
+test("a cadence that is not one is refused, before anything is written", async () => {
+  const parent = await mkdtemp(join(tmpdir(), "ledger-"));
+  const missing = join(parent, "new");
+  for (const bad of [1000, null, { everyMs: 0, quietAfterMs: 1, quietEveryMs: 1 }, { ...fast, quietEveryMs: NaN }, { everyMs: 20 }])
+    await assert.rejects(openOrCreate(missing, bad as unknown as Cadence), TypeError, JSON.stringify(bad));
+  assert.equal(await inspect(missing), "missing", "no marker was written");
+
+  const l = await openOrCreate(await fresh(), fast);
+  assert.throws(() => l.pace({ ...fast, everyMs: -1 }), TypeError);
+  await l.close();
+});
+
+test("refreshes asked for before one starts share it", { timeout: 5000 }, async () => {
+  const l = await openOrCreate(await fresh(), fast);
+  const a = l.refresh();
+  assert.equal(l.refresh(), a);
+  await a;
+  const b = l.refresh();
+  assert.notEqual(b, a, "once it has run, a refresh is a new scan");
+  await b;
   await l.close();
 });

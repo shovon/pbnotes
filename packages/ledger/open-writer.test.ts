@@ -5,7 +5,9 @@ import { access, appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rm, stat,
 import { tmpdir, userInfo } from "node:os";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { encode, openOrCreate, openWriter, type Event, type LogEvent } from "./ledger.ts";
+import { DEFAULT_CADENCE, encode, openOrCreate, openWriter, type Event, type LogEvent } from "./ledger.ts";
+
+const fast = { ...DEFAULT_CADENCE, everyMs: 20 };
 
 const seg = (n: number) => `${String(n).padStart(16, "0")}.log`;
 const lines = async (dir: string, n: number) =>
@@ -181,7 +183,7 @@ test("reads no directory but its own, and puts nothing else in the folder", asyn
 
 test("a Ledger on the same folder folds what openWriter wrote", { timeout: 5000 }, async () => {
   const dir = await fresh();
-  const l = await openOrCreate(dir, 20);
+  const l = await openOrCreate(dir, fast);
   const it = l.onEvent<unknown[]>([], (s, e: Event) => [...s, e.payload])[Symbol.asyncIterator]();
   {
     await using w = await openWriter(dir, "k");
