@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { locate, today } from '@pbnotes/pages';
+import { locate, pageKey, today } from '@pbnotes/pages';
 import type { PagesState } from '../../shared/pages';
 import type { Availability } from '../../shared/projects';
 import type { Act } from '../ui';
@@ -179,7 +179,7 @@ export default function ProjectView({ act }: Props) {
     // one of these by construction, so in a cut it is the common case —
     // swallowed, the most obvious thing on screen to click did nothing.
     // Zoomed in, the same link is the way out to the whole page.
-    if (page === title && !zoom) return;
+    if (title !== null && pageKey(page) === pageKey(title) && !zoom) return;
     event.stopPropagation();
     act(() => pages.go({ page }));
   };
@@ -207,9 +207,15 @@ export default function ProjectView({ act }: Props) {
         ? active
         : null;
     const to = dropped ?? title ?? today();
-    const page = state?.showing.find((it) => it.page.title === to)?.page;
+    // By key: the trail holds the title as the link spelt it, the page the
+    // spelling it shows.
+    const page = state?.showing.find(
+      (it) => pageKey(it.page.title) === pageKey(to),
+    )?.page;
     const found =
-      zoom && to === title && page ? locate(page.blocks, zoom) : undefined;
+      zoom && title !== null && pageKey(to) === pageKey(title) && page
+        ? locate(page.blocks, zoom)
+        : undefined;
     const root = found?.siblings[found.at];
     // The last one written, so a second lands beneath the first.
     let last: string | undefined;

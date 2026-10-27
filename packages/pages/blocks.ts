@@ -20,6 +20,8 @@
  * fold, or they drift: that is why this is a package and not a copy.
  */
 
+import { read } from "./reading.ts";
+
 export type Block = {
   id: string;
   text: string;
@@ -30,10 +32,9 @@ export type Block = {
 export type Page = {
   /**
    * What names the page: a local `YYYY-MM-DD` for a journal day, otherwise
-   * whatever a link called it, exactly as typed. Case matters — `#Mira` and
-   * `#mira` are two pages — because the title is a key in a log that keeps
-   * everything forever, and folding case together later is a choice the fold
-   * can make; lowercasing now would lose the casing for good.
+   * the first spelling the fold saw for it. Case does not matter — `#Mira`
+   * and `#mira` are one page, see `pageKey` — but the log keeps each title as
+   * it was typed, so the page shows a spelling someone actually wrote.
    */
   title: string;
   /** In the order they belong on the page, which is the order they fold. */
@@ -75,8 +76,35 @@ export function lastLeaf(block: Block): Block {
   return last;
 }
 
-/** Title → the blocks on it: a journal day or a page a link named. */
-export type Pages = Record<string, Block[]>;
+/**
+ * What two titles have to share to be one page (#83): `[[Mira]]`, `[[mira]]`
+ * and `#MIRA` all open the same one.
+ *
+ * Not `toLocaleLowerCase()`, which depends on the machine's locale: two
+ * devices would fold one ledger into different pages.
+ *
+ * Computed on every read and never written down, so the log keeps every title
+ * as it was typed. Changing this regroups pages in every existing ledger on
+ * the next open — merging or splitting them — so it changes rarely and on
+ * purpose.
+ */
+export function pageKey(title: string): string {
+  return title.trim().toLowerCase();
+}
+
+/**
+ * Every page, by `pageKey`: a journal day or a page a link named.
+ *
+ * `titles` holds the first spelling the fold saw for each key, as the `page`
+ * of a creation or a link in the text of a creation or an edit, and is never
+ * overwritten: editing the link away later leaves it as it was. A page can
+ * have a spelling and no blocks yet — a link names it before anyone writes on
+ * it — so every key in `blocks` is in `titles` but not the other way round.
+ */
+export type Pages = {
+  blocks: Record<string, Block[]>;
+  titles: Record<string, string>;
+};
 
 /**
  * The blocks on a page, empty for one nothing has been written to. An own
@@ -85,7 +113,38 @@ export type Pages = Record<string, Block[]>;
  * throws on an event the log keeps forever never opens again (#62).
  */
 export function blocksOn(pages: Pages, title: string): Block[] {
-  return Object.hasOwn(pages, title) ? pages[title] : [];
+  const key = pageKey(title);
+  return Object.hasOwn(pages.blocks, key) ? pages.blocks[key] : [];
+}
+
+/**
+ * How a page is shown: the first spelling the fold saw for it, or `title`
+ * itself for a page nothing has named yet.
+ */
+export function titleOf(pages: Pages, title: string): string {
+  const key = pageKey(title);
+  return Object.hasOwn(pages.titles, key) ? pages.titles[key] : title;
+}
+
+/**
+ * `titles` with a spelling for each of `names` whose key has none yet, in
+ * order, so the first of two spellings in one event is the one kept.
+ */
+function spell(titles: Pages["titles"], names: string[]): Pages["titles"] {
+  let next = titles;
+  for (const name of names) {
+    const key = pageKey(name);
+    if (!Object.hasOwn(next, key)) next = { ...next, [key]: name };
+  }
+  return next;
+}
+
+/**
+ * The pages a block's text links to. Nothing for text that is not a string:
+ * a payload from a shared folder may be anything, and the parser would throw.
+ */
+function linksIn(text: unknown): string[] {
+  return typeof text === "string" ? read(text).links : [];
 }
 
 /**
@@ -245,7 +304,7 @@ function mapChildren(
   );
 }
 
-/** Where a block sits, and which page it sits on. */
+/** Where a block sits, and which page it sits on, by the title it shows. */
 export type Found = NonNullable<ReturnType<typeof locate>> & {
   page: string;
   blocks: Block[];
@@ -262,9 +321,9 @@ export type Found = NonNullable<ReturnType<typeof locate>> & {
  * from it, the way `without` does.
  */
 export function find(pages: Pages, id: string): Found | undefined {
-  for (const [page, blocks] of Object.entries(pages)) {
+  for (const [key, blocks] of Object.entries(pages.blocks)) {
     const where = locate(blocks, id);
-    if (where) return { page, blocks, ...where };
+    if (where) return { page: pages.titles[key], blocks, ...where };
   }
   return undefined;
 }
@@ -288,7 +347,9 @@ function onBlock(
   const found = find(state, id);
   if (!found) return state;
   const blocks = change(found);
-  return blocks ? { ...state, [found.page]: blocks } : state;
+  return blocks
+    ? { ...state, blocks: { ...state.blocks, [pageKey(found.page)]: blocks } }
+    : state;
 }
 
 /**
@@ -342,7 +403,10 @@ export function reduce(
 
   switch (it.type) {
     case "block.created": {
-      const { page, id, text, after } = it.payload;
+      const { id, text, after } = it.payload;
+      // A string for whatever was there: a missing page used to file under
+      // `"undefined"` as an object key, and `pageKey` would throw on it.
+      const page = String(it.payload.page);
       const blocks = blocksOn(state, page);
       const block: Block = { id, text, children: [] };
       // `addBlock` refuses an `after` the page does not have, so missing it
@@ -352,12 +416,19 @@ export function reduce(
         ...blocks,
         block,
       ];
-      return { ...state, [page]: next };
+      return {
+        blocks: { ...state.blocks, [pageKey(page)]: next },
+        // The page before its links: it is where the user was writing.
+        titles: spell(state.titles, [page, ...linksIn(text)]),
+      };
     }
 
     case "block.edited": {
       const { id, text } = it.payload;
-      return onBlock(state, id, ({ blocks }) => retext(blocks, id, text));
+      const next = onBlock(state, id, ({ blocks }) => retext(blocks, id, text));
+      // An edit to a block the ledger lacks names nothing either.
+      if (next === state) return state;
+      return { ...next, titles: spell(next.titles, linksIn(text)) };
     }
 
     case "block.deleted": {
@@ -487,7 +558,11 @@ function landed(state: Pages, event: PageEvent): boolean {
  */
 export function predict(page: Page, events: PageEvent[]): Page {
   if (events.length === 0) return page;
-  let state: Pages = { [page.title]: page.blocks };
+  const key = pageKey(page.title);
+  let state: Pages = {
+    blocks: { [key]: page.blocks },
+    titles: { [key]: page.title },
+  };
   for (const event of events) {
     if (!landed(state, event)) state = reduce(state, event);
   }

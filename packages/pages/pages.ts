@@ -21,7 +21,9 @@ import {
   locate,
   NAMESPACE,
   outdented,
+  pageKey,
   reduce,
+  titleOf,
 } from "./blocks.ts";
 import type { Block, BlockCreated, Page, PageEvent, Pages } from "./blocks.ts";
 import { linking, read } from "./reading.ts";
@@ -36,8 +38,10 @@ export {
   locate,
   NAMESPACE,
   outdented,
+  pageKey,
   predict,
   reduce,
+  titleOf,
   without,
 } from "./blocks.ts";
 export type {
@@ -93,7 +97,7 @@ export const pagesFold = {
     event.v <= HANDLES[event.type as PageEvent["type"]]
       ? reduce(state, event)
       : state,
-  initial: {} as Pages,
+  initial: { blocks: {}, titles: {} } as Pages,
 };
 
 /**
@@ -107,9 +111,15 @@ export type PagesView = {
   dispatch(v: number, type: PageEvent["type"], payload: unknown): Promise<unknown>;
 };
 
-/** The page as it stands right now, empty if nothing has been written to it. */
+/**
+ * The page as it stands right now, empty if nothing has been written to it,
+ * under the spelling it shows whichever spelling it was asked for.
+ */
 function pageOf(view: PagesView, title: string): Page {
-  return { title, blocks: blocksOn(view.state, title) };
+  return {
+    title: titleOf(view.state, title),
+    blocks: blocksOn(view.state, title),
+  };
 }
 
 export function getPage(view: PagesView, title: string): Page {
@@ -134,10 +144,11 @@ export function getPage(view: PagesView, title: string): Page {
  * dates themselves. That is the reason for the format.
  */
 export function getPages(view: PagesView): Page[] {
-  return Object.entries(view.state)
-    .filter(([title, blocks]) => DATE_PATTERN.test(title) && blocks.length > 0)
+  const { blocks, titles } = view.state;
+  return Object.entries(blocks)
+    .filter(([key, on]) => DATE_PATTERN.test(key) && on.length > 0)
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([title, blocks]) => ({ title, blocks }));
+    .map(([key, on]) => ({ title: titles[key], blocks: on }));
 }
 
 /**
@@ -155,9 +166,11 @@ export function getPages(view: PagesView): Page[] {
  * days for that to show.
  */
 export function getReferences(view: PagesView, title: string): Page[] {
-  return Object.entries(view.state)
-    .filter(([page]) => page !== title)
-    .map(([page, blocks]) => ({ title: page, blocks: linking(blocks, title) }))
+  const { blocks, titles } = view.state;
+  const key = pageKey(title);
+  return Object.entries(blocks)
+    .filter(([page]) => page !== key)
+    .map(([page, on]) => ({ title: titles[page], blocks: linking(on, title) }))
     .filter((page) => page.blocks.length > 0)
     .sort((a, b) => {
       const days = [a, b].map((page) => DATE_PATTERN.test(page.title));
@@ -189,7 +202,7 @@ export function getPreviews({ state }: PagesView): [string, string | null][] {
       collect(block.children);
     }
   };
-  Object.values(state).forEach(collect);
+  Object.values(state.blocks).forEach(collect);
   return [...ids].map((id) => {
     const found = find(state, id);
     return [id, found ? read(found.siblings[found.at].text).preview : null];
@@ -200,7 +213,11 @@ export function getPreviews({ state }: PagesView): [string, string | null][] {
  * The page titles that contain `query`, ignoring case: the ones that start
  * with it first, then the rest, each A to Z, at most `limit` of them. A page
  * is any title with blocks on it and any title a link names, since naming a
- * page is all it takes for one to exist.
+ * page is all it takes for one to exist. One title per page, in the spelling
+ * it shows.
+ *
+ * Walks the blocks rather than listing `titles`, which remembers every page
+ * ever named: a typo linked once and fixed would be offered forever.
  *
  * Titles only for now. #28 searches block text through the same call.
  *
@@ -213,14 +230,15 @@ export function searchPages(
   limit = 10,
 ): string[] {
   const titles = new Set<string>();
+  const add = (title: string): void => void titles.add(titleOf(state, title));
   const collect = (blocks: Block[]): void => {
     for (const block of blocks) {
-      for (const title of read(block.text).links) titles.add(title);
+      read(block.text).links.forEach(add);
       collect(block.children);
     }
   };
-  for (const [title, blocks] of Object.entries(state)) {
-    if (blocks.length > 0) titles.add(title);
+  for (const [key, blocks] of Object.entries(state.blocks)) {
+    if (blocks.length > 0) add(key);
     collect(blocks);
   }
   const q = query.trim().toLowerCase();
