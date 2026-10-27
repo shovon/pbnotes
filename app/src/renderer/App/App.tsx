@@ -158,10 +158,22 @@ export default function App({ projects: api, pages, now }: Props) {
           That box is measured against the window, not the page, and docked
           DevTools makes the page the narrower of the two — so the strip is
           capped to the page, or it lies over the inspector's own toolbar and
-          takes its clicks as drags. */}
+          takes its clicks as drags.
+
+          The strip's fill and rule are on a backing of their own rather than
+          on the header, because the header stops short of the window buttons
+          and the fill must not. The backing is sized to the page, not the
+          window, so docked DevTools caps it too. Its rule hangs just below
+          the measured strip rather than inside it, where the Windows and
+          Linux controls, which are opaque, would paint over its right end.
+          It is a handle as well: the gap beside the buttons drags too. */}
+      <div
+        aria-hidden
+        className="app-region-drag fixed inset-x-0 top-0 z-20 box-content h-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] border-b border-line bg-bg"
+      />
       <header
         id="titlebar"
-        className="app-region-drag fixed top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,5rem)] flex h-[env(titlebar-area-height,var(--spacing-titlebar))] w-[env(titlebar-area-width,calc(100%-5rem))] max-w-[calc(100%-env(titlebar-area-x,5rem))] items-center"
+        className="app-region-drag fixed z-20 top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,5rem)] flex h-[env(titlebar-area-height,var(--spacing-titlebar))] w-[env(titlebar-area-width,calc(100%-5rem))] max-w-[calc(100%-env(titlebar-area-x,5rem))] items-center"
       >
         {project && (
           <ProjectPicker
