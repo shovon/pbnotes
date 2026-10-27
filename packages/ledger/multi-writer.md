@@ -233,9 +233,40 @@ A stall is not an error state to clear. It is a normal condition that usually he
 
 ## Noticing change
 
-A `Ledger` polls. Every second, counted from the end of the last scan, it lists the top of the folder and each writer directory, and reads each segment from its cursor's offset, so only the bytes that grew are read. A new directory is picked up by the next scan.
+A `Ledger` polls. Each scan lists the top of the folder, then reads the writer directories that are due: it lists each one and reads its segments from the cursor's offset, so only the bytes that grew are read. A new directory is due at once, so it is picked up by the next scan.
 
-There is no `fs.watch`: watch events are unreliable inside sync clients. Whether one second is the right cadence is #52.
+There is no `fs.watch`: watch events are unreliable inside sync clients, and a sync client takes seconds to deliver a change anyway, so a one-second poll is already quicker than what it is waiting for. A watch would only speed up writes from this machine, and the poll would still have to be what correctness rests on.
+
+### Cadence
+
+Writer directories pile up: every session that writes leaves one, and `openWriter` leaves one per key per boot. Almost all of them have ended, and an ended directory never changes again. A quiet tick costs about 70 µs per directory on a local disk (72 ms at 1,000 directories, measured for #52), so reading every directory every second makes the cost grow with how long a project has been in use rather than with how much is happening. The ledger tiers directories instead, and the consumer sets the pace.
+
+A `Cadence` is three numbers:
+
+- `everyMs`: the time from the end of one scan to the start of the next.
+- `quietAfterMs`: a directory where nothing has changed for this long is quiet.
+- `quietEveryMs`: a quiet directory is read at most this often. Every other directory is read on every scan.
+
+A directory has changed when a read sees something different from the last read: a segment appeared or went, or the segment being read is a different size. A directory seen for the first time takes its newest segment's modification time as the time of its last change, so a session that is writing when the ledger opens is read on every scan from the start, and one that ended last week is not. A directory first seen with no segment to go by, empty or unreadable, counts as just changed: sync clients often create a folder before its files, and that folder is a new session whose first segment is about to land. A quiet directory is never skipped for good, because a machine that was offline for a month can sync it at any time. When it changes it is read on every scan again.
+
+Size is enough to tell a change, because the key only decides how often a directory is read, never what a read folds. A read folds whatever bytes are there. So a segment that turns up at its final size before its bytes do, as an online-only placeholder can, stalls and is retried on every scan while the directory is active, and on its quiet reads after that; when the bytes arrive, the next read folds them, whatever the key says.
+
+What counts as a change is only ever what this machine saw, and the modification time is only a first guess. Neither orders anything or decides what is folded, so a sync client that sets odd times can make a directory read more often or less often than it should be, but never wrong. The cadence is timed on a monotonic clock, so a wall clock that is set back cannot stop the reads; the wall clock is only used to turn a first-sight modification time into an age.
+
+`openOrCreate(path, cadence)` takes the starting cadence, and `ledger.pace(cadence)` changes it from the next scan. Both refuse a cadence that is not one (`everyMs` below 1, or any field that is not a finite number of milliseconds, the old `pollMs` number included), and `openOrCreate` does so before it writes anything: a bad cadence would otherwise spin, or never read a directory again, and say nothing. `ledger.refresh()` scans now and reads every directory, quiet or not, and resolves once the scan is done. Scans never overlap: one asked for while another runs waits for it. Refreshes asked for while one is still waiting to start share it, so a burst of them costs one scan; one asked for while it runs gets a scan of its own, because the running one may have read past a change.
+
+What `ledger.status` says about a directory is as of the last read of it. For a quiet directory that is up to `quietEveryMs` old: its state, and the stray files in it, catch up on its next read. A change of state is itself a change, so a directory that has just stalled or become unavailable is read on every scan until it has been that way for `quietAfterMs`.
+
+### The app's pace
+
+The app paces every open ledger by whether one of its windows has focus:
+
+| | `everyMs` | `quietAfterMs` | `quietEveryMs` |
+|---|---|---|---|
+| Focused (the default) | 1 s | 5 min | 30 s |
+| In the background | 5 s | 5 min | 2 min |
+
+When a window gains focus, every open ledger goes back to the focused pace, and the open project's is refreshed, so what comes on screen has been read in full and never lags by the background pace. The app keeps the ledger of every project opened this session, and the others are only paced: reading them all in full on every focus would be paid for projects nobody is looking at. A window that is visible but not focused, such as one beside another app, shows a change from an active directory within 5 s.
 
 ## Events from a newer build
 

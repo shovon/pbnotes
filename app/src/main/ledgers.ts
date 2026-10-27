@@ -10,8 +10,8 @@
  * it under `node --test`.
  */
 import path from "node:path";
-import { openOrCreate } from "@pbnotes/ledger";
-import type { Ledger } from "@pbnotes/ledger";
+import { DEFAULT_CADENCE, openOrCreate } from "@pbnotes/ledger";
+import type { Cadence, Ledger } from "@pbnotes/ledger";
 import { pagesFold } from "@pbnotes/pages";
 import type { PagesView } from "./features/projects/pages/pages-store/pages-store.ts";
 
@@ -27,6 +27,22 @@ type Opened = { ledger: Ledger; view: PagesView };
  */
 type Entry = { path: string; opened: Promise<Opened> };
 
+/** How often the folders are read, by whether a window has focus. */
+export type Paces = { focused: Cadence; background: Cadence };
+
+/**
+ * The app's. See "The app's pace" in `packages/ledger/multi-writer.md`, which
+ * these must match.
+ */
+const PACES: Paces = {
+  focused: DEFAULT_CADENCE,
+  background: {
+    everyMs: 5_000,
+    quietAfterMs: 5 * 60_000,
+    quietEveryMs: 2 * 60_000,
+  },
+};
+
 async function release(entry: Entry): Promise<void> {
   try {
     await (await entry.opened).ledger.close();
@@ -37,9 +53,10 @@ async function release(entry: Entry): Promise<void> {
 
 /**
  * One set of open ledgers, and the one listener told when a project's pages
- * move. The composition root makes one and closes it; a test makes its own.
+ * move. The composition root makes one and closes it; a test makes its own,
+ * and may pace it its own way.
  */
-export function createLedgers() {
+export function createLedgers(paces: Paces = PACES) {
   const entries = new Map<string, Entry>();
 
   /**
@@ -53,10 +70,38 @@ export function createLedgers() {
     announce = next;
   }
 
+  /** The pace every ledger is read at now, and the one a new one opens at. */
+  let pace = paces.focused;
+
+  /**
+   * Paces every open ledger by whether a window has focus. Gaining it also
+   * reads the folder of the project on screen in full, so what comes on
+   * screen never lags by the background pace. The others are only paced: a
+   * full read of every project kept open this session, on every focus, would
+   * be paid for things nobody is looking at. A ledger still opening takes the
+   * pace when it opens: the pace is read then, so the last call wins.
+   */
+  function setFocused(focused: boolean, onScreen?: string): void {
+    pace = focused ? paces.focused : paces.background;
+    for (const [projectId, entry] of entries)
+      void repace(entry, focused && projectId === onScreen);
+  }
+
+  async function repace(entry: Entry, refresh: boolean): Promise<void> {
+    let ledger: Ledger;
+    try {
+      ledger = (await entry.opened).ledger;
+    } catch {
+      return; // A ledger that failed to open is dropped by `opened`; nothing to pace.
+    }
+    ledger.pace(pace);
+    if (refresh) await ledger.refresh();
+  }
+
   async function open(project: LedgerRef): Promise<Opened> {
     // `openOrCreate` is the app's policy already: a missing or empty folder is
     // made a ledger, and anything else that is not one is refused.
-    const ledger = await openOrCreate(project.path);
+    const ledger = await openOrCreate(project.path, pace);
     const fold = ledger.onEvent(pagesFold.initial, pagesFold.reduce);
     const states = fold[Symbol.asyncIterator]();
     // The first yield is the catch-up, so the view has every page before it is
@@ -131,7 +176,7 @@ export function createLedgers() {
     await Promise.all(open.map(release));
   }
 
-  return { pagesOf, writerOf, onChange, close: closeLedgers };
+  return { pagesOf, writerOf, onChange, setFocused, close: closeLedgers };
 }
 
 export type Ledgers = ReturnType<typeof createLedgers>;
