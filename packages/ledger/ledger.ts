@@ -41,6 +41,22 @@ export type LogStatus = { devices: DeviceStatus[]; /** absolute paths */ ignored
 
 export type Verdict = "ledger" | "newer" | "not-a-ledger" | "missing" | "unmarked";
 
+/** How often a `Ledger` looks for change. See "Cadence" in `multi-writer.md`. */
+export type Cadence = {
+  /** From the end of one scan to the start of the next. */
+  everyMs: number;
+  /** A directory where nothing has changed for this long is quiet. */
+  quietAfterMs: number;
+  /** A quiet directory is read at most this often; any other is read on every scan. */
+  quietEveryMs: number;
+};
+
+export const DEFAULT_CADENCE: Cadence = Object.freeze({ everyMs: 1000, quietAfterMs: 5 * 60_000, quietEveryMs: 30_000 });
+
+/** Whether a scan reads a directory: every time while it is active, now and then once it is quiet, never not at all. */
+const due = (d: { changedAt: number; checkedAt: number }, now: number, k: Cadence) =>
+  now - d.changedAt < k.quietAfterMs || now - d.checkedAt >= k.quietEveryMs;
+
 const FORMAT = 1;
 const SIGNATURE = "bULhVFqraHDHescwKKhK0g==";
 const MARKER = `Signature: ${SIGNATURE}
@@ -156,14 +172,14 @@ const REFUSALS: Record<Exclude<Verdict, "ledger">, string> = {
   "not-a-ledger": "is not a ledger (or its LEDGER marker is malformed); refusing to write into it",
 };
 
-export async function openOrCreate(path: string, pollMs = 1000): Promise<Ledger> {
+export async function openOrCreate(path: string, cadence: Cadence = DEFAULT_CADENCE): Promise<Ledger> {
   let verdict = await inspect(path);
   if (verdict === "missing") {
     await createMarker(path);
     verdict = await inspect(path);
   }
   if (verdict !== "ledger") throw new Error(`${path} ${REFUSALS[verdict]}`);
-  const ledger = new Ledger(path, pollMs);
+  const ledger = new Ledger(path, cadence);
   await ledger.ready;
   return ledger;
 }
@@ -359,29 +375,62 @@ export async function openWriter(
 
 type Entry = { log: LogEvent; event: Event };
 type Sub = { dirty: number; wake: () => void };
-/** Read position in one writer directory. Only advanced past records that were accepted or skipped as duplicates. */
-type Cursor = { seg: number; offset: number; last: number; state: DeviceState; detail?: string; suspect?: number };
+/**
+ * Read position in one writer directory. Only advanced past records that were accepted or skipped as duplicates.
+ * `seen` is what the last read saw, and `changedAt` when that last differed: they decide whether a scan reads it.
+ */
+type Cursor = {
+  seg: number;
+  offset: number;
+  last: number;
+  state: DeviceState;
+  detail?: string;
+  suspect?: number;
+  checkedAt: number;
+  changedAt: number;
+  seen?: string;
+  /** Stray files found in it on the last read. */
+  ignored: string[];
+};
+/** What one read of a directory saw: its segments, and the one it read last, by size. */
+type Seen = { list: string; tail: string; mtime: number };
 
 // ponytail: whole log lives in memory and is re-read on open; add on-disk snapshots when cold start gets slow
 export class Ledger {
   readonly ready: Promise<void>;
   #root: string;
-  #pollMs: number;
+  #cadence: Cadence;
   #events: Entry[] = [];
   #cursors = new Map<string, Cursor>();
   #ignored: string[] = [];
   #hlc: Hlc = { l: 0, c: 0 };
   #subs = new Set<Sub>();
   #idle?: () => Promise<unknown>;
+  /** Set only while waiting for the next scan. */
   #timer?: ReturnType<typeof setTimeout>;
-  #polling: Promise<void>;
+  /** The last scan asked for; each one waits for the one before it. */
+  #polling: Promise<void> = Promise.resolve();
   #closed = false;
   #writer?: Writer;
 
-  constructor(root: string, pollMs: number) {
+  constructor(root: string, cadence: Cadence) {
     this.#root = root;
-    this.#pollMs = pollMs;
-    this.ready = this.#polling = this.#tick();
+    this.#cadence = cadence;
+    this.ready = this.#run(true);
+  }
+
+  /** Changes the cadence, from the next scan. */
+  pace(cadence: Cadence): void {
+    this.#cadence = cadence;
+    // Without a timer a scan is running, and it schedules the next one at this pace.
+    if (this.#timer === undefined) return;
+    clearTimeout(this.#timer);
+    this.#schedule();
+  }
+
+  /** Scans now, reading every directory, quiet or not. Resolves once that scan is done. */
+  refresh(): Promise<void> {
+    return this.#run(true);
   }
 
   /** This ledger's one writer; its directory appears on the first `post`. */
@@ -464,17 +513,34 @@ export class Ledger {
 
   #cursor(device: string): Cursor {
     let c = this.#cursors.get(device);
-    if (!c) this.#cursors.set(device, (c = { seg: 1, offset: 0, last: 0, state: "ok" }));
+    if (!c) {
+      c = { seg: 1, offset: 0, last: 0, state: "ok", checkedAt: -Infinity, changedAt: -Infinity, ignored: [] };
+      this.#cursors.set(device, c);
+    }
     return c;
   }
 
-  async #tick(): Promise<void> {
-    await this.#scan();
-    if (!this.#closed) this.#timer = setTimeout(() => (this.#polling = this.#tick()), this.#pollMs);
+  /** Queues a scan behind any running one, and schedules the next once it is done, unless another was queued. */
+  #run(all: boolean): Promise<void> {
+    clearTimeout(this.#timer);
+    this.#timer = undefined;
+    const run: Promise<void> = this.#polling
+      .catch(() => {})
+      .then(async () => {
+        if (this.#closed) return;
+        await this.#scan(all);
+        if (this.#polling === run) this.#schedule();
+      });
+    this.#polling = run;
+    return run;
+  }
+
+  #schedule() {
+    if (!this.#closed) this.#timer = setTimeout(() => void this.#run(false), this.#cadence.everyMs);
   }
 
   // Polling, not fs.watch: watch events are unreliable inside sync clients.
-  async #scan() {
+  async #scan(all: boolean) {
     let top: Dirent[];
     try {
       top = await readdir(this.#root, { withFileTypes: true });
@@ -482,11 +548,15 @@ export class Ledger {
       return; // ponytail: root unlistable keeps the last view; LogStatus has no slot for it
     }
     top.sort((a, b) => (a.name < b.name ? -1 : 1));
+    const now = Date.now();
     const ignored: string[] = [];
     const fresh: LogEvent[] = [];
     for (const d of top) {
-      if (d.isDirectory()) await this.#readWriter(d.name, ignored, fresh);
-      else if (d.name !== "LEDGER") ignored.push(join(this.#root, d.name));
+      if (d.isDirectory()) {
+        const c = this.#cursor(d.name);
+        if (all || due(c, now, this.#cadence)) await this.#readWriter(d.name, c, now, fresh);
+        ignored.push(...c.ignored); // a directory not read this time still has the strays it had
+      } else if (d.name !== "LEDGER") ignored.push(join(this.#root, d.name));
     }
     this.#ignored = ignored;
     this.#ingest(fresh.map((e) => ({ log: e, event: toEvent(e) })));
@@ -494,16 +564,31 @@ export class Ledger {
 
   /**
    * Every directory is foreign here, even one a writer is appending to: never truncate, never throw. A stop
-   * leaves the cursor at the last good record and is retried on the next poll,
-   * so gaps that sync fills clear by themselves.
+   * leaves the cursor at the last good record and is retried on the next read,
+   * so gaps that sync fills clear by themselves. Sync filling one is a change,
+   * so the directory is read on every scan while it heals.
    */
-  async #readWriter(device: string, ignored: string[], out: LogEvent[]) {
-    const dir = join(this.#root, device);
-    const c = this.#cursor(device);
+  async #readWriter(device: string, c: Cursor, now: number, out: LogEvent[]) {
+    const seen: Seen = { list: "", tail: "", mtime: -Infinity };
+    try {
+      await this.#readSegments(join(this.#root, device), c, seen, out);
+    } finally {
+      c.checkedAt = now;
+      const key = `${seen.list}|${seen.tail}`;
+      // First sight has nothing to compare with, so the newest segment's time stands in for the last change.
+      if (c.seen === undefined) c.changedAt = Math.min(seen.mtime, now);
+      else if (key !== c.seen) c.changedAt = now;
+      c.seen = key;
+    }
+  }
+
+  async #readSegments(dir: string, c: Cursor, seen: Seen, out: LogEvent[]) {
+    c.ignored = [];
     let entries: Dirent[];
     try {
       entries = await readdir(dir, { withFileTypes: true });
     } catch (err: any) {
+      seen.list = "unavailable";
       Object.assign(c, { state: "unavailable", detail: String(err?.message ?? err) });
       return;
     }
@@ -511,8 +596,9 @@ export class Ledger {
     for (const e of entries) {
       if (!e.isFile()) continue; // subdirectories hold side files: not read, not reported
       if (SEGMENT.test(e.name)) segs.add(Number(e.name.slice(0, 16)));
-      else ignored.push(join(dir, e.name));
+      else c.ignored.push(join(dir, e.name));
     }
+    seen.list = [...segs].sort((a, b) => a - b).join(",");
     c.state = "ok";
     c.detail = undefined;
     const stall = (seg: number, at: number, why: string) =>
@@ -529,7 +615,9 @@ export class Ledger {
       try {
         const fh = await open(join(dir, segmentName(seg)), "r");
         try {
-          const { size } = await fh.stat();
+          const { size, mtimeMs } = await fh.stat();
+          seen.tail = `${seg}:${size}`;
+          seen.mtime = mtimeMs;
           buf = Buffer.alloc(Math.max(0, size - start));
           buf = buf.subarray(0, (await fh.read(buf, 0, buf.length, start)).bytesRead);
         } finally {
