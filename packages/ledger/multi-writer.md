@@ -41,6 +41,7 @@ What the kept floor caught was a folder that *regresses*: selective sync droppin
 ```
 <ledger directory>/
   LEDGER
+  AGENTS.md
   <writer-id>/0000000000000001.log
   <writer-id>/0000000000000002.log
   <other-writer-id>/0000000000000001.log
@@ -48,7 +49,7 @@ What the kept floor caught was a folder that *regresses*: selective sync droppin
 
 A segment's name is sixteen digits. A segment is sealed at 16 MiB or at local midnight, whichever comes first, and only the newest is written to. A record larger than 16 MiB gets a segment to itself, and an empty segment is never rolled. Sealing is worth more under sync: a sealed segment never changes again, so a sync tool uploads it once and leaves it alone. Only each writer's newest file churns, and the daily roll bounds how large it gets.
 
-**`LEDGER` is the only file required at the top**, and is described under [The marker](#the-marker). Every directory at the top that does not start with a dot is read as a writer directory. Directories written before #50 are named by device id and read as writers that have stopped.
+**`LEDGER` is the only file required at the top**, and is described under [The marker](#the-marker). `AGENTS.md` is written beside it, and is described under [Named extras](#named-extras). Every directory at the top that does not start with a dot is read as a writer directory. Directories written before #50 are named by device id and read as writers that have stopped.
 
 **Any other file at the top is ignored.** That includes `*.log` files from the old single-writer layout, which held throwaway data and are not worth a migration path. They are listed in the status surface so the skip is visible rather than silent, and never folded. This was a deliberate one-time break, and it is what lets the envelope below require its fields instead of treating them as optional. What else may be in the folder is under [What else the folder may hold](#what-else-the-folder-may-hold).
 
@@ -83,13 +84,13 @@ This is the one file that more than one writer may write, which the invariant ot
 | The directory | `inspect` | `openOrCreate` |
 | --- | --- | --- |
 | Holds a valid `LEDGER` with `read` and `write` this build meets | `ledger` | Opens |
-| Does not exist, or is empty | `missing` | Writes the marker, then opens |
+| Does not exist, or is empty | `missing` | Writes the marker and the named extras, then opens |
 | No `LEDGER`, and a subdirectory holds a segment | `unmarked` | Refuses |
 | No `LEDGER`, not empty, no segments | `not-a-ledger` | Refuses |
 | `LEDGER` has the wrong signature, or does not parse | `not-a-ledger` | Refuses |
 | `LEDGER` asks for a higher `read` or `write` | `newer` | Refuses |
 
-A directory that holds only dotfiles counts as empty: a file manager leaves those in a folder it was merely asked to show. A refusal is a plain `Error` that names the reason. A caller that needs to act on the reason calls `inspect` first. `openWriter` refuses everything but `ledger`, `missing` included.
+A directory that holds only dotfiles counts as empty: a file manager leaves those in a folder it was merely asked to show. So does one that holds only [named extras](#named-extras), which sync may deliver before the marker. A refusal is a plain `Error` that names the reason. A caller that needs to act on the reason calls `inspect` first. `openWriter` refuses everything but `ledger`, `missing` included.
 
 There is no adopt, and no way to force past a refusal. `unmarked` covers three things that look the same on disk: a directory written before markers existed, one whose marker has not arrived from the sync tool yet, and one whose marker was lost. Telling the user, and offering the fix where it is safe, is #44. A higher version is refused because the log is never rewritten, so a record appended by a build that did not know the format would stay for good.
 
@@ -117,7 +118,11 @@ The sections above say what a ledger folder must hold. This one says what else m
 
 The format keeps a list of the extras it knows. A named extra is not listed in `status.ignored`, and a folder that holds only named extras counts as empty, as one holding only dot-entries does.
 
-The list is empty. Its first entry is `AGENTS.md` (#63), and the code that reads the list lands with it.
+- **`AGENTS.md`** (#63) tells an agent (Claude Code, Codex and the like) that finds the folder what it is: a ledger written by Pb Notes, with the format described at https://github.com/shovon/pbnotes, and nothing in it to be changed by hand. Without it an agent sees a `LEDGER` file and folders of segments, and may tidy them, edit a segment, or guess at the format. It is a signpost, not part of the format: no build reads it, and a ledger without one is whole.
+
+A named extra is a file at the top that several writers may create, so it keeps to that rule: an exclusive create, never rewritten, and the same bytes on every build of one format version (`NAMED_EXTRAS` in `ledger.ts`). One that is already there is left alone, whatever it holds, so a user's edits survive. A folder with a named extra's name is not one, and is read as a writer like any other folder.
+
+`openOrCreate` writes the named extras after the marker. It writes them on every open, not only on creation, so a ledger made before #63 gets them too. That backfill is for now: #106 limits it to creation. The writes are best effort. A folder that cannot take one, because it is read-only or full, still opens. `openWriter` does not write them.
 
 ## The envelope
 
@@ -314,6 +319,7 @@ type LogStatus = {
 - The marker's exact bytes, its strict parse, and each `inspect` verdict. Opening refuses a newer marker, a stranger's folder and an unmarked one.
 - A missing segment, a `seq` jump and a damaged record each stall their directory and nothing else, and heal when sync fills them. A duplicate `seq` folds once. An event dated ten days ahead is folded and its directory is `clockSuspect`. A conflicted copy and a stray file at the top are `ignored`; a subdirectory of a writer directory is not.
 - Dot-entries are neither read nor listed, at the top or in a writer directory: a `.git` folder holding a segment folds nothing.
+- `AGENTS.md`: a new ledger gets its exact bytes, an existing ledger without one gets one, one already there is not overwritten, it is not listed in `ignored`, and a folder holding only it is `missing`. A folder named `AGENTS.md` is read as a writer.
 
 `open-writer.test.ts`:
 

@@ -76,9 +76,27 @@ const MARKER = `Signature: ${SIGNATURE}
 read ${FORMAT}
 write ${FORMAT}
 `;
+/**
+ * Files at the top the format names besides `LEDGER`, with the bytes every build of this format writes.
+ * Never reported, and a folder holding only these counts as empty. Changing a file's bytes is a format change:
+ * two builds that create one ledger before they sync would leave a conflicted copy.
+ */
+const NAMED_EXTRAS: Readonly<Record<string, string>> = Object.freeze({
+  "AGENTS.md": `# Pb Notes ledger
+
+This folder is a ledger written by the Pb Notes app. How to read it (the
+format, and why there is one folder per writer) is at
+https://github.com/shovon/pbnotes.
+
+Do not modify, rename or delete anything here by hand. The files are
+append-only, and other writers share them through whatever syncs this folder.
+`,
+});
 const SEGMENT = /^\d{16}\.log$/;
 /** Dot-entries belong to the OS or a sync tool (`.DS_Store`, `.git`, `.stfolder`): never read, never reported. */
 const hidden = (name: string) => name.startsWith(".");
+/** A folder of the same name is not one: it is read as a writer, like any folder at the top. */
+const named = (d: Dirent) => d.isFile() && Object.hasOwn(NAMED_EXTRAS, d.name);
 const MAX_SEGMENT_BYTES = 16 * 1024 * 1024;
 const CHECKPOINT_EVERY = 1000;
 /** Remote clocks further ahead than this still get folded, but don't drag ours forward. */
@@ -140,7 +158,7 @@ export async function inspect(path: string): Promise<Verdict> {
       if (err.code === "ENOENT") return "missing";
       throw err;
     }
-    const visible = entries.filter((e) => !hidden(e.name));
+    const visible = entries.filter((e) => !hidden(e.name) && !named(e));
     if (!visible.length) return "missing";
     for (const e of visible)
       if (e.isDirectory() && (await readdir(join(path, e.name))).some((n) => SEGMENT.test(n))) return "unmarked";
@@ -161,21 +179,34 @@ async function fsyncDir(dir: string) {
   }
 }
 
-async function createMarker(path: string) {
-  await mkdir(path, { recursive: true });
+/** Writes `bytes` to `file` unless something is already there, which is left as it is. */
+async function createOnce(file: string, bytes: string) {
   let fh;
   try {
-    fh = await open(join(path, "LEDGER"), "wx");
+    fh = await open(file, "wx");
   } catch (err: any) {
-    if (err.code === "EEXIST") return; // someone beat us to it; inspect() judges theirs
+    if (err.code === "EEXIST") return; // someone beat us to it
     throw err;
   }
   try {
-    await fh.writeFile(MARKER);
+    await fh.writeFile(bytes);
     await fh.sync();
   } finally {
     await fh.close();
   }
+}
+
+async function createMarker(path: string) {
+  await mkdir(path, { recursive: true });
+  await createOnce(join(path, "LEDGER"), MARKER); // a marker already there is judged by inspect()
+}
+
+/**
+ * Best effort: the ledger is whole without them, so a folder that cannot take one (read-only, full) still opens.
+ * Runs on every open, so ledgers made before #63 get them too; #106 limits it to creation.
+ */
+async function createNamedExtras(path: string) {
+  await Promise.allSettled(Object.entries(NAMED_EXTRAS).map(([name, bytes]) => createOnce(join(path, name), bytes)));
 }
 
 const REFUSALS: Record<Exclude<Verdict, "ledger">, string> = {
@@ -193,6 +224,7 @@ export async function openOrCreate(path: string, cadence: Cadence = DEFAULT_CADE
     verdict = await inspect(path);
   }
   if (verdict !== "ledger") throw new Error(`${path} ${REFUSALS[verdict]}`);
+  await createNamedExtras(path);
   const ledger = new Ledger(path, cadence);
   await ledger.ready;
   return ledger;
@@ -589,7 +621,7 @@ export class Ledger {
         const c = this.#cursor(d.name);
         if (all || due(c, at.mono, this.#cadence)) await this.#readWriter(d.name, c, at, fresh);
         ignored.push(...c.ignored); // a directory not read this time still has the strays it had
-      } else if (d.name !== "LEDGER") ignored.push(join(this.#root, d.name));
+      } else if (d.name !== "LEDGER" && !named(d)) ignored.push(join(this.#root, d.name));
     }
     this.#ignored = ignored;
     this.#ingest(fresh.map((e) => ({ log: e, event: toEvent(e) })));
