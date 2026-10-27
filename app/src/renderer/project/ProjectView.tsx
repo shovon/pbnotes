@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { locate, pageKey, today } from '@pbnotes/pages';
-import type { PagesState } from '../../shared/pages';
+import type { PagesApi, PagesState } from '../../shared/pages';
 import type { Availability } from '../../shared/projects';
 import type { Act } from '../ui';
 import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
-
-const { pages } = window.pbnotes;
 
 
 /**
@@ -32,9 +30,14 @@ const images = (data: DataTransfer): File[] =>
 type Props = {
   availability: Availability;
   act: Act;
+  /** The bridge to main, handed down from `index.tsx`. Passed on whole to
+   * `PageView`, which takes the same type. */
+  pages: PagesApi;
+  /** The clock, for which day a drop with no page lands on. */
+  now: () => Date;
 };
 
-export default function ProjectView({ act }: Props) {
+export default function ProjectView({ act, pages, now }: Props) {
   /** What main has in mind, as it last said. Null until it first has. */
   const [state, setState] = useState<PagesState | null>(null);
   const trail = state?.trail ?? [];
@@ -206,7 +209,7 @@ export default function ProjectView({ act }: Props) {
       active instanceof HTMLTextAreaElement && wrapper.current?.contains(active)
         ? active
         : null;
-    const to = dropped ?? title ?? today();
+    const to = dropped ?? title ?? today(now());
     // By key: the trail holds the title as the link spelt it, the page the
     // spelling it shows.
     const page = state?.showing.find(

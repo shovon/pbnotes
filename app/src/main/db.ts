@@ -1,5 +1,3 @@
-import { app } from 'electron';
-import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 /**
@@ -76,13 +74,13 @@ const MIGRATIONS: string[] = [
    DROP TABLE device;`,
 ];
 
-let db: DatabaseSync | null = null;
-
-export function openDatabase(): DatabaseSync {
-  if (db) return db;
-
-  const file = path.join(app.getPath('userData'), 'notes.db');
-  db = new DatabaseSync(file);
+/**
+ * Opens and migrates the database at `file`. No handle is kept here: the
+ * caller owns what this returns, hands it to whatever needs it, and closes it.
+ * `':memory:'` gives a test a fresh, migrated database.
+ */
+export function openDatabase(file: string): DatabaseSync {
+  const db = new DatabaseSync(file);
 
   // WAL keeps reads from blocking writes and survives a hard kill far better
   // than the default rollback journal.
@@ -91,16 +89,6 @@ export function openDatabase(): DatabaseSync {
 
   migrate(db);
   return db;
-}
-
-export function getDatabase(): DatabaseSync {
-  if (!db) throw new Error('Database accessed before openDatabase()');
-  return db;
-}
-
-export function closeDatabase(): void {
-  db?.close();
-  db = null;
 }
 
 function migrate(database: DatabaseSync): void {

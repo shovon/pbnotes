@@ -1,25 +1,23 @@
+// Composition root for the main process. Everything that holds state is
+// built here, handed to what needs it, and closed here. No other module keeps
+// a handle of its own.
 import { app, BrowserWindow, nativeTheme, protocol, shell } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
-import { closeDatabase, openDatabase } from "./db";
-import {
-  currentProject,
-  registerProjectIpc,
-  requireProject,
-} from "./features/projects/projects-ipc";
-import { closeLedgers, onChange, pagesOf, writerOf } from "./ledgers";
-import {
-  refreshPages,
-  registerPageIpc,
-  resetTrail,
-} from "./features/projects/pages/pages-ipc";
+import { openDatabase } from "./db";
+import { rendererSource } from "./renderer-source/renderer-source";
+import { mainWindowOptions } from "./window-options/window-options";
+import { createProjectsStore } from "./features/projects/projects-store";
+import { registerProjectIpc } from "./features/projects/projects-ipc";
+import { createLedgers } from "./ledgers";
+import { registerPageIpc } from "./features/projects/pages/pages-ipc";
 import { findImage, saveImage } from "./features/projects/pages/images/images";
 import { IMAGE_SCHEME } from "../shared/pages";
 import {
   MIN_SIZE,
-  restoreWindowBounds,
-  trackWindowState,
+  createWindowState,
 } from "./features/window-state/window-state";
+import type { WindowState } from "./features/window-state/window-state";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -41,10 +39,12 @@ protocol.registerSchemesAsPrivileged([
   { scheme: IMAGE_SCHEME, privileges: { standard: true, secure: true } },
 ]);
 
-const createWindow = () => {
-  const { maximized, ...bounds } = restoreWindowBounds();
+const createWindow = (windowState: WindowState) => {
+  const { maximized, ...bounds } = windowState.restoreWindowBounds();
 
   const mainWindow = new BrowserWindow({
+    // Secure defaults first (isolation, sandbox, the preload), then the size.
+    ...mainWindowOptions({ preload: path.join(__dirname, "preload.js") }),
     ...bounds,
     minWidth: MIN_SIZE.width,
     minHeight: MIN_SIZE.height,
@@ -59,23 +59,19 @@ const createWindow = () => {
     titleBarStyle: "hiddenInset",
     titleBarOverlay: true,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#1b1b1d" : "#ffffff",
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-    },
   });
 
   if (maximized) mainWindow.maximize();
   mainWindow.once("ready-to-show", () => mainWindow.show());
-  trackWindowState(mainWindow);
+  windowState.trackWindowState(mainWindow);
 
-  // and load the index.html of the app.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
-    );
-  }
+  const source = rendererSource(
+    MAIN_WINDOW_VITE_DEV_SERVER_URL,
+    path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+  );
+  void (source.kind === "url"
+    ? mainWindow.loadURL(source.url)
+    : mainWindow.loadFile(source.path));
 
   /**
    * Notes are Markdown, so they can carry links. A link must never navigate
@@ -102,16 +98,23 @@ const createWindow = () => {
 
   // Only while developing. A packaged app that opens with the inspector
   // showing has given away half its window to something the user cannot use.
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) mainWindow.webContents.openDevTools();
+  if (source.kind === "url") mainWindow.webContents.openDevTools();
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
+// Some APIs can only be used once Electron is ready, so everything is built
+// here, and the handlers that need what was built are attached here too.
 app.on("ready", () => {
-  openDatabase();
+  const db = openDatabase(path.join(app.getPath("userData"), "notes.db"));
+  const windowState = createWindowState(db);
+  const ledgers = createLedgers();
+
   // A different project is open, so a trail through the last one is over.
-  registerProjectIpc(resetTrail);
+  // `pages` is declared below; this only runs once a project changes, by
+  // which time it exists.
+  const projects = registerProjectIpc(createProjectsStore(db), () =>
+    pages.resetTrail(),
+  );
+
   // Pages are handed their view of what is open, and the images beside it,
   // and never ask what that is. This is the one place that says it is the
   // open project's, and the one place that turns a project into a path.
@@ -119,45 +122,57 @@ app.on("ready", () => {
   // `requireProject` settles which project before its first `await`, and is
   // the first thing each of these calls: a write or an image sent just before
   // the project changed lands where it was sent.
-  registerPageIpc({
-    require: async () => pagesOf(await requireProject()),
-    saveImage: async (bytes, mime) => {
-      const project = await requireProject();
-      return saveImage(
-        project.path,
-        await writerOf(project),
-        bytes,
-        mime,
-      );
+  const pages = registerPageIpc(
+    {
+      require: async () => ledgers.pagesOf(await projects.requireProject()),
+      saveImage: async (bytes, mime) => {
+        const project = await projects.requireProject();
+        return saveImage(
+          project.path,
+          await ledgers.writerOf(project),
+          bytes,
+          mime,
+        );
+      },
+      // `currentProject`, not `requireProject`: this only reads. `findImage`
+      // lists directories and creates none, so an unmounted drive is an image
+      // that is not found, not a path invented on the local disk.
+      findImage: async (name) => {
+        const project = projects.currentProject();
+        return project ? findImage(project.path, name) : undefined;
+      },
     },
-    // `currentProject`, not `requireProject`: this only reads. `findImage`
-    // lists directories and creates none, so an unmounted drive is an image
-    // that is not found, not a path invented on the local disk.
-    findImage: async (name) => {
-      const project = currentProject();
-      return project
-        ? findImage(project.path, name)
-        : undefined;
-    },
-  });
+    // The real clock, chosen here: it decides which page is today.
+    () => new Date(),
+  );
+
   // A project's pages moved: another session's events landed in its folder,
   // or the fold caught up with a write of ours. Every fold has taken them in
   // by now, so nothing is fed to a feature here: each one is only told to draw
   // again, and only when the project is the one on screen — which is settled
-  // here, so no feature has to ask. `ledgers.ts` holds one listener, and this
+  // here, so no feature has to ask. The ledgers hold one listener, and this
   // is it — a new feature adds its line here.
-  onChange((projectId) => {
-    if (currentProject()?.id !== projectId) return;
-    refreshPages();
+  ledgers.onChange((projectId) => {
+    if (projects.currentProject()?.id !== projectId) return;
+    pages.refreshPages();
   });
-  createWindow();
-});
 
-app.on("will-quit", () => {
-  closeDatabase();
-  // Best effort, and that is enough: every append is fsynced before it is
-  // acknowledged, so a log left unclosed has already lost nothing.
-  void closeLedgers();
+  createWindow(windowState);
+
+  app.on("activate", () => {
+    // On OS X it's common to re-create a window in the app when the
+    // dock icon is clicked and there are no other windows open.
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow(windowState);
+    }
+  });
+
+  app.on("will-quit", () => {
+    db.close();
+    // Best effort, and that is enough: every append is fsynced before it is
+    // acknowledged, so a log left unclosed has already lost nothing.
+    void ledgers.close();
+  });
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -168,14 +183,3 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
-
-app.on("activate", () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.

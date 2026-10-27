@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBlock, blockCreated, editBlock, getPages, inCode, NAMESPACE, pagesFold, searchPages } from "./pages.ts";
+import { addBlock, blockCreated, editBlock, getPages, inCode, NAMESPACE, pagesFold, searchPages, today } from "./pages.ts";
 import type { Pages, PagesView } from "./pages.ts";
 
 const TODAY = "2026-09-21";
@@ -51,7 +51,7 @@ test("the fold leaves the pages alone for what this build cannot read", () => {
 
 test("a writer with its own log gets the app's checks and the app's fold", async () => {
   const view = memory();
-  const page = await addBlock(view, TODAY, "hello");
+  const page = await addBlock(view, TODAY, "hello", undefined, "h");
   await editBlock(view, page.blocks[0].id, "hello #Mira");
   await assert.rejects(editBlock(view, "nope", "x"));
   assert.equal(view.events.length, 2);
@@ -70,8 +70,8 @@ test("blockCreated is the event addBlock writes, with or without an after", asyn
 
 test("searchPages finds titles written on and titles only linked, prefix matches first", async () => {
   const view = memory();
-  await addBlock(view, "Foo Page", "see [[the food plan]] and #seafood");
-  await addBlock(view, TODAY, "[[FOOTNOTES]]");
+  await addBlock(view, "Foo Page", "see [[the food plan]] and #seafood", undefined, "f");
+  await addBlock(view, TODAY, "[[FOOTNOTES]]", undefined, "n");
   assert.deepEqual(searchPages(view, " foo"), [
     "Foo Page",
     "FOOTNOTES",
@@ -91,4 +91,10 @@ test("inCode is true in code spans, fences of either kind and math, and nowhere 
   assert.equal(inCode(text, at("m]]")), true);
   assert.equal(inCode(text, at("w")), false);
   assert.equal(inCode(text, at("open")), true);
+});
+
+test("today is the local calendar day of the moment it is handed", () => {
+  // Built from local parts, so this holds in any time zone.
+  assert.equal(today(new Date(2026, 9, 27, 23, 59)), "2026-10-27");
+  assert.equal(today(new Date(2026, 0, 5, 0, 0)), "2026-01-05");
 });
