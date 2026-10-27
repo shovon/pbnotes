@@ -1,0 +1,25 @@
+# Tests, lint and typecheck on every pull request and on main (#93), so a
+# small PR can be merged on a quick look at its diff.
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same Node as release.yml.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test --workspaces --if-present
+      - run: npm run lint -w app
+      - run: npx tsc --noEmit -p app
