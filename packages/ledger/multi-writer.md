@@ -48,9 +48,9 @@ What the kept floor caught was a folder that *regresses*: selective sync droppin
 
 A segment's name is sixteen digits. A segment is sealed at 16 MiB or at local midnight, whichever comes first, and only the newest is written to. A record larger than 16 MiB gets a segment to itself, and an empty segment is never rolled. Sealing is worth more under sync: a sealed segment never changes again, so a sync tool uploads it once and leaves it alone. Only each writer's newest file churns, and the daily roll bounds how large it gets.
 
-**`LEDGER` is the only file at the top**, and is described under [The marker](#the-marker). Every directory at the top is read as a writer directory. Directories written before #50 are named by device id and read as writers that have stopped.
+**`LEDGER` is the only file required at the top**, and is described under [The marker](#the-marker). Every directory at the top that does not start with a dot is read as a writer directory. Directories written before #50 are named by device id and read as writers that have stopped.
 
-**Any other file at the top is ignored.** That includes `*.log` files from the old single-writer layout, which held throwaway data and are not worth a migration path. They are listed in the status surface so the skip is visible rather than silent, and never folded. This was a deliberate one-time break, and it is what lets the envelope below require its fields instead of treating them as optional.
+**Any other file at the top is ignored.** That includes `*.log` files from the old single-writer layout, which held throwaway data and are not worth a migration path. They are listed in the status surface so the skip is visible rather than silent, and never folded. This was a deliberate one-time break, and it is what lets the envelope below require its fields instead of treating them as optional. What else may be in the folder is under [What else the folder may hold](#what-else-the-folder-may-hold).
 
 **Event type names were rewritten once.** For one release (#39) the app went through every device's segments before a log opened and gave the five block events of the time their namespaced names. That was a second deliberate break: it changed sealed segments, and it wrote files that belonged to other devices. The code is gone (#40). Nothing rewrites, truncates or repairs a record once it is written, and nothing writes in another writer's directory. A folder that was never opened by that release still holds the old names, and the consumer's gate skips those events (see [Events from a newer build](#events-from-a-newer-build)).
 
@@ -92,6 +92,32 @@ This is the one file that more than one writer may write, which the invariant ot
 A directory that holds only dotfiles counts as empty: a file manager leaves those in a folder it was merely asked to show. A refusal is a plain `Error` that names the reason. A caller that needs to act on the reason calls `inspect` first. `openWriter` refuses everything but `ledger`, `missing` included.
 
 There is no adopt, and no way to force past a refusal. `unmarked` covers three things that look the same on disk: a directory written before markers existed, one whose marker has not arrived from the sync tool yet, and one whose marker was lost. Telling the user, and offering the fix where it is safe, is #44. A higher version is refused because the log is never rewritten, so a record appended by a build that did not know the format would stay for good.
+
+## What else the folder may hold
+
+The sections above say what a ledger folder must hold. This one says what else may be in it, so that the OS, a sync tool or a later build can leave things there without the folder reading as damaged (#104).
+
+- A writer **must** write the format exactly.
+- A reader **must** ignore what the format does not name, as long as ignoring it does not change the fold.
+- A build **may** add files the format does not name.
+
+**Extras at the top are files.** Every folder at the top whose name does not start with a dot is a writer directory, so a folder that a build added there would be read as a writer by every build before it. A build that needs a folder at the top changes the format. Writer directories have no name pattern. Every one written so far is named by a UUID, but nothing checks that, and a pattern would protect nothing until every build in use had it. A folder that someone else puts at the top is read as a writer: it is listed in `status.devices`, its files are listed in `status.ignored`, and it folds nothing unless it holds segments.
+
+**Dot-entries are ignored everywhere**, files and folders, at the top and in writer directories. They belong to the OS or a sync tool (`.DS_Store`, `.git`, `.stfolder`, `.stversions`, a partial download), so they are not read and not listed in `status.ignored`. A folder that holds only dot-entries counts as empty.
+
+**Ignored is not silent.** Anything else the format does not name is listed in `status.ignored` and never folded: a file at the top other than `LEDGER`, and a file in a writer directory that is not a segment. That list is how a conflicted copy of a segment gets noticed. A subdirectory of a writer directory is named, under [Layout](#layout), as that writer's own, and is not listed.
+
+**The marker check does not change.** Until `LEDGER` checks out, an extra file is evidence that the folder is not a ledger, and `inspect` still says `not-a-ledger`. If sync delivers an extra before the marker, the open is refused, and that clears once the marker arrives.
+
+**A file at the top that several writers may create** is created with an exclusive create, is never rewritten, and has the same bytes on every build of one format version. Otherwise two machines that create one ledger before they sync leave a conflicted copy of it. `LEDGER` keeps to this, apart from the comment lines of builds before #45.
+
+**Not a back door for format changes.** An addition that an older build would misread by ignoring it is a format change, and `read` or `write` goes up.
+
+### Named extras
+
+The format keeps a list of the extras it knows. A named extra is not listed in `status.ignored`, and a folder that holds only named extras counts as empty, as one holding only dot-entries does.
+
+The list is empty. Its first entry is `AGENTS.md` (#63), and the code that reads the list lands with it.
 
 ## The envelope
 
@@ -236,7 +262,7 @@ type DeviceStatus = {
 
 type LogStatus = {
   devices: DeviceStatus[];
-  /** Absolute paths skipped: files at the top other than `LEDGER`, and files in a writer directory that are not segments. */
+  /** Absolute paths skipped: files at the top other than `LEDGER`, and files in a writer directory that are not segments. Dot-entries are not listed. */
   ignored: string[];
 };
 ```
@@ -256,6 +282,7 @@ type LogStatus = {
 - A late event refolds from a checkpoint to the same state as a fold from the start. A torn tail stalls, and heals when the rest of the record arrives.
 - The marker's exact bytes, its strict parse, and each `inspect` verdict. Opening refuses a newer marker, a stranger's folder and an unmarked one.
 - A missing segment, a `seq` jump and a damaged record each stall their directory and nothing else, and heal when sync fills them. A duplicate `seq` folds once. An event dated ten days ahead is folded and its directory is `clockSuspect`. A conflicted copy and a stray file at the top are `ignored`; a subdirectory of a writer directory is not.
+- Dot-entries are neither read nor listed, at the top or in a writer directory: a `.git` folder holding a segment folds nothing.
 
 `open-writer.test.ts`:
 

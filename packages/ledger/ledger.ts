@@ -50,6 +50,8 @@ read ${FORMAT}
 write ${FORMAT}
 `;
 const SEGMENT = /^\d{16}\.log$/;
+/** Dot-entries belong to the OS or a sync tool (`.DS_Store`, `.git`, `.stfolder`): never read, never reported. */
+const hidden = (name: string) => name.startsWith(".");
 const MAX_SEGMENT_BYTES = 16 * 1024 * 1024;
 const CHECKPOINT_EVERY = 1000;
 /** Remote clocks further ahead than this still get folded, but don't drag ours forward. */
@@ -111,7 +113,7 @@ export async function inspect(path: string): Promise<Verdict> {
       if (err.code === "ENOENT") return "missing";
       throw err;
     }
-    const visible = entries.filter((e) => !e.name.startsWith("."));
+    const visible = entries.filter((e) => !hidden(e.name));
     if (!visible.length) return "missing";
     for (const e of visible)
       if (e.isDirectory() && (await readdir(join(path, e.name))).some((n) => SEGMENT.test(n))) return "unmarked";
@@ -485,6 +487,7 @@ export class Ledger {
     const ignored: string[] = [];
     const fresh: LogEvent[] = [];
     for (const d of top) {
+      if (hidden(d.name)) continue;
       if (d.isDirectory()) await this.#readWriter(d.name, ignored, fresh);
       else if (d.name !== "LEDGER") ignored.push(join(this.#root, d.name));
     }
@@ -509,7 +512,7 @@ export class Ledger {
     }
     const segs = new Set<number>();
     for (const e of entries) {
-      if (!e.isFile()) continue; // subdirectories hold side files: not read, not reported
+      if (hidden(e.name) || !e.isFile()) continue; // subdirectories hold side files: not read, not reported
       if (SEGMENT.test(e.name)) segs.add(Number(e.name.slice(0, 16)));
       else ignored.push(join(dir, e.name));
     }
