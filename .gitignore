@@ -3,3 +3,6 @@ node_modules/
 
 # Claude Code worktrees: checkouts of other branches, not files of this one (#96).
 .claude/worktrees/
+
+# Per-user VS Code settings, not project config (#99).
+.vscode/
