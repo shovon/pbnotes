@@ -67,6 +67,14 @@ A write is appended first and folded only once it is durable, so the view can ne
 
 A page is not a record anywhere. It is the set of blocks carrying its title, so opening a page appends nothing — the log holds what the user did, and reading is not one of the things they did. The first write to a page is its first event. Pages are never created: naming one is enough. The calendar names the journal days, and a link — `[[Mira]]`, `#Mira` or `#[[Mira]]`, all the same page — names everything else. Following a link opens that page, empty until something is written on it; only the days are in the journal stack. Under its own blocks, every page lists what links to it: each page that names it, cut down to the blocks that do, edited in place like any other block — a write there is a write to the page the block is on. The cuts are read from the fold in main, with the same parser the renderer draws links with, so what counts as a reference is exactly what shows as a link.
 
+### Properties are a table, not syntax
+
+A page's properties — named values about the page itself, such as a type or a status — are added, edited and removed in a table on the page, one row per property (#84). Each change is an event of its own on the log, never parsed out of block text, so what a block says and what the page is stay separate.
+
+Logseq-style `key:: value` lines are not how pbnotes manages properties. A typed syntax may come later for power users, but only as a second way in that writes the same events; the table stays the primary one.
+
+Aliases are a property (#85), so the same rule applies to them: they are edited in the table, not typed as `alias::` in a block.
+
 ## Main holds the state
 
 Main holds the state and the renderer draws it. Which project is open, the trail of links followed, the pages at the end of it, what links to each and what every block ref quotes are all in main, and reach the window one way: the whole of it, in a single message. A write from this window, a link followed, and a step back each ask main for something and resolve once the state that came of it has been sent; none of them answers with a page. Main writes to the log first and folds second, so its state is never ahead of the disk. So that a key does not wait on that, the page draws its own writes in flight over main's state — the text just typed, the block Enter just wrote — using main's reducer, and drops each one when main answers; a write main refuses goes back to what main has. The renderer keeps only what lasts as long as a gesture — the text in an open box, the caret, where the page is scrolled — so no call names a project, and nothing below the top-level view knows there is more than one.
