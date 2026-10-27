@@ -240,6 +240,33 @@ test("titles that differ only in case are one page", () => {
 });
 
 /**
+ * #88: the same text in different Unicode forms is one page. `Café` with a
+ * precomposed `é` and with `e` plus a combining accent, and `Mira` with a
+ * zero-width space pasted after it. Each title is kept as first typed.
+ */
+test("titles that differ only in Unicode form are one page", () => {
+  const composed = "Café";
+  const decomposed = "Café";
+  const created = (id: string, page: string, text: string) =>
+    event(`${NAMESPACE}block.created`, 1, { page, id, text });
+  const state = [
+    created("c1", composed, "first"),
+    created("c2", decomposed, "second"),
+    created("m1", "Mira", "hi"),
+    created("d1", TODAY, "met [[Mira​]]"),
+  ].reduce(reduce, empty());
+
+  const cafe = getPage(view(state), decomposed);
+  assert.equal(cafe.title, composed);
+  assert.deepEqual(cafe.blocks.map((it) => it.id), ["c1", "c2"]);
+  assert.deepEqual(searchPages(view(state), decomposed), [composed]);
+
+  const references = getReferences(view(state), "Mira");
+  assert.deepEqual(references[0].blocks.map((it) => it.id), ["d1"]);
+  assert.deepEqual(searchPages(view(state), "mir"), ["Mira"]);
+});
+
+/**
  * #83: the renderer predicts a write onto the page it is showing, under the
  * title main sent, while the event names the page as the user's link spelt
  * it. Both have to land on the one page.
