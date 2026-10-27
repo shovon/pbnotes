@@ -241,9 +241,9 @@ export function searchPages(
     if (blocks.length > 0) add(key);
     collect(blocks);
   }
-  const q = query.trim().toLowerCase();
+  const q = pageKey(query);
   return [...titles]
-    .map((title) => ({ title, at: title.toLowerCase().indexOf(q) }))
+    .map((title) => ({ title, at: pageKey(title).indexOf(q) }))
     .filter(({ at }) => at !== -1)
     .sort(
       (a, b) =>
