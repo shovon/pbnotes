@@ -148,6 +148,24 @@ test("LEDGER marker: exact bytes, strict parse, folder verdicts", async () => {
   await assert.rejects(openOrCreate(unmarked), /no LEDGER marker/);
 });
 
+test("dot-entries are neither read nor reported; other extras are reported", { timeout: 5000 }, async () => {
+  const dir = await fresh();
+  await put(dir, "a", 1, recs([ev("a", 1, 10)]));
+  await put(dir, ".git", 1, recs([ev(".git", 1, 11)])); // a segment, so being read would show in the fold
+  await mkdir(join(dir, ".stfolder"));
+  await writeFile(join(dir, ".DS_Store"), "");
+  await writeFile(join(dir, "a", ".DS_Store"), "");
+  await writeFile(join(dir, "a", `.syncthing.${seg(2)}.tmp`), "");
+  await writeFile(join(dir, "notes.txt"), "");
+
+  const l = await openOrCreate(dir, fast);
+  const it = l.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
+  assert.deepEqual(await until(it, () => true), ["a-1"]);
+  assert.deepEqual(l.status.devices.map((d) => d.device), ["a"]);
+  assert.deepEqual(l.status.ignored, [join(dir, "notes.txt")]);
+  await l.close();
+});
+
 test("status: stop at gaps and damage, heal when sync fills them", { timeout: 5000 }, async () => {
   const dir = await fresh();
   await put(dir, "gap", 1, recs([ev("gap", 1, 10)]));
