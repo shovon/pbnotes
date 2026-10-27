@@ -27,15 +27,20 @@ type Opened = { ledger: Ledger; view: PagesView };
  */
 type Entry = { path: string; opened: Promise<Opened> };
 
+/** How often the folders are read, by whether a window has focus. */
+export type Paces = { focused: Cadence; background: Cadence };
+
 /**
- * How often the folders are read, by whether a window has focus. See "The
- * app's pace" in `packages/ledger/multi-writer.md`, which these must match.
+ * The app's. See "The app's pace" in `packages/ledger/multi-writer.md`, which
+ * these must match.
  */
-const FOCUSED: Cadence = DEFAULT_CADENCE;
-const BACKGROUND: Cadence = {
-  everyMs: 5_000,
-  quietAfterMs: 5 * 60_000,
-  quietEveryMs: 2 * 60_000,
+const PACES: Paces = {
+  focused: DEFAULT_CADENCE,
+  background: {
+    everyMs: 5_000,
+    quietAfterMs: 5 * 60_000,
+    quietEveryMs: 2 * 60_000,
+  },
 };
 
 async function release(entry: Entry): Promise<void> {
@@ -48,9 +53,10 @@ async function release(entry: Entry): Promise<void> {
 
 /**
  * One set of open ledgers, and the one listener told when a project's pages
- * move. The composition root makes one and closes it; a test makes its own.
+ * move. The composition root makes one and closes it; a test makes its own,
+ * and may pace it its own way.
  */
-export function createLedgers() {
+export function createLedgers(paces: Paces = PACES) {
   const entries = new Map<string, Entry>();
 
   /**
@@ -65,7 +71,7 @@ export function createLedgers() {
   }
 
   /** The pace every ledger is read at now, and the one a new one opens at. */
-  let pace = FOCUSED;
+  let pace = paces.focused;
 
   /**
    * Paces every open ledger by whether a window has focus. Gaining it also
@@ -74,7 +80,7 @@ export function createLedgers() {
    * pace is read then, so the last call wins.
    */
   function setFocused(focused: boolean): void {
-    pace = focused ? FOCUSED : BACKGROUND;
+    pace = focused ? paces.focused : paces.background;
     for (const entry of entries.values()) void repace(entry, focused);
   }
 
