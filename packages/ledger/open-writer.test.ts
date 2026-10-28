@@ -172,9 +172,10 @@ test("reads no directory but its own, and puts nothing else in the folder", asyn
   await mkdir(join(dir, "sibling"));
   await chmod(join(dir, "sibling"), 0);
   try {
+    const before = await readdir(dir);
     await using w = await openWriter(dir, "k");
     await w.post(1, "t", "x");
-    assert.deepEqual((await readdir(dir)).sort(), ["LEDGER", basename(w.directory), "sibling"].sort());
+    assert.deepEqual((await readdir(dir)).sort(), [...before, basename(w.directory)].sort());
     assert.deepEqual(await readdir(w.directory), [seg(1)]);
   } finally {
     await chmod(join(dir, "sibling"), 0o755);

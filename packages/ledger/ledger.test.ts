@@ -73,11 +73,11 @@ test("one writer per ledger, and its directory waits for the first post", async 
   assert.equal(l.writer(), w);
   assert.deepEqual(Object.keys(w).sort(), ["directory", "post"]);
   assert.equal(dirname(w.directory), dir);
-  assert.deepEqual(await readdir(dir), ["LEDGER"]);
+  assert.deepEqual((await readdir(dir)).sort(), ["AGENTS.md", "LEDGER"]);
   await w.post(1, "a", {});
   await l.writer().post(1, "b", {});
   await l.close();
-  assert.deepEqual((await readdir(dir)).sort(), ["LEDGER", basename(w.directory)].sort());
+  assert.deepEqual((await readdir(dir)).sort(), ["AGENTS.md", "LEDGER", basename(w.directory)].sort());
   assert.equal((await readFile(join(w.directory, seg(1)), "utf8")).split("\n").length, 3);
 });
 
@@ -164,6 +164,41 @@ test("dot-entries are neither read nor reported; other extras are reported", { t
   assert.deepEqual(l.status.devices.map((d) => d.device), ["a"]);
   assert.deepEqual(l.status.ignored, [join(dir, "notes.txt")]);
   await l.close();
+});
+
+test("AGENTS.md: exact bytes, backfilled, never overwritten, never reported", { timeout: 5000 }, async () => {
+  const agents = (dir: string) => readFile(join(dir, "AGENTS.md"), "utf8");
+  const dir = await fresh();
+  assert.equal(
+    await agents(dir),
+    "# Pb Notes ledger\n\nThis folder is a ledger written by the Pb Notes app. How to read it (the\nformat, and why there is one folder per writer) is at\nhttps://github.com/shovon/pbnotes.\n\nDo not modify, rename or delete anything here by hand. The files are\nappend-only, and other writers share them through whatever syncs this folder.\n",
+  );
+
+  const old = await mkdtemp(join(tmpdir(), "ledger-")); // a ledger made before #63
+  await writeFile(join(old, "LEDGER"), await readFile(join(dir, "LEDGER")));
+  await (await openOrCreate(old)).close();
+  assert.equal(await agents(old), await agents(dir), "backfilled");
+
+  await writeFile(join(dir, "AGENTS.md"), "mine");
+  const l = await openOrCreate(dir, fast);
+  assert.equal(await agents(dir), "mine", "not overwritten");
+  await l.refresh();
+  assert.deepEqual(l.status.ignored, []);
+  await l.close();
+
+  const synced = await mkdtemp(join(tmpdir(), "ledger-")); // sync delivered it before the marker
+  await writeFile(join(synced, "AGENTS.md"), "x");
+  assert.equal(await inspect(synced), "missing");
+  await (await openOrCreate(synced)).close();
+  assert.equal(await inspect(synced), "ledger");
+
+  const folder = await mkdtemp(join(tmpdir(), "ledger-")); // a folder of that name is a writer
+  await writeFile(join(folder, "LEDGER"), await readFile(join(dir, "LEDGER")));
+  await put(folder, "AGENTS.md", 1, recs([ev("AGENTS.md", 1, 10)]));
+  const m = await openOrCreate(folder, fast);
+  const it = m.onEvent<string[]>([], ids)[Symbol.asyncIterator]();
+  assert.deepEqual(await until(it, (s) => s.length === 1), ["AGENTS.md-1"]);
+  await m.close();
 });
 
 test("status: stop at gaps and damage, heal when sync fills them", { timeout: 5000 }, async () => {
