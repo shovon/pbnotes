@@ -556,7 +556,7 @@ function landed(state: Pages, event: PageEvent): boolean {
  * last sent.
  *
  * A guess, and thrown away on purpose. The renderer drops an event when its
- * write settles, and main sends the state a write led to before it answers —
+ * write settles, and a write settles only once the state it led to is in —
  * so there is a moment when the page already holds an event that is still in
  * `events`. `landed` is what makes that moment draw the same page rather
  * than the event twice. A write main refuses is dropped the same way, and the

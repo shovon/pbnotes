@@ -114,7 +114,7 @@ export function registerPageIpc(
   }
 
   /** Takes one step along the trail and sends where it led. */
-  function step(take: (trail: Place[]) => Place[]): Promise<void> {
+  function step(take: (trail: Place[]) => Place[]): Promise<number | undefined> {
     trail = take(trail);
     return publish();
   }
@@ -126,27 +126,35 @@ export function registerPageIpc(
    *
    * One at a time, in the order they were asked for. Reading the state takes
    * several turns, and two of them overlapping could send the older one last.
-   * Each resolves once its own state is sent, which is what lets a handler
-   * promise that the state arrives before its reply does.
+   *
+   * Each state goes out numbered, and each publish resolves to its number,
+   * which a handler replies with. Sending before replying is not enough to
+   * make the state arrive first: Electron sends the two down separate pipes
+   * with no order between them. The preload holds the call until the state
+   * with that number has been heard (`src/preload/heard/heard.ts`).
    *
    * A ledger that cannot be read sends nothing: the windows keep what they
    * have, and the call that asked — `show`, or a write — has already said why.
-   * A window closing between the read and the send is ordinary, which is the
-   * only thing the guard is for.
+   * It resolves to no number, so that call waits on nothing. A window closing
+   * between the read and the send is ordinary, which is the only thing the
+   * guard is for.
    */
-  let sending: Promise<void> = Promise.resolve();
+  let sending: Promise<number | undefined> = Promise.resolve(undefined);
+  let sent = 0;
 
-  function publish(): Promise<void> {
+  function publish(): Promise<number | undefined> {
     sending = sending
       .then(async () => {
         const state = getState(await open.require(), trail, today(now()));
+        const n = ++sent;
         for (const window of BrowserWindow.getAllWindows()) {
           if (!window.isDestroyed()) {
-            window.webContents.send(PAGE_CHANNELS.changed, state);
+            window.webContents.send(PAGE_CHANNELS.changed, state, n);
           }
         }
+        return n;
       })
-      .catch((): void => undefined);
+      .catch((): undefined => undefined);
     return sending;
   }
 
@@ -161,7 +169,7 @@ export function registerPageIpc(
   }
 
   /**
-   * A write: `run` appends, and the state it led to is sent before the reply.
+   * A write: `run` appends, and the reply is the number of the state it led to.
    * `open.require` is called as the call arrives, so where it goes is settled
    * then.
    *
@@ -183,7 +191,7 @@ export function registerPageIpc(
       view.catch((): void => undefined);
       const turn = writing.then(async () => {
         await run(await view, ...args);
-        await publish();
+        return publish();
       });
       writing = turn.catch((): void => undefined);
       return turn;
@@ -195,7 +203,7 @@ export function registerPageIpc(
     // Asked for here as well as in `publish`, which swallows it: a view that
     // has just mounted is the one caller with nothing on screen to keep.
     await open.require();
-    await publish();
+    return publish();
   });
 
   ipcMain.handle(PAGE_CHANNELS.go, (_event, place: unknown) => {
