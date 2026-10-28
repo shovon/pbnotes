@@ -4,18 +4,48 @@
  * Lives in `notes.db` with the rest of what this machine remembers, and is the
  * one piece of state here that is safe to lose: a missing row just means the
  * window opens at its default size, centred.
+ *
+ * Free of `electron` imports, so it runs under `node --test`: the displays and
+ * the window are handed in by `index.ts` as the little this reads of them.
  */
-import { screen } from "electron";
-import type { BrowserWindow, Rectangle } from "electron";
 import type { DatabaseSync } from "node:sqlite";
-import { MIN_SIZE, fitToWorkArea } from "./window-bounds/window-bounds";
+import { MIN_SIZE, fitToWorkArea } from "./window-bounds/window-bounds.ts";
+import type { Rect } from "./window-bounds/window-bounds.ts";
 
 export { MIN_SIZE };
 
-type Saved = Rectangle & { maximized: boolean };
+type Saved = Rect & { maximized: boolean };
 
-/** Where the main window was, kept in `db`, which the caller owns. */
-export function createWindowState(db: DatabaseSync) {
+/**
+ * The work area of the display `saved` is on, or of the primary display for
+ * a first launch with nothing saved.
+ */
+export type WorkAreaFor = (saved: Rect | null) => Rect;
+
+/**
+ * What tracking reads of a window and listens to on it, and nothing else of
+ * it. One overload per event, so a `BrowserWindow` is one as it is.
+ */
+export type TrackedWindow = {
+  on(event: "resize", listener: () => void): unknown;
+  on(event: "move", listener: () => void): unknown;
+  on(event: "maximize", listener: () => void): unknown;
+  on(event: "unmaximize", listener: () => void): unknown;
+  on(event: "close", listener: () => void): unknown;
+  isDestroyed(): boolean;
+  isFullScreen(): boolean;
+  isMaximized(): boolean;
+  getNormalBounds(): Rect;
+};
+
+/** How long a run of resize and move events has to settle before it is saved. */
+const SAVE_AFTER_MS = 400;
+
+/**
+ * Where the main window was, kept in `db`, which the caller owns, and fitted
+ * to the work area `workAreaFor` says.
+ */
+export function createWindowState(db: DatabaseSync, workAreaFor: WorkAreaFor) {
   function read(): Saved | null {
     const row = db
       .prepare(
@@ -33,7 +63,8 @@ export function createWindowState(db: DatabaseSync) {
       | undefined;
 
     if (!row) return null;
-    return { ...row, maximized: row.maximized === 1 };
+    const { x, y, width, height, maximized } = row;
+    return { x, y, width, height, maximized: maximized === 1 };
   }
 
   function write(state: Saved): void {
@@ -57,12 +88,8 @@ export function createWindowState(db: DatabaseSync) {
     maximized: boolean;
   } {
     const saved = read();
-    const { workArea } = saved
-      ? screen.getDisplayMatching(saved)
-      : screen.getPrimaryDisplay();
-
     return {
-      ...fitToWorkArea(saved, workArea),
+      ...fitToWorkArea(saved, workAreaFor(saved)),
       maximized: saved?.maximized ?? false,
     };
   }
@@ -71,8 +98,8 @@ export function createWindowState(db: DatabaseSync) {
    * Saves on a trailing timer because resizing fires these events continuously,
    * and on close because the last drag may not have settled yet.
    */
-  function trackWindowState(window: BrowserWindow): void {
-    let timer: NodeJS.Timeout | null = null;
+  function trackWindowState(window: TrackedWindow): void {
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
     const save = () => {
       if (window.isDestroyed()) return;
@@ -81,12 +108,13 @@ export function createWindowState(db: DatabaseSync) {
       // record, and is deliberately not remembered: an app that reopens
       // fullscreen without being asked to is a nuisance.
       if (window.isFullScreen()) return;
-      write({ ...window.getNormalBounds(), maximized: window.isMaximized() });
+      const { x, y, width, height } = window.getNormalBounds();
+      write({ x, y, width, height, maximized: window.isMaximized() });
     };
 
     const schedule = () => {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(save, 400);
+      timer = setTimeout(save, SAVE_AFTER_MS);
     };
 
     window.on("resize", schedule);

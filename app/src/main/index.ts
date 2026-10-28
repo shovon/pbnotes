@@ -1,7 +1,14 @@
 // Composition root for the main process. Everything that holds state is
 // built here, handed to what needs it, and closed here. No other module keeps
 // a handle of its own.
-import { app, BrowserWindow, nativeTheme, protocol, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  nativeTheme,
+  protocol,
+  screen,
+  shell,
+} from "electron";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import started from "electron-squirrel-startup";
@@ -129,7 +136,13 @@ const createWindow = (windowState: WindowState) => {
 // here, and the handlers that need what was built are attached here too.
 app.on("ready", () => {
   const db = openDatabase(path.join(app.getPath("userData"), "notes.db"));
-  const windowState = createWindowState(db);
+  // The displays attached now: `screen` is only usable once the app is ready.
+  const windowState = createWindowState(
+    db,
+    (saved) =>
+      (saved ? screen.getDisplayMatching(saved) : screen.getPrimaryDisplay())
+        .workArea,
+  );
   const ledgers = createLedgers();
   // The real clock and the real disk, chosen here and nowhere else. The clock
   // dates an add or an open, and decides which page is today.
