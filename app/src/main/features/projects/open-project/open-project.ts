@@ -17,15 +17,24 @@ export type Registry = {
   /** Records that `id` was opened now; null for an id it does not track. */
   touchProject(id: string): Project | null;
   removeProject(id: string): void;
-  checkAvailability(ids: string[]): Promise<Record<string, Availability>>;
 };
 
+/** Whether a directory can be reached now. Never rejects. */
+export type Probe = (directory: string) => Promise<Availability>;
+
 /**
+ * `probe` is asked whether the open project's directory is there before
+ * anything is handed out to write to it.
+ *
  * `onMoved` is told that the open project is now a different one, and not
  * which: whoever wires this to what a project contains already knows how to
  * ask, and nothing here imports what it would be telling.
  */
-export function createOpenProject(registry: Registry, onMoved: () => void) {
+export function createOpenProject(
+  registry: Registry,
+  probe: Probe,
+  onMoved: () => void,
+) {
   /**
    * Only the session's choice is kept here. Null falls through to whichever was
    * opened most recently — on the assumption that someone who was working in a
@@ -68,8 +77,7 @@ export function createOpenProject(registry: Registry, onMoved: () => void) {
     const project = currentProject();
     if (!project) throw new Error("No project is open");
 
-    const availability = await registry.checkAvailability([project.id]);
-    if (availability[project.id] !== "available") {
+    if ((await probe(project.path)) !== "available") {
       throw new Error(`"${project.name}" is not reachable right now.`);
     }
     return project;

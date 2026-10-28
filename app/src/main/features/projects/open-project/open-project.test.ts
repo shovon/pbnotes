@@ -3,17 +3,27 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Availability, Project } from "../../../../shared/projects.ts";
 import { createOpenProject } from "./open-project.ts";
-import type { Registry } from "./open-project.ts";
+import type { Probe, Registry } from "./open-project.ts";
 
 /**
  * The composition root for these tests: a registry held in memory, with a
- * clock of its own that only moves when a project is opened, and whatever
- * reachability a test says.
+ * clock of its own that only moves when a project is opened, and a disk that
+ * says whatever reachability a test says, keyed by project id, and records
+ * every directory it was asked about.
+ *
+ * It holds more than `Registry` asks for: a `probe` and what it was asked.
+ * `createOpenProject` takes it as a `Registry` all the same, and never sees
+ * the rest.
  */
 function registry(
   ids: string[],
   reachable: Record<string, Availability> = {},
-): Registry & { reachable: Record<string, Availability> } {
+): Registry & {
+  reachable: Record<string, Availability>;
+  probe: Probe;
+  probed: string[];
+} {
+  const probed: string[] = [];
   const rows = new Map<string, Project>(
     ids.map((id): [string, Project] => [
       id,
@@ -40,15 +50,19 @@ function registry(
       return project;
     },
     removeProject: (id) => void rows.delete(id),
-    async checkAvailability(asked) {
-      return Object.fromEntries(
-        asked
-          .filter((id) => rows.has(id))
-          .map((id) => [id, reachable[id] ?? "available"]),
-      );
+    probed,
+    async probe(directory) {
+      probed.push(directory);
+      return reachable[directory.slice("/projects/".length)] ?? "available";
     },
   };
 }
+
+/** What is open over `projects`, reached through its own disk. */
+const openOver = (
+  projects: ReturnType<typeof registry>,
+  onMoved: () => void,
+) => createOpenProject(projects, projects.probe, onMoved);
 
 /** How many times the open project changed. */
 function counter(): { count: number; onMoved: () => void } {
@@ -65,7 +79,7 @@ function counter(): { count: number; onMoved: () => void } {
 const unwatched = (): void => undefined;
 
 test("with nothing tracked, nothing is open", async () => {
-  const open = createOpenProject(registry([]), unwatched);
+  const open = openOver(registry([]), unwatched);
   assert.equal(open.currentProject(), null);
   await assert.rejects(open.requireProject(), /No project is open/);
 });
@@ -75,13 +89,13 @@ test("with nothing opened this session, the most recently opened one is", () => 
   projects.touchProject("a");
   projects.touchProject("c");
   projects.touchProject("b");
-  const open = createOpenProject(projects, unwatched);
+  const open = openOver(projects, unwatched);
   assert.equal(open.currentProject()?.id, "b");
 });
 
 test("opening a project makes it current and records when", () => {
   const projects = registry(["a", "b"]);
-  const open = createOpenProject(projects, unwatched);
+  const open = openOver(projects, unwatched);
   open.open("a");
   assert.equal(open.currentProject()?.id, "a");
   assert.notEqual(projects.getProject("a")?.lastOpenedAt, null);
@@ -89,7 +103,7 @@ test("opening a project makes it current and records when", () => {
 
 test("opening an id the registry does not track throws and moves nothing", () => {
   const moved = counter();
-  const open = createOpenProject(registry(["a"]), moved.onMoved);
+  const open = openOver(registry(["a"]), moved.onMoved);
   open.open("a");
   moved.count = 0;
   assert.throws(() => open.open("nope"), /No such project/);
@@ -99,7 +113,7 @@ test("opening an id the registry does not track throws and moves nothing", () =>
 
 test("the open project changing is told once, and reopening it is not a change", () => {
   const moved = counter();
-  const open = createOpenProject(registry(["a", "b"]), moved.onMoved);
+  const open = openOver(registry(["a", "b"]), moved.onMoved);
   open.open("a");
   // Nothing was open but the fallback, and with nothing opened before that is
   // whichever the registry lists first; `a` may already be it.
@@ -112,7 +126,7 @@ test("the open project changing is told once, and reopening it is not a change",
 
 test("removing the open project moves to the next most recent", () => {
   const moved = counter();
-  const open = createOpenProject(registry(["a", "b", "c"]), moved.onMoved);
+  const open = openOver(registry(["a", "b", "c"]), moved.onMoved);
   open.open("a");
   open.open("b");
   moved.count = 0;
@@ -123,7 +137,7 @@ test("removing the open project moves to the next most recent", () => {
 
 test("removing a project that is not open moves nothing", () => {
   const moved = counter();
-  const open = createOpenProject(registry(["a", "b"]), moved.onMoved);
+  const open = openOver(registry(["a", "b"]), moved.onMoved);
   open.open("a");
   moved.count = 0;
   open.remove("b");
@@ -133,7 +147,7 @@ test("removing a project that is not open moves nothing", () => {
 
 test("a project that cannot be reached is refused, by name", async () => {
   const projects = registry(["a", "b"], { a: "missing", b: "unknown" });
-  const open = createOpenProject(projects, unwatched);
+  const open = openOver(projects, unwatched);
   open.open("a");
   await assert.rejects(open.requireProject(), /"a" is not reachable right now/);
   open.open("b");
@@ -143,11 +157,23 @@ test("a project that cannot be reached is refused, by name", async () => {
 });
 
 test("requireProject settles which project the moment it is called", async () => {
-  const open = createOpenProject(registry(["a", "b"]), unwatched);
+  const open = openOver(registry(["a", "b"]), unwatched);
   open.open("a");
   // A write sent just before the project changed lands where it was typed.
   const pending = open.requireProject();
   open.open("b");
   assert.equal((await pending).id, "a");
   assert.equal((await open.requireProject()).id, "b");
+});
+
+test("requireProject asks the disk about the open project's own folder, and only that", async () => {
+  const projects = registry(["a", "b"]);
+  const open = openOver(projects, unwatched);
+  open.open("b");
+  await open.requireProject();
+  assert.deepEqual(projects.probed, ["/projects/b"]);
+
+  const empty = registry([]);
+  await assert.rejects(openOver(empty, unwatched).requireProject());
+  assert.deepEqual(empty.probed, []);
 });

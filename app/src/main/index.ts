@@ -3,11 +3,16 @@
 // a handle of its own.
 import { app, BrowserWindow, nativeTheme, protocol, shell } from "electron";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import started from "electron-squirrel-startup";
 import { openDatabase } from "./db";
 import { rendererSource } from "./renderer-source/renderer-source";
 import { mainWindowOptions, windowColors } from "./window-options/window-options";
-import { createProjectsStore } from "./features/projects/projects-store";
+import { createDisk } from "./features/projects/disk/disk";
+import {
+  createProjectsStore,
+  pathKeyOn,
+} from "./features/projects/projects-store";
 import { registerProjectIpc } from "./features/projects/projects-ipc";
 import { createOpenProject } from "./features/projects/open-project/open-project";
 import { createLedgers } from "./ledgers";
@@ -126,12 +131,23 @@ app.on("ready", () => {
   const db = openDatabase(path.join(app.getPath("userData"), "notes.db"));
   const windowState = createWindowState(db);
   const ledgers = createLedgers();
+  // The real clock and the real disk, chosen here and nowhere else. The clock
+  // dates an add or an open, and decides which page is today.
+  const now = () => new Date();
+  const disk = createDisk();
 
+  const store = createProjectsStore(db, {
+    disk,
+    now,
+    newId: randomUUID,
+    pathKey: pathKeyOn(process.platform),
+  });
   // A different project is open, so a trail through the last one is over.
   // `pages` is declared below; this only runs once a project changes, by
   // which time it exists.
-  const store = createProjectsStore(db);
-  const projects = createOpenProject(store, () => pages.resetTrail());
+  const projects = createOpenProject(store, disk.probe, () =>
+    pages.resetTrail(),
+  );
   registerProjectIpc(store, projects);
 
   // Pages are handed their view of what is open, and the images beside it,
@@ -161,8 +177,7 @@ app.on("ready", () => {
         return project ? findImage(project.path, name) : undefined;
       },
     },
-    // The real clock, chosen here: it decides which page is today.
-    () => new Date(),
+    now,
     // Every window of the app, over `pages:changed`.
     broadcastPages,
   );

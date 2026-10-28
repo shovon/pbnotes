@@ -1,6 +1,4 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type {
   AddOutcome,
@@ -30,52 +28,50 @@ function toProject(row: ProjectRow): Project {
 }
 
 /**
- * macOS and Windows filesystems are case-insensitive by default, so
+ * The key that decides whether two paths are one directory, by the platform's
+ * usual filesystem. macOS and Windows are case-insensitive by default, so
  * `/Users/Shovon/x` and `/Users/shovon/x` are the same directory and must not
  * both end up in the list. (An APFS volume *can* be case-sensitive; folding
  * anyway costs us nothing beyond refusing a duplicate that differs only by
  * case, which is the friendlier failure.)
  */
-function toPathKey(absolutePath: string): string {
-  return process.platform === 'linux'
-    ? absolutePath
-    : absolutePath.toLowerCase();
+export function pathKeyOn(platform: string): (canonical: string) => string {
+  return platform === 'linux'
+    ? (canonical) => canonical
+    : (canonical) => canonical.toLowerCase();
 }
 
-/** Resolves `.`/`..` and symlinks so the same directory always keys the same. */
-async function canonicalize(input: string): Promise<string> {
-  return fs.realpath(path.resolve(input));
-}
+/** What the registry asks of the disk, and nothing else of it. */
+export type Disk = {
+  /** The path with `.`/`..` and symlinks resolved. Rejects for one that cannot be read. */
+  canonicalize(input: string): Promise<string>;
+  /** Rejects for a path that cannot be read. */
+  isDirectory(path: string): Promise<boolean>;
+  /** Whether a tracked directory can be reached now. Never rejects. */
+  probe(path: string): Promise<Availability>;
+};
 
 /**
- * A `stat` against an unreachable network share can block for a long time, so
- * a slow probe reports `unknown` instead of stalling the list or being
- * mistaken for a deletion.
+ * Everything the registry reads from outside besides `db`: the disk, the
+ * clock that dates an add or an open, where a new project's id comes from,
+ * and the key that makes two paths one directory (`pathKeyOn`).
  */
-const AVAILABILITY_TIMEOUT_MS = 2_000;
-
-async function probe(directory: string): Promise<Availability> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<Availability>((resolve) => {
-    timer = setTimeout(() => resolve('unknown'), AVAILABILITY_TIMEOUT_MS);
-  });
-  const stat = fs.stat(directory).then(
-    (stats): Availability => (stats.isDirectory() ? 'available' : 'missing'),
-    (): Availability => 'missing',
-  );
-
-  try {
-    return await Promise.race([stat, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
+export type ProjectsStoreDeps = {
+  disk: Disk;
+  now: () => Date;
+  newId: () => string;
+  pathKey: (canonical: string) => string;
+};
 
 /**
  * The registry of tracked projects, over `db`. Every query goes through the
- * handle passed in; nothing here holds one of its own.
+ * handle passed in, and every read of the disk, the clock or randomness
+ * through `deps`; nothing here holds one of its own.
  */
-export function createProjectsStore(db: DatabaseSync) {
+export function createProjectsStore(
+  db: DatabaseSync,
+  { disk, now, newId, pathKey: toPathKey }: ProjectsStoreDeps,
+) {
   function listProjects(): Project[] {
     const rows = db
       .prepare(
@@ -106,9 +102,8 @@ export function createProjectsStore(db: DatabaseSync) {
   async function addProject(input: string): Promise<AddOutcome> {
     let canonical: string;
     try {
-      canonical = await canonicalize(input);
-      const stats = await fs.stat(canonical);
-      if (!stats.isDirectory()) {
+      canonical = await disk.canonicalize(input);
+      if (!(await disk.isDirectory(canonical))) {
         return { status: 'failed', path: input, reason: 'not-a-directory' };
       }
     } catch {
@@ -120,10 +115,10 @@ export function createProjectsStore(db: DatabaseSync) {
     if (existing) return { status: 'already-tracked', project: existing };
 
     const project: Project = {
-      id: randomUUID(),
+      id: newId(),
       path: canonical,
       name: path.basename(canonical),
-      addedAt: new Date().toISOString(),
+      addedAt: now().toISOString(),
       lastOpenedAt: null,
       pinned: false,
     };
@@ -172,7 +167,7 @@ export function createProjectsStore(db: DatabaseSync) {
   function touchProject(id: string): Project | null {
     db
       .prepare('UPDATE projects SET last_opened_at = ? WHERE id = ?')
-      .run(new Date().toISOString(), id);
+      .run(now().toISOString(), id);
     return getProject(id);
   }
 
@@ -187,7 +182,7 @@ export function createProjectsStore(db: DatabaseSync) {
     const project = getProject(id);
     if (!project) return null;
 
-    const canonical = await canonicalize(newPath);
+    const canonical = await disk.canonicalize(newPath);
     const pathKey = toPathKey(canonical);
 
     const collision = findByPathKey(pathKey);
@@ -213,7 +208,7 @@ export function createProjectsStore(db: DatabaseSync) {
     const results = await Promise.all(
       projects.map(async (project) => [
         project.id,
-        await probe(project.path),
+        await disk.probe(project.path),
       ] as const),
     );
 
