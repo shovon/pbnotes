@@ -43,9 +43,9 @@ export function getState(
   const at = trail.at(-1);
   let pages: Page[];
   if (at) {
-    pages = [getPage(view, at.page)];
+    pages = [getPage(view.state, at.page)];
   } else {
-    pages = getPages(view);
+    pages = getPages(view.state);
     if (!pages.some((page) => page.title === today)) {
       pages = [{ title: today, blocks: [] }, ...pages].sort((a, b) =>
         b.title.localeCompare(a.title),
@@ -56,9 +56,9 @@ export function getState(
     trail,
     showing: pages.map((page) => ({
       page,
-      references: at?.block ? [] : getReferences(view, page.title),
+      references: at?.block ? [] : getReferences(view.state, page.title),
     })),
-    previews: getPreviews(view),
+    previews: getPreviews(view.state),
   };
 }
 

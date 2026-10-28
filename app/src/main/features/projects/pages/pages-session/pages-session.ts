@@ -169,9 +169,9 @@ export function createPagesSession(
     rezoom: (block?: string) => step((trail) => rezoom(trail, block)),
 
     locate: async (blockId: string) =>
-      locateBlock(await open.require(), blockId),
+      locateBlock((await open.require()).state, blockId),
     search: async (query: string): Promise<string[]> =>
-      searchPages(await open.require(), query),
+      searchPages((await open.require()).state, query),
     status: async (): Promise<LogStatus> =>
       getLogStatus(await open.require()),
 

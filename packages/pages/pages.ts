@@ -25,7 +25,14 @@ import {
   reduce,
   titleOf,
 } from "./blocks.ts";
-import type { Block, BlockCreated, Page, PageEvent, Pages } from "./blocks.ts";
+import type {
+  Block,
+  BlockIndented,
+  BlockOutdented,
+  Page,
+  PageEvent,
+  Pages,
+} from "./blocks.ts";
 import { linking, read } from "./reading.ts";
 
 export {
@@ -88,8 +95,8 @@ export function today(now: Date): string {
  * The ledger hands it every event, so the gate is here: an event type this
  * build does not have — a bare name (#40) among them — or a `v` newer than it
  * reads leaves the pages as they were. A build that wrote a `v` its own gate
- * refuses would skip its own events, which is why `append` takes `v` from the
- * same table.
+ * refuses would skip its own events, which is why the builders (`blockCreated`
+ * and the rest) take `v` from the same table.
  */
 export const pagesFold = {
   reduce: (state: Pages, event: { type: string; v: number; payload: unknown }): Pages =>
@@ -101,9 +108,9 @@ export const pagesFold = {
 };
 
 /**
- * What the commands and queries are handed: the pages as they stand, and the
- * way to append one of this fold's events. A writer wires `dispatch` to its
- * own log; a reader that never writes can leave it throwing.
+ * What the commands are handed: the pages as they stand, and the way to
+ * append one of this fold's events. A writer wires `dispatch` to its own log.
+ * The queries take the pages alone, since none of them writes.
  */
 export type PagesView = {
   readonly state: Pages;
@@ -115,15 +122,11 @@ export type PagesView = {
  * The page as it stands right now, empty if nothing has been written to it,
  * under the spelling it shows whichever spelling it was asked for.
  */
-function pageOf(view: PagesView, title: string): Page {
+export function getPage(pages: Pages, title: string): Page {
   return {
-    title: titleOf(view.state, title),
-    blocks: blocksOn(view.state, title),
+    title: titleOf(pages, title),
+    blocks: blocksOn(pages, title),
   };
-}
-
-export function getPage(view: PagesView, title: string): Page {
-  return pageOf(view, title);
 }
 
 /**
@@ -143,8 +146,8 @@ export function getPage(view: PagesView, title: string): Page {
  * Sorted on the date string, which for `YYYY-MM-DD` is the same order as the
  * dates themselves. That is the reason for the format.
  */
-export function getPages(view: PagesView): Page[] {
-  const { blocks, titles } = view.state;
+export function getPages(pages: Pages): Page[] {
+  const { blocks, titles } = pages;
   return Object.entries(blocks)
     .filter(([key, on]) => DATE_PATTERN.test(key) && on.length > 0)
     .sort(([a], [b]) => b.localeCompare(a))
@@ -165,8 +168,8 @@ export function getPages(view: PagesView): Page[] {
  * this into a single reverse index per call if a ledger ever has enough
  * days for that to show.
  */
-export function getReferences(view: PagesView, title: string): Page[] {
-  const { blocks, titles } = view.state;
+export function getReferences(pages: Pages, title: string): Page[] {
+  const { blocks, titles } = pages;
   const key = pageKey(title);
   return Object.entries(blocks)
     .filter(([page]) => page !== key)
@@ -194,7 +197,7 @@ export function getReferences(view: PagesView, title: string): Page[] {
  * Pairs, not an object: an id is whatever was typed between the parentheses,
  * and `((__proto__))` is a key an object does not hold.
  */
-export function getPreviews({ state }: PagesView): [string, string | null][] {
+export function getPreviews(pages: Pages): [string, string | null][] {
   const ids = new Set<string>();
   const collect = (blocks: Block[]): void => {
     for (const block of blocks) {
@@ -202,9 +205,9 @@ export function getPreviews({ state }: PagesView): [string, string | null][] {
       collect(block.children);
     }
   };
-  Object.values(state.blocks).forEach(collect);
+  Object.values(pages.blocks).forEach(collect);
   return [...ids].map((id) => {
-    const found = find(state, id);
+    const found = find(pages, id);
     return [id, found ? read(found.siblings[found.at].text).preview : null];
   });
 }
@@ -225,19 +228,19 @@ export function getPreviews({ state }: PagesView): [string, string | null][] {
  * title set in the fold if a ledger ever gets big enough for that to show.
  */
 export function searchPages(
-  { state }: PagesView,
+  pages: Pages,
   query: string,
   limit = 10,
 ): string[] {
   const titles = new Set<string>();
-  const add = (title: string): void => void titles.add(titleOf(state, title));
+  const add = (title: string): void => void titles.add(titleOf(pages, title));
   const collect = (blocks: Block[]): void => {
     for (const block of blocks) {
       read(block.text).links.forEach(add);
       collect(block.children);
     }
   };
-  for (const [key, blocks] of Object.entries(state.blocks)) {
+  for (const [key, blocks] of Object.entries(pages.blocks)) {
     if (blocks.length > 0) add(key);
     collect(blocks);
   }
@@ -256,44 +259,55 @@ export function searchPages(
 
 /** The page a block is on, or undefined for a block the ledger lacks. */
 export function locateBlock(
-  view: PagesView,
+  pages: Pages,
   blockId: string,
 ): { page: string } | undefined {
-  const found = find(view.state, blockId);
+  const found = find(pages, blockId);
   return found && { page: found.page };
 }
 
 /**
- * Appends one of this fold's events: the payload checked against the schema,
- * and the version taken from `HANDLES`.
- *
- * Both halves of one hazard. A payload literal that drifts from the schema
- * folds to nothing, and a `v` typed out by hand next to a `HANDLES` that says
- * something else is a build whose own gate refuses its own writes — either
- * way the user's keystroke lands on disk and never comes back.
+ * One of this fold's events as it is written: the schema's own type and
+ * payload, and the `v` the gate reads. A `PageEvent` with one more field, so
+ * whatever reads a `PageEvent` (`predict`, `reduce`) takes it as it is.
  */
-function append<T extends PageEvent["type"]>(
-  view: PagesView,
-  type: T,
-  payload: Extract<PageEvent, { type: T }>["payload"],
-): Promise<unknown> {
-  return view.dispatch(HANDLES[type], type, payload);
+type Built<T extends string> = Extract<
+  PageEvent,
+  { type: `${typeof NAMESPACE}${T}` }
+> & { v: number };
+
+/**
+ * Appends an event one of the builders below made.
+ *
+ * The builders are what stand between a keystroke and one hazard with two
+ * halves. A payload literal that drifts from the schema folds to nothing, and
+ * a `v` typed out by hand next to a `HANDLES` that says something else is a
+ * build whose own gate refuses its own writes — either way the user's
+ * keystroke lands on disk and never comes back. So every event is built in
+ * one place, the payload typed against the schema and `v` taken from
+ * `HANDLES`, and the renderer predicts with the same builders it will be
+ * recorded by.
+ *
+ * Each builder is built from its arguments alone and checks nothing against
+ * any page: that is the command's job, before it builds. They read no clock
+ * and no randomness.
+ */
+function append(view: PagesView, event: Built<string>): Promise<unknown> {
+  return view.dispatch(event.v, event.type, event.payload);
 }
 
 /**
- * The `block.created` event for these arguments, built from them alone: the
- * payload typed against the schema and `v` from `HANDLES`, the same bytes
- * `addBlock` writes. Checks nothing against any page, so a writer that holds
- * no fold (the CLI) can still write a valid event — as long as it trusts its
- * own `after` and `id`, which a fresh id and no `after` always are. The id is
- * the caller's to make: this reads no clock and no randomness of its own.
+ * The `block.created` event for these arguments, the same bytes `addBlock`
+ * writes. A writer that holds no fold (the CLI) can still write a valid one,
+ * as long as it trusts its own `after` and `id`, which a fresh id and no
+ * `after` always are. The id is the caller's to make.
  */
 export function blockCreated(
   page: string,
   text: string,
   after: string | undefined,
   id: string,
-): { v: number; type: PageEvent["type"]; payload: BlockCreated } {
+): Built<"block.created"> {
   const type = `${NAMESPACE}block.created` as const;
   return {
     v: HANDLES[type],
@@ -302,6 +316,36 @@ export function blockCreated(
     // bytes it always did.
     payload: { page, id, text, ...(after ? { after } : {}) },
   };
+}
+
+/** The `block.edited` event: `id`'s text is now `text`. */
+export function blockEdited(id: string, text: string): Built<"block.edited"> {
+  const type = `${NAMESPACE}block.edited` as const;
+  return { v: HANDLES[type], type, payload: { id, text } };
+}
+
+/** The `block.deleted` event: the user is done with `id`. */
+export function blockDeleted(id: string): Built<"block.deleted"> {
+  const type = `${NAMESPACE}block.deleted` as const;
+  return { v: HANDLES[type], type, payload: { id } };
+}
+
+/**
+ * The `block.indented` event for a move `indented` resolved. Takes the
+ * resolved move rather than a block id: which parent Tab means is read off a
+ * page, and this reads none.
+ */
+export function blockIndented(payload: BlockIndented): Built<"block.indented"> {
+  const type = `${NAMESPACE}block.indented` as const;
+  return { v: HANDLES[type], type, payload };
+}
+
+/** The `block.outdented` event for a move `outdented` resolved. */
+export function blockOutdented(
+  payload: BlockOutdented,
+): Built<"block.outdented"> {
+  const type = `${NAMESPACE}block.outdented` as const;
+  return { v: HANDLES[type], type, payload };
 }
 
 /**
@@ -333,9 +377,8 @@ export async function addBlock(
 
   // dispatch appends before it folds, so this resolves only once the event is
   // durable — the page handed back can never show something a crash takes.
-  const e = blockCreated(title, text, after, id);
-  await view.dispatch(e.v, e.type, e.payload);
-  return pageOf(view, title);
+  await append(view, blockCreated(title, text, after, id));
+  return getPage(view.state, title);
 }
 
 /**
@@ -358,8 +401,8 @@ export async function editBlock(
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
 
-  await append(view, `${NAMESPACE}block.edited`, { id: blockId, text });
-  return pageOf(view, found.page);
+  await append(view, blockEdited(blockId, text));
+  return getPage(view.state, found.page);
 }
 
 /**
@@ -378,8 +421,8 @@ export async function deleteBlock(
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
 
-  await append(view, `${NAMESPACE}block.deleted`, { id: blockId });
-  return pageOf(view, found.page);
+  await append(view, blockDeleted(blockId));
+  return getPage(view.state, found.page);
 }
 
 /**
@@ -403,8 +446,8 @@ export async function indentBlock(
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
   const payload = indented(found.blocks, blockId);
-  if (payload) await append(view, `${NAMESPACE}block.indented`, payload);
-  return pageOf(view, found.page);
+  if (payload) await append(view, blockIndented(payload));
+  return getPage(view.state, found.page);
 }
 
 /**
@@ -425,6 +468,6 @@ export async function outdentBlock(
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");
   const payload = outdented(found.blocks, blockId);
-  if (payload) await append(view, `${NAMESPACE}block.outdented`, payload);
-  return pageOf(view, found.page);
+  if (payload) await append(view, blockOutdented(payload));
+  return getPage(view.state, found.page);
 }

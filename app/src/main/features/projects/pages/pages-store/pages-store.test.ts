@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import * as pages from "@pbnotes/pages";
 import { lastLeaf, locate, NAMESPACE } from "@pbnotes/pages";
-import type { Block } from "@pbnotes/pages";
+import type { Block, Pages } from "@pbnotes/pages";
 import * as store from "./pages-store.ts";
 import type { PagesView } from "./pages-store.ts";
 import { createLedgers } from "../../../../ledgers.ts";
@@ -35,6 +35,12 @@ const on =
   async (project: LedgerRef, ...args: A): Promise<Awaited<R>> =>
     await run(await pagesOf(project), ...args);
 
+/** `on`, for a query: what it reads is the pages, not the whole view. */
+const query =
+  <A extends unknown[], R>(run: (state: Pages, ...args: A) => R) =>
+  async (project: LedgerRef, ...args: A): Promise<Awaited<R>> =>
+    await run((await pagesOf(project)).state, ...args);
+
 // The domain makes no ids of its own; this file is the composition root here,
 // so it picks the randomness, for the calls that do not name a block.
 const addBlock = (
@@ -46,10 +52,10 @@ const addBlock = (
 ) => on(pages.addBlock)(project, title, text, after, id);
 const deleteBlock = on(pages.deleteBlock);
 const editBlock = on(pages.editBlock);
-const getPage = on(pages.getPage);
-const getPages = on(pages.getPages);
-const getPreviews = on(pages.getPreviews);
-const getReferences = on(pages.getReferences);
+const getPage = query(pages.getPage);
+const getPages = query(pages.getPages);
+const getPreviews = query(pages.getPreviews);
+const getReferences = query(pages.getReferences);
 const getState = on(store.getState);
 const indentBlock = on(pages.indentBlock);
 const outdentBlock = on(pages.outdentBlock);
