@@ -49,14 +49,14 @@ function requireBlockId(value: unknown): string {
 }
 
 /**
- * Sends `state` to every window, over `pages:changed`. A window closing
- * between the read and the send is ordinary, which is the only thing the
- * guard is for.
+ * Sends `state` to every window, over `pages:changed`, with its number `n`
+ * (see `publish` in `pages-session.ts`). A window closing between the read and
+ * the send is ordinary, which is the only thing the guard is for.
  */
-export function broadcastPages(state: PagesState): void {
+export function broadcastPages(state: PagesState, n: number): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
-      window.webContents.send(PAGE_CHANNELS.changed, state);
+      window.webContents.send(PAGE_CHANNELS.changed, state, n);
     }
   }
 }
