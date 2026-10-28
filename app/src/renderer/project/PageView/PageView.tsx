@@ -90,8 +90,8 @@ export default function PageView({
    * out, and arrive with its state.
    *
    * An event is dropped when its write settles, and that is all the
-   * bookkeeping there is: main sends the state a write led to before it
-   * answers, so by then the page says the same thing — or the write was
+   * bookkeeping there is: a write settles only once the state it led to has
+   * arrived, so by then the page says the same thing — or the write was
    * refused, and the page going back to what main has is the truth.
    */
   const [pending, setPending] = useState<PageEvent[]>([]);

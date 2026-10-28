@@ -130,8 +130,8 @@ export function createLedgers(paces: Paces = PACES) {
       get status() {
         return ledger.status;
       },
-      // The event is folded in here, before this resolves, so the state sent
-      // before the reply already holds it: the renderer drops its prediction
+      // The event is folded in here, before this resolves, so the state the
+      // reply names already holds it: the renderer drops its prediction
       // when the write settles, and a state without it would make the block
       // jump back for a frame.
       async dispatch(v, type, payload) {

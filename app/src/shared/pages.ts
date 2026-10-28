@@ -63,6 +63,7 @@ export type PagesState = {
 
 export const PAGE_CHANNELS = {
   show: 'pages:show',
+  /** Main to renderer: a `PagesState`, then its number. */
   changed: 'pages:changed',
   go: 'pages:go',
   back: 'pages:back',
@@ -85,8 +86,11 @@ export const PAGE_CHANNELS = {
  * about that one.
  *
  * Nothing but `locate`, `search` and `status` answers with content. A write or a step
- * along the trail resolves once main has sent the state it led to, so by the
- * time a caller carries on, `onChanged` has already heard it. Writes are
+ * along the trail resolves once `onChanged` has heard the state it led to, so
+ * a caller that carries on sees it. That order is the bridge's to keep, not
+ * Electron's: main numbers each state on `pages:changed`, replies with the
+ * number of the one a call led to, and the preload holds the call until that
+ * one has been heard (`src/preload/heard/heard.ts` says why). Writes are
  * recorded one at a time, in the order they were sent, so one may name a
  * block an earlier one is still writing.
  */

@@ -47,14 +47,14 @@ export type Open = {
 
 /**
  * `now` is the clock that decides which day is today, and `broadcast` sends a
- * state to every window; both are handed in like everything else this reads
- * or reaches from outside. The trail and the two queues live in here, one set
+ * state to every window, with its number; both are handed in like everything
+ * else this reads or reaches from outside. The trail and the two queues live in here, one set
  * per call.
  */
 export function createPagesSession(
   open: Open,
   now: () => Date,
-  broadcast: (state: PagesState) => void,
+  broadcast: (state: PagesState, n: number) => void,
 ) {
   /**
    * Where the view is. Main's to hold: the renderer asks for a step and draws
@@ -77,32 +77,45 @@ export function createPagesSession(
    * renderer: after a write, after a step along the trail, and after another
    * device's events are folded in.
    *
-   * One at a time, in the order they were asked for. Each resolves once its
-   * own state is sent, which is what lets a write promise that the state
-   * arrives before its reply does.
+   * One at a time, in the order they were asked for. Reading the state takes
+   * several turns, and two of them overlapping could send the older one last.
+   *
+   * Each state goes out numbered, and each publish resolves to its number,
+   * which the call that asked replies with. Sending before replying is not
+   * enough to make the state arrive first: Electron sends the two down
+   * separate pipes with no order between them. The preload holds the call
+   * until the state with that number has been heard
+   * (`src/preload/heard/heard.ts`).
    *
    * A ledger that cannot be read sends nothing: the windows keep what they
    * have, and the call that asked — `show`, or a write — has already said why.
+   * It resolves to no number, so that call waits on nothing.
    */
-  let sending: Promise<void> = Promise.resolve();
+  let sending: Promise<number | undefined> = Promise.resolve(undefined);
+  let sent = 0;
 
-  function publish(): Promise<void> {
+  function publish(): Promise<number | undefined> {
     sending = sending
       .then(async () => {
-        broadcast(getState(await open.require(), trail, today(now())));
+        const state = getState(await open.require(), trail, today(now()));
+        const n = ++sent;
+        broadcast(state, n);
+        return n;
       })
-      .catch((): void => undefined);
+      .catch((): undefined => undefined);
     return sending;
   }
 
   /** Takes one step along the trail and sends where it led. */
-  function step(take: (trail: Place[]) => Place[]): Promise<void> {
+  function step(
+    take: (trail: Place[]) => Place[],
+  ): Promise<number | undefined> {
     trail = take(trail);
     return publish();
   }
 
   /**
-   * A write: `run` appends, and the state it led to is sent before the reply.
+   * A write: `run` appends, and resolves to the number of the state it led to.
    * `open.require` is called as the write arrives, so where it goes is settled
    * then, not when its turn comes.
    *
@@ -114,13 +127,15 @@ export function createPagesSession(
    */
   let writing: Promise<unknown> = Promise.resolve();
 
-  function write(run: (view: PagesView) => Promise<unknown>): Promise<void> {
+  function write(
+    run: (view: PagesView) => Promise<unknown>,
+  ): Promise<number | undefined> {
     const view = open.require();
     // Waited on in turn, which may be later than it fails.
     view.catch((): void => undefined);
     const turn = writing.then(async () => {
       await run(await view);
-      await publish();
+      return publish();
     });
     writing = turn.catch((): void => undefined);
     return turn;
@@ -144,9 +159,9 @@ export function createPagesSession(
      * pages here as well as in `publish`, which swallows a refusal: a view
      * with nothing on screen yet is the one caller that has to hear it.
      */
-    async show(): Promise<void> {
+    async show(): Promise<number | undefined> {
       await open.require();
-      await publish();
+      return publish();
     },
 
     go: (place: Place) => step((trail) => go(trail, place)),

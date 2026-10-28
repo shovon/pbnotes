@@ -47,6 +47,8 @@ function session(first: PagesView | null) {
   let current = first;
   let clock = new Date(2026, 9, 27, 9);
   const sent: PagesState[] = [];
+  /** The number each state in `sent` went out with. */
+  const numbers: number[] = [];
   const pages = createPagesSession(
     {
       async require() {
@@ -59,11 +61,15 @@ function session(first: PagesView | null) {
       findImage: async () => undefined,
     },
     () => clock,
-    (state) => void sent.push(state),
+    (state, n) => {
+      sent.push(state);
+      numbers.push(n);
+    },
   );
   return {
     pages,
     sent,
+    numbers,
     openLedger: (view: PagesView | null): void => {
       current = view;
     },
@@ -82,6 +88,31 @@ test("a write's state is sent before its reply", async () => {
   const { pages, sent } = session(view);
   await pages.addBlock("a1", TODAY, "one");
   assert.deepEqual(shown(sent.at(-1)), ["one"]);
+});
+
+test("every call that sends a state resolves to that state's number", async () => {
+  // What the preload waits on: Electron does not deliver a state sent before
+  // a reply ahead of it, so the reply names the state instead.
+  const { view } = ledger();
+  const { pages, numbers } = session(view);
+  const replies = [
+    await pages.show(),
+    await pages.addBlock("a1", TODAY, "one"),
+    await pages.go({ page: "Mira" }),
+    await pages.back(),
+  ];
+  assert.deepEqual(replies, [1, 2, 3, 4]);
+  assert.deepEqual(numbers, [1, 2, 3, 4]);
+});
+
+test("a call that sends nothing resolves to no number", async () => {
+  const { pages, numbers, openLedger } = session(null);
+  await assert.rejects(pages.show(), /not reachable/);
+  // A step still answers when the ledger cannot be read, and sends nothing.
+  assert.equal(await pages.go({ page: "Mira" }), undefined);
+  openLedger(ledger().view);
+  assert.equal(await pages.back(), 1);
+  assert.deepEqual(numbers, [1]);
 });
 
 test("writes are recorded in the order they arrive, so one may name the block before it", async () => {
