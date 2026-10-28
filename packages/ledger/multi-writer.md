@@ -230,6 +230,8 @@ So **every directory is foreign**, even the one this ledger's writer is appendin
 | The directory or a segment cannot be listed or read | `unavailable` |
 | A `seq` at or below the cursor | Skipped, not a stop |
 
+What a segment's bytes say (every row above but the missing segment and `unavailable`, which are about files) is `readRecords` in `records.ts`: pure, with a test for each row, and one that cuts a valid run at every byte. Change a rule there and here together.
+
 Folding past a gap is the one thing worse than stopping at it: an event whose causal predecessor is missing builds a state that is quietly wrong, and quietly wrong is the failure this codebase is built to avoid.
 
 > **A foreign log can never prevent the log from opening.** One stalled directory costs that directory's tail. Every other directory still folds.

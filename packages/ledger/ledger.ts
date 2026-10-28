@@ -5,26 +5,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { tmpdir, userInfo } from "node:os";
 import { DatabaseSync } from "node:sqlite";
-import { crc32 } from "node:zlib";
+import { decode, encode, readRecords } from "./records.ts";
+import type { Hlc, LogEvent } from "./records.ts";
 
-// On-disk format 1. Must stay byte-compatible with existing ledgers.
+// On-disk format 1. Must stay byte-compatible with existing ledgers. The
+// record format and what a segment's bytes mean are `records.ts`.
 
-export type Hlc = { l: number; c: number };
-
-export type LogEvent<T = unknown> = {
-  /** 1, 2, 3… gap-free within one writer directory. Detects damage; does not order. */
-  seq: number;
-  /** The writer directory (one writer at a time). Named `device` for format compatibility. */
-  device: string;
-  /** Orders the merged log (ties broken by `device`). */
-  hlc: Hlc;
-  id: string;
-  type: string;
-  v: number;
-  /** Wall clock, for display only. */
-  at: string;
-  payload: T;
-};
+export { encode };
+export type { Hlc, LogEvent };
 
 /** What consumers see. Fold order already encodes `hlc`, so a reducer that overwrites gets last-writer-wins. */
 export type Event<T = unknown> = Pick<LogEvent<T>, "type" | "v" | "at" | "payload">;
@@ -112,27 +100,6 @@ const toEvent = ({ type, v, at, payload }: LogEvent): Event => Object.freeze({ t
 const segmentName = (n: number) => `${String(n).padStart(16, "0")}.log`;
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const localDay = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-const hex8 = (s: string) => crc32(s).toString(16).padStart(8, "0");
-
-/** `<crc32 of the JSON, 8 hex> <JSON>\n` */
-export const encode = (e: LogEvent) => {
-  const json = JSON.stringify(e);
-  return `${hex8(json)} ${json}\n`;
-};
-
-function decode(line: string): LogEvent | undefined {
-  if (line[8] !== " ") return;
-  const json = line.slice(9);
-  if (hex8(json) !== line.slice(0, 8)) return;
-  let e: any;
-  try {
-    e = JSON.parse(json);
-  } catch {
-    return;
-  }
-  return typeof e?.seq === "number" && typeof e.device === "string" &&
-    typeof e.hlc?.l === "number" && typeof e.hlc.c === "number" ? e : undefined;
-}
 
 function parseMarker(text: string): { read: number; write: number } | undefined {
   const lines = text.split("\n");
@@ -636,7 +603,7 @@ export class Ledger {
   async #readWriter(device: string, c: Cursor, at: Instant, out: LogEvent[]) {
     const seen: Seen = { list: "", tail: "", mtime: undefined };
     try {
-      await this.#readSegments(join(this.#root, device), c, seen, out);
+      await this.#readSegments(join(this.#root, device), c, seen, at, out);
     } finally {
       c.checkedAt = at.mono;
       const key = `${seen.list}|${seen.tail}`;
@@ -646,7 +613,13 @@ export class Ledger {
     }
   }
 
-  async #readSegments(dir: string, c: Cursor, seen: Seen, out: LogEvent[]) {
+  /**
+   * Lists `dir` and reads its segments from the cursor, one after the next,
+   * until one stops short or the next is not there. What the bytes of each
+   * mean is `readRecords`; this reads them, and moves the cursor by what it
+   * says.
+   */
+  async #readSegments(dir: string, c: Cursor, seen: Seen, at: Instant, out: LogEvent[]) {
     c.ignored = [];
     let entries: Dirent[];
     try {
@@ -691,29 +664,16 @@ export class Ledger {
         Object.assign(c, { state: "unavailable", detail: String(err?.message ?? err) });
         return;
       }
-      let i = 0;
-      let firstBad = -1;
-      for (let nl; (nl = buf.indexOf(10, i)) >= 0; ) {
-        const at = start + i;
-        const e = decode(buf.toString("utf8", i, nl));
-        i = nl + 1;
-        if (!e) {
-          if (firstBad < 0) firstBad = at;
-          continue;
-        }
-        if (firstBad >= 0) return stall(seg, firstBad, "intact records follow it");
-        if (e.seq > c.last + 1) return stall(seg, at, `jumps from seq ${c.last} to ${e.seq}`);
-        if (e.seq === c.last + 1) {
-          c.last = e.seq;
-          out.push(e);
-          if (e.hlc.l > Date.now() + MAX_CLOCK_SKEW_MS) c.suspect = Math.max(c.suspect ?? 0, e.hlc.l);
-        } // else seq <= last: duplicate delivery, skip but count its bytes
+      const read = readRecords(buf, start, c.last, at.wall + MAX_CLOCK_SKEW_MS);
+      // A loop, not a spread: a full segment holds more records than a call takes arguments.
+      for (const e of read.accepted) out.push(e);
+      c.last = read.last;
+      if (read.suspect !== undefined) c.suspect = Math.max(c.suspect ?? 0, read.suspect);
+      if (read.end !== undefined) {
         c.seg = seg;
-        c.offset = start + i;
+        c.offset = read.end;
       }
-      // A bad or unterminated last record: may still be syncing, or the session crashed mid-write.
-      if (firstBad >= 0 || i < buf.length)
-        return stall(seg, firstBad >= 0 ? firstBad : start + i, "torn tail (may be from a crash)");
+      if (read.stall) return stall(seg, read.stall.at, read.stall.why);
     }
   }
 
