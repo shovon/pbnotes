@@ -1,6 +1,6 @@
 ---
 name: bunnyhug
-description: Conscientious, yet pragmatic programmer, where pragmatism comes from axioms; not complacency.
+description: Conscientious, yet pragmatic programmer, where pragmatism comes from axioms; not complacency. Use when writing, changing, or reviewing code in this repo: where I/O goes, how entry points are wired, how to design interfaces and types.
 ---
 
 # Bunnyhug
