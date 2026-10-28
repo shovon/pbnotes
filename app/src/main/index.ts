@@ -9,8 +9,13 @@ import { rendererSource } from "./renderer-source/renderer-source";
 import { mainWindowOptions, windowColors } from "./window-options/window-options";
 import { createProjectsStore } from "./features/projects/projects-store";
 import { registerProjectIpc } from "./features/projects/projects-ipc";
+import { createOpenProject } from "./features/projects/open-project/open-project";
 import { createLedgers } from "./ledgers";
-import { registerPageIpc } from "./features/projects/pages/pages-ipc";
+import {
+  broadcastPages,
+  registerPageIpc,
+} from "./features/projects/pages/pages-ipc";
+import { createPagesSession } from "./features/projects/pages/pages-session/pages-session";
 import { findImage, saveImage } from "./features/projects/pages/images/images";
 import { IMAGE_SCHEME } from "../shared/pages";
 import {
@@ -125,9 +130,9 @@ app.on("ready", () => {
   // A different project is open, so a trail through the last one is over.
   // `pages` is declared below; this only runs once a project changes, by
   // which time it exists.
-  const projects = registerProjectIpc(createProjectsStore(db), () =>
-    pages.resetTrail(),
-  );
+  const store = createProjectsStore(db);
+  const projects = createOpenProject(store, () => pages.resetTrail());
+  registerProjectIpc(store, projects);
 
   // Pages are handed their view of what is open, and the images beside it,
   // and never ask what that is. This is the one place that says it is the
@@ -136,7 +141,7 @@ app.on("ready", () => {
   // `requireProject` settles which project before its first `await`, and is
   // the first thing each of these calls: a write or an image sent just before
   // the project changed lands where it was sent.
-  const pages = registerPageIpc(
+  const pages = createPagesSession(
     {
       require: async () => ledgers.pagesOf(await projects.requireProject()),
       saveImage: async (bytes, mime) => {
@@ -158,7 +163,10 @@ app.on("ready", () => {
     },
     // The real clock, chosen here: it decides which page is today.
     () => new Date(),
+    // Every window of the app, over `pages:changed`.
+    broadcastPages,
   );
+  registerPageIpc(pages);
 
   // A project's pages moved: another session's events landed in its folder,
   // or the fold caught up with a write of ours. Every fold has taken them in

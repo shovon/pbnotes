@@ -1,7 +1,7 @@
 /**
  * The steps along a trail: where the view is, kept as how it got there. Pure,
  * so the three of them run under `node --test` with nothing around them;
- * `pages-ipc.ts` holds the trail these are applied to.
+ * `pages-session.ts` holds the trail these are applied to.
  */
 import { pageKey } from "@pbnotes/pages";
 import type { Place } from "../../../../../shared/pages.ts";
