@@ -21,6 +21,12 @@ import type { PagesApi } from '../../../../shared/pages';
 /** An event to draw, and the call that asks main to record it. */
 export type Step = [PageEvent, () => Promise<unknown>];
 
+/** Every call the steps here make, for a view that hands them its bridge. */
+export type StepsPages = Pick<
+  PagesApi,
+  'addBlock' | 'editBlock' | 'deleteBlock' | 'indentBlock' | 'outdentBlock'
+>;
+
 /** A new block, named by the caller, at the end of the page or beneath `after`. */
 export function add(
   pages: Pick<PagesApi, 'addBlock'>,

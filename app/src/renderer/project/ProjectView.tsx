@@ -2,12 +2,30 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { locate, pageKey, today } from '@pbnotes/pages';
 import type { PagesApi, PagesState } from '../../shared/pages';
-import type { Availability } from '../../shared/projects';
 import type { Act } from '../ui';
 import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
+import type { PageViewPages } from './PageView/PageView';
 import { imageTarget, placeNew } from './placement/placement';
 
+/**
+ * The part of the bridge a project calls: what it calls itself, and what each
+ * page it shows does.
+ */
+export type ProjectViewPages = PageViewPages &
+  Pick<
+    PagesApi,
+    | 'onChanged'
+    | 'show'
+    | 'locate'
+    | 'go'
+    | 'back'
+    | 'rezoom'
+    | 'addImage'
+    | 'addBlock'
+    | 'indentBlock'
+    | 'blockMenu'
+  >;
 
 /**
  * A project, in one of two shapes. By default the journal: every day that has
@@ -29,11 +47,9 @@ const images = (data: DataTransfer): File[] =>
   [...data.files].filter((file) => file.type.startsWith('image/'));
 
 type Props = {
-  availability: Availability;
   act: Act;
-  /** The bridge to main, handed down from `index.tsx`. Passed on whole to
-   * `PageView`, which takes the same type. */
-  pages: PagesApi;
+  /** The bridge to main, handed down from `index.tsx`, and on to each page. */
+  pages: ProjectViewPages;
   /** The clock, for which day a drop with no page lands on. */
   now: () => Date;
 };

@@ -1,7 +1,7 @@
 import type { Page } from '@pbnotes/pages';
-import type { PagesApi } from '../../../../shared/pages';
 import type { Act } from '../../../ui';
 import PageView from '../PageView';
+import type { PageViewPages } from '../PageView';
 
 /**
  * What links to the page above, under it: each page that names this one,
@@ -17,7 +17,8 @@ export default function LinkedReferences({
   references,
   act,
 }: {
-  pages: PagesApi;
+  /** Handed on whole to each cut, which is a `PageView`. */
+  pages: PageViewPages;
   references: Page[];
   act: Act;
 }) {
