@@ -94,11 +94,12 @@ test("the log is written into the folder it is handed", async () => {
   const it = await project();
   await addBlock(it, TODAY, "lives here");
 
-  // One directory per device, and the segments inside it. The only file at
-  // the top of the project folder is the marker, which every machine writes the same.
+  // One directory per device, and the segments inside it. The only files at
+  // the top of the project folder are the marker and AGENTS.md, which every
+  // machine writes the same.
   assert.deepEqual(
     (await readdir(it.path)).sort(),
-    ["LEDGER", ...(await devicesIn(it.path))].sort(),
+    ["AGENTS.md", "LEDGER", ...(await devicesIn(it.path))].sort(),
   );
   const [device] = await devicesIn(it.path);
   assert.deepEqual(await readdir(path.join(it.path, device)), [
