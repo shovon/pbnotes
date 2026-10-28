@@ -14,6 +14,10 @@ for await (const pages of ledger.onEvent(pagesFold.initial, pagesFold.reduce)) {
 
 To write, hand `addBlock`, `editBlock`, `deleteBlock`, `indentBlock` or `outdentBlock` a `PagesView`: the state you hold, and a `dispatch(v, type, payload)` wired to your own log. They run the same checks the app runs before they write anything.
 
+Each of those writes one event, and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented` and `blockOutdented`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
+
+The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `searchPages` and `locateBlock`) take the folded pages alone, since they never write.
+
 ## What it does not depend on
 
 - **The log.** The fold takes `{ type, v, payload }` and the commands write through `dispatch`. This package does not import `@pbnotes/ledger`, so events can come from anywhere.

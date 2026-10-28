@@ -1,10 +1,12 @@
 import { Fragment, useState } from 'react';
-import { indented, lastLeaf, locate, NAMESPACE, outdented, predict } from '@pbnotes/pages';
+import { lastLeaf, locate, predict } from '@pbnotes/pages';
 import type { Block as BlockType, Page, PageEvent } from '@pbnotes/pages';
 import type { PagesApi } from '../../../shared/pages';
 import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
+import { add, edit, indent, outdent, remove } from './steps/steps';
+import type { Step } from './steps/steps';
 
 /**
  * Where an unwritten block is waiting to be typed. `after` is the block it
@@ -13,9 +15,6 @@ import LinkedReferences from './LinkedReferences/LinkedReferences';
  * different questions and a boolean can only answer the first.
  */
 type Writing = { after?: string } | null;
-
-/** An event to draw, and the call that asks main to record it. */
-type Step = [PageEvent, () => Promise<unknown>];
 
 type Props = {
   pages: PagesApi;
@@ -101,7 +100,7 @@ export default function PageView({
    * writes always was. If one is refused the rest are not sent, and none of
    * them stays drawn.
    */
-  const write = async (...steps: [PageEvent, () => Promise<unknown>][]) => {
+  const write = async (...steps: Step[]) => {
     const events = steps.map(([event]) => event);
     setPending((all) => [...all, ...events]);
     try {
@@ -126,24 +125,8 @@ export default function PageView({
     blocks: BlockType[],
     id: string,
     by: 1 | -1,
-  ): Step | undefined => {
-    if (by === 1) {
-      const payload = indented(blocks, id);
-      return (
-        payload && [
-          { type: `${NAMESPACE}block.indented`, payload },
-          () => pages.indentBlock(id),
-        ]
-      );
-    }
-    const payload = outdented(blocks, id);
-    return (
-      payload && [
-        { type: `${NAMESPACE}block.outdented`, payload },
-        () => pages.outdentBlock(id),
-      ]
-    );
-  };
+  ): Step | undefined =>
+    by === 1 ? indent(pages, blocks, id) : outdent(pages, blocks, id);
   const title = page.title;
   const rooted = zoom ? locate(page.blocks, zoom) : undefined;
   const root = rooted?.siblings[rooted.at];
@@ -170,12 +153,7 @@ export default function PageView({
   const commitEdit = (block: BlockType, text: string) => {
     setEditingId(null);
     if (text === block.text) return;
-    act(() =>
-      write([
-        { type: `${NAMESPACE}block.edited`, payload: { id: block.id, text } },
-        () => pages.editBlock(block.id, text),
-      ]),
-    );
+    act(() => write(edit(pages, block.id, text)));
   };
 
   /**
@@ -236,10 +214,7 @@ export default function PageView({
     act(() =>
       block.id === root?.id
         ? pages.deleteBlock(block.id)
-        : write([
-            { type: `${NAMESPACE}block.deleted`, payload: { id: block.id } },
-            () => pages.deleteBlock(block.id),
-          ]),
+        : write(remove(pages, block.id)),
     );
   };
 
@@ -284,14 +259,7 @@ export default function PageView({
     setCaret(at);
     act(() =>
       write(
-        ...(text === block.text
-          ? []
-          : [
-              [
-                { type: `${NAMESPACE}block.edited`, payload: { id: block.id, text } },
-                () => pages.editBlock(block.id, text),
-              ] as Step,
-            ]),
+        ...(text === block.text ? [] : [edit(pages, block.id, text)]),
         moved,
       ),
     );
@@ -353,18 +321,12 @@ export default function PageView({
     // Named here, so the block is drawn — and the next box opened beneath
     // it, or this one reopened on it — before main has heard of it.
     const id = crypto.randomUUID();
-    const create: PageEvent = {
-      type: `${NAMESPACE}block.created`,
-      // `after` left off entirely when absent, as main writes it.
-      payload: { page: title, id, text, ...(after ? { after } : {}) },
-    };
-    const steps: Step[] = [
-      [create, () => pages.addBlock(id, title, text, after)],
-    ];
+    const create = add(pages, id, title, text, after);
+    const steps: Step[] = [create];
     // Each move resolved on the page as the steps before it leave it. One
     // with nowhere to go — the first block of an empty page going in, a
     // top-level one coming out — is not a step at all.
-    let next = predict(page, [create]);
+    let next = predict(page, [create[0]]);
     const move = (by: 1 | -1) => {
       const moved = moving(next.blocks, id, by);
       if (!moved) return;

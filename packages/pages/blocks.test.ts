@@ -188,9 +188,6 @@ test("an indent under itself or its own subtree changes nothing", () => {
   assert.equal(reduce(nested, indent("x", "y")), nested);
 });
 
-/** A `PagesView` over a state, for the queries; nothing here writes. */
-const view = (state: Pages) => ({ state, dispatch: async () => {} });
-
 /**
  * #83: a link names a page before anything is written on it, and that is the
  * spelling the page keeps — through a creation in other case, and after the
@@ -208,7 +205,7 @@ test("a page keeps the first spelling that named it", () => {
     edited("a", "never mind"),
   ].reduce(reduce, empty());
 
-  const page = getPage(view(state), "NONEXISTENT PAGE");
+  const page = getPage(state, "NONEXISTENT PAGE");
   assert.equal(page.title, "Nonexistent page");
   assert.deepEqual(page.blocks.map((it) => it.id), ["b"]);
 });
@@ -228,15 +225,15 @@ test("titles that differ only in case are one page", () => {
     created("d2", TODAY, "and [[mira]] again"),
   ].reduce(reduce, empty());
 
-  const page = getPage(view(state), "mIRA");
+  const page = getPage(state, "mIRA");
   assert.equal(page.title, "Mira");
   assert.deepEqual(page.blocks.map((it) => it.id), ["m1", "m2"]);
 
-  const references = getReferences(view(state), "mira");
+  const references = getReferences(state, "mira");
   assert.deepEqual(references.map((it) => it.title), [TODAY]);
   assert.deepEqual(references[0].blocks.map((it) => it.id), ["d1", "d2"]);
 
-  assert.deepEqual(searchPages(view(state), "mi"), ["Mira"]);
+  assert.deepEqual(searchPages(state, "mi"), ["Mira"]);
 });
 
 /**
@@ -256,14 +253,14 @@ test("titles that differ only in Unicode form are one page", () => {
     created("d1", TODAY, "met [[Mira​]]"),
   ].reduce(reduce, empty());
 
-  const cafe = getPage(view(state), decomposed);
+  const cafe = getPage(state, decomposed);
   assert.equal(cafe.title, composed);
   assert.deepEqual(cafe.blocks.map((it) => it.id), ["c1", "c2"]);
-  assert.deepEqual(searchPages(view(state), decomposed), [composed]);
+  assert.deepEqual(searchPages(state, decomposed), [composed]);
 
-  const references = getReferences(view(state), "Mira");
+  const references = getReferences(state, "Mira");
   assert.deepEqual(references[0].blocks.map((it) => it.id), ["d1"]);
-  assert.deepEqual(searchPages(view(state), "mir"), ["Mira"]);
+  assert.deepEqual(searchPages(state, "mir"), ["Mira"]);
 });
 
 /**
