@@ -6,6 +6,7 @@ import type { Availability } from '../../shared/projects';
 import type { Act } from '../ui';
 import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
+import { imageTarget, placeNew } from './placement/placement';
 
 
 /**
@@ -209,17 +210,13 @@ export default function ProjectView({ act, pages, now }: Props) {
       active instanceof HTMLTextAreaElement && wrapper.current?.contains(active)
         ? active
         : null;
-    const to = dropped ?? title ?? today(now());
-    // By key: the trail holds the title as the link spelt it, the page the
-    // spelling it shows.
-    const page = state?.showing.find(
-      (it) => pageKey(it.page.title) === pageKey(to),
-    )?.page;
-    const found =
-      zoom && title !== null && pageKey(to) === pageKey(title) && page
-        ? locate(page.blocks, zoom)
-        : undefined;
-    const root = found?.siblings[found.at];
+    const { page: to, root } = imageTarget({
+      dropped,
+      title,
+      today: today(now()),
+      showing: state?.showing.map((it) => it.page) ?? [],
+      zoom,
+    });
     // The last one written, so a second lands beneath the first.
     let last: string | undefined;
     act(async () => {
@@ -233,15 +230,13 @@ export default function ProjectView({ act, pages, now }: Props) {
           box.value = [box.value.trimEnd(), text].filter(Boolean).join('\n\n');
           continue;
         }
-        const first = last === undefined && root?.children.length === 0;
-        const after =
-          last ?? (root ? (root.children.at(-1)?.id ?? root.id) : undefined);
+        // The first under a root with no children: written beside it, then
+        // filed under it, like the box at the end of a zoom in `PageView`.
+        const { after, indent } = placeNew(root, last);
         const id = crypto.randomUUID();
         await pages.addBlock(id, to, text, after);
         last = id;
-        // The first under a root with no children: written beside it, then
-        // filed under it, like the box in `PageView`.
-        if (first) await pages.indentBlock(last);
+        if (indent) await pages.indentBlock(id);
       }
     });
   };

@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { lastLeaf, locate, predict } from '@pbnotes/pages';
+import { locate, predict } from '@pbnotes/pages';
 import type { Block as BlockType, Page, PageEvent } from '@pbnotes/pages';
 import type { PagesApi } from '../../../shared/pages';
 import type { Act } from '../../ui';
@@ -7,6 +7,8 @@ import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
 import { add, edit, indent, outdent, remove } from './steps/steps';
 import type { Step } from './steps/steps';
+import { afterCancel, afterDelete, movable, newBlock } from './editing/editing';
+import type { Caret, Then } from './editing/editing';
 
 /**
  * Where an unwritten block is waiting to be typed. `after` is the block it
@@ -141,6 +143,12 @@ export default function PageView({
   // click to read a position from — keyboard activation, or a new block.
   const [caret, setCaret] = useState<number | undefined>(undefined);
 
+  /** Opens the box `to` says, or closes the one open with nowhere to go. */
+  const reopen = (to: Caret | null) => {
+    setCaret(to?.at ?? 0);
+    setEditingId(to?.editing ?? null);
+  };
+
   /**
    * Text that came out of the box the way it went in is not an edit, and
    * appends nothing — the log takes facts, and it takes them forever.
@@ -184,35 +192,25 @@ export default function PageView({
     // keystroke is not what emptying a box means. So: nothing at all — no
     // delete, no move, the box stays open where it is. Clear the last child
     // out and this same press removes the parent, which is the way back.
-    if (block.children.length > 0) return;
-
-    // Read before the delete lands, off the page still on screen.
-    const blocks = page.blocks;
-    const found = locate(blocks, block.id);
-    // The block above in the order the page reads: the sibling above,
-    // descended to its deepest last child, or — for a first child — the
-    // block it is filed under. Only the page's very first block has neither,
-    // which is why this is not simply the previous sibling.
-    const above =
-      found && found.at > 0
-        ? lastLeaf(found.siblings[found.at - 1])
-        : found?.parent;
-    // Only for that first block. Guarded on the position rather than on
-    // `above` so a block the page does not have falls through to neither.
-    const below =
-      found && found.at === 0 && !found.parent ? blocks[1] : undefined;
-    setCaret(above ? above.text.length : 0);
-    setEditingId(above?.id ?? below?.id ?? null);
+    //
+    // Otherwise the box goes to the block above in the order the page reads:
+    // the sibling above, descended to its deepest last child, or — for a
+    // first child — the block it is filed under. Only the page's very first
+    // block has neither, which is why this is not simply the previous
+    // sibling. Read before the delete lands, off the page still on screen.
+    const next = afterDelete(page.blocks, block, { root, reference });
+    if (!next) return;
+    reopen(next.caret);
     // Nothing either side: the page is about to be empty. A cut has no box
     // to fall back to; emptied, it is simply not shown any more.
-    if (!above && !below && !reference) setWriting({});
+    if (next.openTail) setWriting({});
     // The zoomed block itself: out to what it hung under, or to the page,
     // before the delete lands and leaves the view rooted on nothing.
-    if (block.id === root?.id) onZoom?.(found?.parent?.id);
+    if (next.unzoom) onZoom?.(next.unzoom.to);
     // Not predicted for the zoomed block: with the root gone from the page
     // as drawn, the view would show the whole page until the zoom has moved.
     act(() =>
-      block.id === root?.id
+      next.unzoom
         ? pages.deleteBlock(block.id)
         : write(remove(pages, block.id)),
     );
@@ -239,17 +237,10 @@ export default function PageView({
     at: number,
     by: 1 | -1,
   ) => {
-    const found = locate(page.blocks, block.id);
-    if (!found) return;
     // Zoomed, the root's children are the top level, and the root itself has
     // no siblings in view to move among: either move would take a block out
     // of the view it is being written in.
-    if (
-      root &&
-      (block.id === root.id || (by === -1 && found.parent === root))
-    ) {
-      return;
-    }
+    if (!movable(page.blocks, block.id, by, root)) return;
     const moved = moving(page.blocks, block.id, by);
     if (!moved) return;
     // The block is drawn where it is going in the render this key causes, so
@@ -280,48 +271,42 @@ export default function PageView({
    */
   const commitNew = (
     text: string,
-    {
-      then,
-      caret,
-    }: { then: 'stop' | 'again' | 'indent' | 'outdent'; caret?: number },
+    { then, caret }: { then: Then; caret?: number },
   ) => {
     // Zoomed, the end of the view is the end of the root's children, not of
     // the page. A root with none yet takes two events, like Tab in a new box:
     // the block is written beside the root and then filed under it.
-    const tail = root && writing?.after === undefined;
-    const first = tail && root.children.length === 0;
-    const after = tail ? (root.children.at(-1)?.id ?? root.id) : writing?.after;
-    setWriting(null);
-
-    /**
-     * Enter on an empty box that is sitting among a block's children pops the
-     * box out a level rather than writing anything. It looks like an outdent
-     * and it is not one: nothing has been written, so there is no block to
-     * move — the box just re-places itself beside the parent, which is where
-     * a block typed there would have gone anyway.
-     *
-     * Repeats all the way out, a level per press, because each one leaves the
-     * box beside its new parent and asks the same question again. At the top
-     * level there is no parent left and Enter goes back to making a gap.
-     */
-    const parent = after
-      ? locate(page.blocks, after)?.parent
-      : undefined;
-    // Not past the root, though: zoomed, its children are the top level.
-    const top = root !== undefined && (first || parent === root);
-    if (!text && (then === 'again' || then === 'outdent') && parent && !top) {
-      setWriting({ after: parent.id });
-      return;
-    }
-
+    //
+    // Enter on an empty box that is sitting among a block's children pops the
+    // box out a level rather than writing anything. It looks like an outdent
+    // and it is not one: nothing has been written, so there is no block to
+    // move — the box just re-places itself beside the parent, which is where
+    // a block typed there would have gone anyway. Repeats all the way out, a
+    // level per press, because each one leaves the box beside its new parent
+    // and asks the same question again. At the top level there is no parent
+    // left and Enter goes back to making a gap. Not past the root, though:
+    // zoomed, its children are the top level.
+    //
     // An empty block is written when it is *asked* for — Enter on an empty
     // box is how a gap gets made, and so is Tab. Blurring a box nothing was
     // ever typed into is a click that landed elsewhere, and writes nothing.
-    if (!text && then === 'stop') return;
+    const plan = newBlock(page.blocks, {
+      root,
+      after: writing?.after,
+      text,
+      then,
+    });
+    setWriting(null);
+    if (plan.kind === 'pop') {
+      setWriting({ after: plan.after });
+      return;
+    }
+    if (plan.kind === 'nothing') return;
+
     // Named here, so the block is drawn — and the next box opened beneath
     // it, or this one reopened on it — before main has heard of it.
     const id = crypto.randomUUID();
-    const create = add(pages, id, title, text, after);
+    const create = add(pages, id, title, text, plan.after);
     const steps: Step[] = [create];
     // Each move resolved on the page as the steps before it leave it. One
     // with nowhere to go — the first block of an empty page going in, a
@@ -333,13 +318,11 @@ export default function PageView({
       steps.push(moved);
       next = predict(next, [moved[0]]);
     };
-    if (first) move(1);
+    if (plan.indent) move(1);
     if (then === 'again') setWriting({ after: id });
     // Out of the top level of a zoom is out of the view: the box reopens
     // where it was, like any move with nowhere to go.
-    if ((then === 'indent' || then === 'outdent') && !(then === 'outdent' && top)) {
-      move(then === 'indent' ? 1 : -1);
-    }
+    if (plan.move) move(plan.move);
     if (then === 'indent' || then === 'outdent') {
       setCaret(caret);
       setEditingId(id);
@@ -364,15 +347,10 @@ export default function PageView({
    * record of, which is the same nothing-to-go-back-to.
    */
   const cancelNew = () => {
-    const blocks = page.blocks;
-    const after = writing?.after;
-    const found = after ? locate(blocks, after) : undefined;
-    const under = after ? found?.siblings[found.at] : (root ?? blocks.at(-1));
-    if (!under) return;
-    const above = lastLeaf(under);
+    const above = afterCancel(page.blocks, writing?.after, root);
+    if (!above) return;
     setWriting(null);
-    setCaret(above.text.length);
-    setEditingId(above.id);
+    reopen(above);
   };
 
   /** The box for a block that does not exist yet. */
