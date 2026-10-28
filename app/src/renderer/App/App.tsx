@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { PagesApi } from '../../shared/pages';
-import type { Availability, Project, ProjectsApi } from '../../shared/projects';
+import type { Project, ProjectsApi } from '../../shared/projects';
 import ProjectPicker from '../ProjectPicker/ProjectPicker';
 import ProjectView from '../project/ProjectView';
+import type { ProjectViewPages } from '../project/ProjectView';
 import Welcome from '../Welcome/Welcome';
 import type { Act } from '../ui';
 
@@ -12,8 +12,9 @@ import type { Act } from '../ui';
  * project that is open.
  */
 type Props = {
-  projects: Pick<ProjectsApi, 'list' | 'current' | 'availability' | 'open' | 'pick'>;
-  pages: PagesApi;
+  projects: Pick<ProjectsApi, 'list' | 'current' | 'open' | 'pick'>;
+  /** Only what the project that is open calls. */
+  pages: ProjectViewPages;
   /** The clock, passed on to the project that is open. */
   now: () => Date;
 };
@@ -33,9 +34,6 @@ function humanize(error: unknown): string {
 
 export default function App({ projects: api, pages, now }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
-  const [availability, setAvailability] = useState<Record<string, Availability>>(
-    {},
-  );
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   /**
@@ -47,10 +45,14 @@ export default function App({ projects: api, pages, now }: Props) {
   const [project, setProject] = useState<Project | null>(null);
 
   /**
-   * The view renders from the database immediately; reachability is filled in
-   * afterwards so a sleeping network share cannot hold up the first paint.
-   * `loading` clears on both paths — a failed list must not leave the app
-   * showing "Loading…" with no way out.
+   * The view renders from the database alone: nothing here waits on the disk,
+   * so a sleeping network share cannot hold up the first paint. `loading`
+   * clears on both paths — a failed list must not leave the app showing
+   * "Loading…" with no way out.
+   *
+   * Whether each project can be reached (`projects.availability`) is not read
+   * here: nothing on screen shows it yet. It comes back with the code that
+   * draws it.
    */
   const refresh = useCallback(async (): Promise<Project[]> => {
     try {
@@ -60,9 +62,6 @@ export default function App({ projects: api, pages, now }: Props) {
       setProjects(next);
       setProject(current);
       setLoading(false);
-      setAvailability(
-        next.length > 0 ? await api.availability(next.map((p) => p.id)) : {},
-      );
       return next;
     } catch (error) {
       setNotice(humanize(error));
@@ -201,7 +200,6 @@ export default function App({ projects: api, pages, now }: Props) {
             // belong to the project that was showing a moment ago. The key is
             // all the view is told about which project that is.
             key={project.id}
-            availability={availability[project.id] ?? 'available'}
             act={act}
             pages={pages}
             now={now}

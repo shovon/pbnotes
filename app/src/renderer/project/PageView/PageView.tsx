@@ -6,7 +6,7 @@ import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
 import { add, edit, indent, outdent, remove } from './steps/steps';
-import type { Step } from './steps/steps';
+import type { Step, StepsPages } from './steps/steps';
 import { afterCancel, afterDelete, movable, newBlock } from './editing/editing';
 import type { Caret, Then } from './editing/editing';
 
@@ -18,8 +18,15 @@ import type { Caret, Then } from './editing/editing';
  */
 type Writing = { after?: string } | null;
 
+/**
+ * The part of the bridge a page calls: what it calls itself, and what the
+ * steps it writes through call. A cut under the page is another `PageView`,
+ * so `LinkedReferences` needs no more than this.
+ */
+export type PageViewPages = StepsPages & Pick<PagesApi, 'search' | 'deleteBlock'>;
+
 type Props = {
-  pages: PagesApi;
+  pages: PageViewPages;
   /** The page as main last sent it. */
   page: Page;
   /** What links here. Left off for a page that is itself shown as one. */

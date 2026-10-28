@@ -18,7 +18,7 @@ import {
 } from "@pbnotes/pages";
 import type { PagesState, Place } from "../../../../../shared/pages.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
-import { getLogStatus, getState } from "../pages-store/pages-store.ts";
+import { getState } from "../pages-store/pages-store.ts";
 import type { PagesView } from "../pages-store/pages-store.ts";
 import { back, go, rezoom } from "../trail/trail.ts";
 
@@ -172,8 +172,7 @@ export function createPagesSession(
       locateBlock((await open.require()).state, blockId),
     search: async (query: string): Promise<string[]> =>
       searchPages((await open.require()).state, query),
-    status: async (): Promise<LogStatus> =>
-      getLogStatus(await open.require()),
+    status: async (): Promise<LogStatus> => (await open.require()).status,
 
     /** `after` absent puts the block at the end of the page. */
     addBlock: (id: string, title: string, text: string, after?: string) =>

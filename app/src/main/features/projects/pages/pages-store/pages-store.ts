@@ -2,7 +2,7 @@
  * The app's side of pages: what `@pbnotes/pages` does not know because it is
  * about this app rather than about the log. Which day is today and where the
  * trail ends belong to the window and the clock; how much of the folder could
- * be read belongs to the ledger.
+ * be read belongs to the ledger, and is the `status` on the view.
  *
  * Deliberately free of `electron` imports: callers hand in the view, which
  * keeps the store runnable under `node --test`.
@@ -16,7 +16,15 @@ import type { LogStatus } from "../../../../../shared/log.ts";
  * The view `ledgers.ts` hands out: the package's, and how much of the log
  * could be read, which the package has no business knowing.
  */
-export type PagesView = Base & { readonly status: LogStatus };
+export type PagesView = Base & {
+  /**
+   * How much of the folder this ledger is kept in could be read, and what in
+   * it was skipped. Nothing here is an error to clear — a session whose log is
+   * still syncing is a normal state that usually heals itself — but none of it
+   * may be skipped without the user being able to find out.
+   */
+  readonly status: LogStatus;
+};
 
 /**
  * Everything that shows at the end of `trail`: the one page it ends on, or
@@ -60,14 +68,4 @@ export function getState(
     })),
     previews: getPreviews(view.state),
   };
-}
-
-/**
- * How much of the folder this ledger is kept in could be read, and what in it
- * was skipped. Nothing here is an error to clear — a session whose log is still
- * syncing is a normal state that usually heals itself — but none of it may be
- * skipped without the user being able to find out.
- */
-export function getLogStatus(view: PagesView): LogStatus {
-  return view.status;
 }
