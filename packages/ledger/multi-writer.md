@@ -55,7 +55,7 @@ A segment's name is sixteen digits. A segment is sealed at 16 MiB or at local mi
 
 **Event type names were rewritten once.** For one release (#39) the app went through every device's segments before a log opened and gave the five block events of the time their namespaced names. That was a second deliberate break: it changed sealed segments, and it wrote files that belonged to other devices. The code is gone (#40). Nothing rewrites, truncates or repairs a record once it is written, and nothing writes in another writer's directory. A folder that was never opened by that release still holds the old names, and the consumer's gate skips those events (see [Events from a newer build](#events-from-a-newer-build)).
 
-**A subdirectory of a writer directory is left alone.** A consumer may keep things beside a writer's segments that are that writer's to write and that no event carries. `Writer.directory` is where they go. The log does not read them and does not report them. A stray *file* in a writer directory is reported: conflicted copies and junk are files. `@pbnotes/files` keeps to the same layout and claims one such subdirectory by name.
+**A subdirectory of a writer directory is left alone.** A consumer may keep things beside a writer's segments that are that writer's to write and that no event carries. `Writer.directory` is where they go. The log does not read them and does not report them. A stray *file* in a writer directory is reported: conflicted copies and junk are files. A consumer that keeps such things claims one subdirectory by name, and keeps to the same layout inside it.
 
 ## The marker
 
@@ -118,7 +118,7 @@ The sections above say what a ledger folder must hold. This one says what else m
 
 The format keeps a list of the extras it knows. A named extra is not listed in `status.ignored`, and a folder that holds only named extras counts as empty, as one holding only dot-entries does.
 
-- **`AGENTS.md`** (#63) tells an agent (Claude Code, Codex and the like) that finds the folder what it is: a ledger written by Pb Notes, with the format described at https://github.com/shovon/pbnotes, and nothing in it to be changed by hand. Without it an agent sees a `LEDGER` file and folders of segments, and may tidy them, edit a segment, or guess at the format. It is a signpost, not part of the format: no build reads it, and a ledger without one is whole.
+- **`AGENTS.md`** (#63) tells an agent (Claude Code, Codex and the like) that finds the folder what it is: an event ledger that several writers share, with the format described in this file, and nothing in it to be changed by hand. It names no consumer, so every consumer of one format version writes the same bytes. Without it an agent sees a `LEDGER` file and folders of segments, and may tidy them, edit a segment, or guess at the format. It is a signpost, not part of the format: no build reads it, and a ledger without one is whole.
 
 A named extra is a file at the top that several writers may create, so it keeps to that rule: an exclusive create, never rewritten, and the same bytes on every build of one format version (`NAMED_EXTRAS` in `ledger.ts`). One that is already there is left alone, whatever it holds, so a user's edits survive. A folder with a named extra's name is not one, and is read as a writer like any other folder.
 
@@ -277,7 +277,7 @@ When a window gains focus, every open ledger goes back to the focused pace, and 
 
 ## Events from a newer build
 
-The ledger gates nothing. Every event that decodes is handed to the consumer's reducer, whatever its `type` and `v`, and the consumer decides what it can read. In this repo that gate is `pagesFold` in `packages/pages/pages.ts`: an event type this build does not have, or a `v` above what `HANDLES` says it reads, leaves the pages as they were.
+The ledger gates nothing. Every event that decodes is handed to the consumer's reducer, whatever its `type` and `v`, and the consumer decides what it can read. A consumer's reducer is that gate: an event type its build does not have, or a `v` above what it says it reads, leaves its state as it was.
 
 Under one writer that case is unreachable: a log only ever holds events the build that wrote it understood. Under sync it is routine. An older build on one machine reads what a newer build on another wrote, and **the consumer shows an incomplete state with no indication that anything is missing.**
 
