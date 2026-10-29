@@ -171,7 +171,7 @@ test("AGENTS.md: exact bytes, backfilled, never overwritten, never reported", { 
   const dir = await fresh();
   assert.equal(
     await agents(dir),
-    "# Event ledger\n\nThis folder is an event ledger that several writers share. How to read it\n(the format, and why there is one folder per writer) is at\nhttps://github.com/shovon/pbnotes/blob/main/packages/ledger/multi-writer.md.\n\nDo not modify, rename or delete anything here by hand. The files are\nappend-only, and other writers share them through whatever syncs this folder.\n",
+    "# Event ledger\n\nThis folder is an event ledger. Each folder in it belongs to one writer, and\nonly that writer adds to it. The LEDGER file says which format version it is.\n\nDo not modify, rename or delete anything here by hand. The files are\nappend-only, and other writers share them through whatever syncs this folder.\n",
   );
 
   const old = await mkdtemp(join(tmpdir(), "ledger-")); // a ledger made before #63

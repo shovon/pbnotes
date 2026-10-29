@@ -72,9 +72,8 @@ write ${FORMAT}
 const NAMED_EXTRAS: Readonly<Record<string, string>> = Object.freeze({
   "AGENTS.md": `# Event ledger
 
-This folder is an event ledger that several writers share. How to read it
-(the format, and why there is one folder per writer) is at
-https://github.com/shovon/pbnotes/blob/main/packages/ledger/multi-writer.md.
+This folder is an event ledger. Each folder in it belongs to one writer, and
+only that writer adds to it. The LEDGER file says which format version it is.
 
 Do not modify, rename or delete anything here by hand. The files are
 append-only, and other writers share them through whatever syncs this folder.
