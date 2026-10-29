@@ -70,11 +70,11 @@ write ${FORMAT}
  * two builds that create one ledger before they sync would leave a conflicted copy.
  */
 const NAMED_EXTRAS: Readonly<Record<string, string>> = Object.freeze({
-  "AGENTS.md": `# Pb Notes ledger
+  "AGENTS.md": `# Event ledger
 
-This folder is a ledger written by the Pb Notes app. How to read it (the
-format, and why there is one folder per writer) is at
-https://github.com/shovon/pbnotes.
+This folder is an event ledger that several writers share. How to read it
+(the format, and why there is one folder per writer) is at
+https://github.com/shovon/pbnotes/blob/main/packages/ledger/multi-writer.md.
 
 Do not modify, rename or delete anything here by hand. The files are
 append-only, and other writers share them through whatever syncs this folder.
@@ -287,6 +287,9 @@ function uuidv8(parts: string[]) {
 /** Takes the exclusive lock for one writer directory, or returns undefined if this user can't have it now. */
 async function lock(name: string, uid: number): Promise<DatabaseSync | undefined> {
   // Per user: on Linux tmpdir() is usually the shared /tmp.
+  // The name is frozen, though it names the app. This lock is all that keeps two processes out of one writer
+  // directory, so an old build and a new one running at once must take the same lock. Rename it and, for as long
+  // as both run, each takes its own and both append to the same directory.
   const folder = join(tmpdir(), `pbnotes-locks-${uid}`);
   try {
     await mkdir(folder, { mode: 0o700 });
