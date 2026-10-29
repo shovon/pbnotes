@@ -117,7 +117,7 @@ test("each builder is the event its command writes, and folds to the same pages"
   }
 });
 
-test("every builder writes the v its own gate reads, and there is one for every event", () => {
+test("every builder writes the v its own gate reads, and there is one for every block event", () => {
   const built = [
     blockCreated(TODAY, "x", undefined, "x"),
     blockEdited("x", "y"),
@@ -126,9 +126,10 @@ test("every builder writes the v its own gate reads, and there is one for every 
     blockOutdented({ id: "x", after: "y" }),
   ];
   for (const event of built) assert.equal(event.v, HANDLES[event.type], event.type);
+  // Block events only: the property events' builders are #133.
   assert.deepEqual(
     built.map((event) => event.type).sort(),
-    Object.keys(HANDLES).sort(),
+    Object.keys(HANDLES).filter((type) => type.startsWith(`${NAMESPACE}block.`)).sort(),
   );
 });
 

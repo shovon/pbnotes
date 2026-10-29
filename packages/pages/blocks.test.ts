@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  HANDLES,
+  BLOCK_HANDLES,
   indented,
   NAMESPACE,
   outdented,
@@ -21,7 +21,7 @@ import type { Block, PageEvent, Pages } from "./blocks.ts";
 const TODAY = "2026-09-21";
 
 /** Nothing written yet. */
-const empty = (): Pages => ({ blocks: {}, titles: {} });
+const empty = (): Pages => ({ blocks: {}, titles: {}, properties: new Map() });
 
 /** One event, straight into `reduce`, with no log or device around it. */
 function event(type: string, v: number, payload: unknown) {
@@ -96,6 +96,7 @@ test("an event is folded under its namespaced name and no other", () => {
   assert.deepEqual(reduce(none, event(`${NAMESPACE}block.created`, 1, payload)), {
     blocks: { [TODAY]: [{ id: "b1", text: "first", children: [] }] },
     titles: { [TODAY]: TODAY },
+    properties: new Map(),
   });
   assert.equal(reduce(none, event("block.created", 1, payload)), none);
   // Only the exact prefix. A slash is what #37 first proposed and is not it.
@@ -104,8 +105,8 @@ test("an event is folded under its namespaced name and no other", () => {
     none,
   );
 
-  assert.equal(Object.keys(HANDLES).length, 5);
-  assert.equal(Object.keys(HANDLES).every((type) => type.startsWith(NAMESPACE)), true);
+  assert.equal(Object.keys(BLOCK_HANDLES).length, 5);
+  assert.equal(Object.keys(BLOCK_HANDLES).every((type) => type.startsWith(NAMESPACE)), true);
 });
 
 test("a prediction is the fold, and folding it over a page that has it changes nothing", () => {

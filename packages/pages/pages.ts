@@ -14,9 +14,9 @@
  * fold still gets wrong then, is `app/docs/block-sync.md`.
  */
 import {
+  BLOCK_HANDLES,
   blocksOn,
   find,
-  HANDLES,
   indented,
   locate,
   NAMESPACE,
@@ -34,12 +34,13 @@ import type {
   Pages,
 } from "./blocks.ts";
 import { linking, read } from "./reading.ts";
+import { PROPERTY_HANDLES, reduceProperties } from "./properties.ts";
+import type { PropertyEvent } from "./properties.ts";
 
 export {
   beside,
   blocksOn,
   find,
-  HANDLES,
   indented,
   lastLeaf,
   locate,
@@ -64,6 +65,28 @@ export type {
   Pages,
 } from "./blocks.ts";
 export { inCode, linking, read } from "./reading.ts";
+export {
+  children,
+  get,
+  getItems,
+  getValue,
+  list,
+  path,
+  showPath,
+} from "./properties.ts";
+export type {
+  Entry,
+  Properties,
+  Property,
+  PropertyEvent,
+  PropertyItemAdded,
+  PropertyItemRemoved,
+  PropertyRemoved,
+  PropertySet,
+  PropertyUnset,
+  Scalar,
+  Seen,
+} from "./properties.ts";
 export { remarkPlugins, remarkWikilink } from "./wikilink.ts";
 
 /**
@@ -89,6 +112,16 @@ export function today(now: Date): string {
 }
 
 /**
+ * Event type → the payload `v` this build folds, which is also the `v` it
+ * writes: the block events and the property events in one table, because
+ * the gate reads one. Public contract with `NAMESPACE`; see the README.
+ */
+export const HANDLES: Record<PageEvent["type"] | PropertyEvent["type"], number> = {
+  ...BLOCK_HANDLES,
+  ...PROPERTY_HANDLES,
+};
+
+/**
  * The pages fold, for whoever runs it over a ledger: `ledger.onEvent(
  * pagesFold.initial, pagesFold.reduce)`.
  *
@@ -99,12 +132,14 @@ export function today(now: Date): string {
  * and the rest) take `v` from the same table.
  */
 export const pagesFold = {
+  // The block fold, then the property fold. Each hands back the state it was
+  // given for an event that is not its own, so composing them is all it takes.
   reduce: (state: Pages, event: { type: string; v: number; payload: unknown }): Pages =>
     Object.hasOwn(HANDLES, event.type) &&
-    event.v <= HANDLES[event.type as PageEvent["type"]]
-      ? reduce(state, event)
+    event.v <= HANDLES[event.type as keyof typeof HANDLES]
+      ? reduceProperties(reduce(state, event), event)
       : state,
-  initial: { blocks: {}, titles: {} } as Pages,
+  initial: { blocks: {}, titles: {}, properties: new Map() } as Pages,
 };
 
 /**
@@ -137,7 +172,8 @@ export function getPage(pages: Pages, title: string): Page {
  *
  * A day that folds to nothing is left out. A date whose only block was
  * deleted is not a page the user wrote on any more, and a heading with
- * nothing under it reads like something went missing.
+ * nothing under it reads like something went missing. A day that has
+ * properties and no blocks is still a day (#84).
  *
  * Today is not added here. Which day that is depends on the clock, and this
  * is a reading of the log — a caller that shows a journal puts today at the
@@ -147,11 +183,17 @@ export function getPage(pages: Pages, title: string): Page {
  * dates themselves. That is the reason for the format.
  */
 export function getPages(pages: Pages): Page[] {
-  const { blocks, titles } = pages;
-  return Object.entries(blocks)
-    .filter(([key, on]) => DATE_PATTERN.test(key) && on.length > 0)
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([key, on]) => ({ title: titles[key], blocks: on }));
+  const { blocks, titles, properties } = pages;
+  const on = (key: string): Block[] =>
+    Object.hasOwn(blocks, key) ? blocks[key] : [];
+  const days = new Set([
+    ...Object.keys(blocks).filter((key) => on(key).length > 0),
+    ...properties.keys(),
+  ]);
+  return [...days]
+    .filter((key) => DATE_PATTERN.test(key))
+    .sort((a, b) => b.localeCompare(a))
+    .map((key) => ({ title: titles[key], blocks: on(key) }));
 }
 
 /**

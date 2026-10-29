@@ -21,6 +21,7 @@
  */
 
 import { read } from "./reading.ts";
+import type { Properties } from "./properties.ts";
 
 export type Block = {
   id: string;
@@ -106,10 +107,15 @@ export function pageKey(title: string): string {
  * overwritten: editing the link away later leaves it as it was. A page can
  * have a spelling and no blocks yet — a link names it before anyone writes on
  * it — so every key in `blocks` is in `titles` but not the other way round.
+ *
+ * `properties` sits beside the blocks, not inside them, so nothing that reads
+ * blocks changes (`properties.ts`, #84). A property event spells its page in
+ * `titles` too, so every key in `properties` is in `titles` as well.
  */
 export type Pages = {
   blocks: Record<string, Block[]>;
   titles: Record<string, string>;
+  properties: Properties;
 };
 
 /**
@@ -134,9 +140,12 @@ export function titleOf(pages: Pages, title: string): string {
 
 /**
  * `titles` with a spelling for each of `names` whose key has none yet, in
- * order, so the first of two spellings in one event is the one kept.
+ * order, so the first of two spellings in one event is the one kept. The
+ * same object back when every name already has one.
+ *
+ * Exported for the property fold, which spells a page the same way.
  */
-function spell(titles: Pages["titles"], names: string[]): Pages["titles"] {
+export function spell(titles: Pages["titles"], names: string[]): Pages["titles"] {
   let next = titles;
   for (const name of names) {
     const key = pageKey(name);
@@ -235,11 +244,12 @@ type Named<T extends string> = `${typeof NAMESPACE}${T}`;
  * new event type without a version here, or a version here for an event type
  * that does not exist, stops the build.
  *
- * The gate itself is `pagesFold` in `pages.ts`. Its job is the case a
+ * The block events' half of `HANDLES` in `pages.ts`, which is the table the
+ * gate reads. The gate itself is `pagesFold` there. Its job is the case a
  * single-writer log could never produce: a newer build on another machine
  * writing something this one does not understand. Those events are skipped.
  */
-export const HANDLES: Record<PageEvent["type"], number> = {
+export const BLOCK_HANDLES: Record<PageEvent["type"], number> = {
   [`${NAMESPACE}block.created`]: 1,
   // 2 since the page came off the payload. Nothing needed an upcast in this
   // direction — the field is simply unread — but an older build handed one of
@@ -423,6 +433,7 @@ export function reduce(
         block,
       ];
       return {
+        ...state,
         blocks: { ...state.blocks, [pageKey(page)]: next },
         // The page before its links: it is where the user was writing.
         titles: spell(state.titles, [page, ...linksIn(text)]),
@@ -568,6 +579,7 @@ export function predict(page: Page, events: PageEvent[]): Page {
   let state: Pages = {
     blocks: { [key]: page.blocks },
     titles: { [key]: page.title },
+    properties: new Map(),
   };
   for (const event of events) {
     if (!landed(state, event)) state = reduce(state, event);
