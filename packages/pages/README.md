@@ -31,6 +31,19 @@ Every event type is `NAMESPACE` followed by a name, for example `github.com/shov
 - **The namespace is an identifier, not a link.** Do not change its bytes, even if the repository moves.
 - **`pagesFold` is the gate.** It skips a type that is not in `HANDLES` and a `v` higher than `HANDLES` gives, so an older reader passes over what it cannot read and does not fold it wrongly. Do not call `reduce` on events from a log without the gate in front of it.
 
+## Page titles are a contract
+
+A page has no id. Two titles are the same page when `canonicalize` gives the same string for both, and that is exactly this:
+
+```ts
+title.replace(/[​﻿]/g, "").trim().toLowerCase().normalize("NFC")
+```
+
+- **The expression is the specification,** not a description of it. Another reader has to produce the same bytes for every title, or it splits or merges pages the app shows as one. Call `canonicalize` rather than copying it.
+- **What it does, in order:** drops zero-width spaces and byte-order marks (but keeps the zero-width joiner and non-joiner, which emoji and Persian need), trims, lowercases without regard to locale, then puts the result in NFC. NFC goes last because lowercasing can undo it. NFKC is deliberately not used, so `ﬁ` and `x²` stay as they are.
+- **It is computed on every read and never written down.** The log keeps every title as it was typed, and a page shows the first spelling the fold saw.
+- **Changing it regroups pages in every existing folder** the next time it is opened. Change it rarely, on purpose, and say so in the release.
+
 ## Page properties
 
 A page can carry properties: values about the page itself, such as a status, its aliases or a cover. They are a tree. A key is a **path**, a non-empty array of strings, and every node holds a value, a set of items, both, or only what is under it. The events give no key a meaning: what `["app", "cover"]` is, is a rule in whatever reads it. By convention the first segment says who owns a key: `["user", ...]` for what people type, `["app", ...]` for keys the app gives a meaning to.
