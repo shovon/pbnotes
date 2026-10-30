@@ -4,7 +4,7 @@
  * built by the same builder main's command writes it with, so what is drawn
  * ahead of main is what main will hold.
  *
- * Each takes only the call it makes.
+ * Each takes only the call it makes: `run`, with the command for its write.
  */
 import {
   blockCreated,
@@ -21,15 +21,12 @@ import type { PagesApi } from '../../../../shared/pages';
 /** An event to draw, and the call that asks main to record it. */
 export type Step = [PageEvent, () => Promise<unknown>];
 
-/** Every call the steps here make, for a view that hands them its bridge. */
-export type StepsPages = Pick<
-  PagesApi,
-  'addBlock' | 'editBlock' | 'deleteBlock' | 'indentBlock' | 'outdentBlock'
->;
+/** The one call the steps here make, for a view that hands them its bridge. */
+export type StepsPages = Pick<PagesApi, 'run'>;
 
 /** A new block, named by the caller, at the end of the page or beneath `after`. */
 export function add(
-  pages: Pick<PagesApi, 'addBlock'>,
+  pages: StepsPages,
   id: string,
   title: string,
   text: string,
@@ -37,20 +34,20 @@ export function add(
 ): Step {
   return [
     blockCreated(title, text, after, id),
-    () => pages.addBlock(id, title, text, after),
+    () =>
+      pages.run({ type: 'addBlock', id, title, text, ...(after ? { after } : {}) }),
   ];
 }
 
-export function edit(
-  pages: Pick<PagesApi, 'editBlock'>,
-  id: string,
-  text: string,
-): Step {
-  return [blockEdited(id, text), () => pages.editBlock(id, text)];
+export function edit(pages: StepsPages, id: string, text: string): Step {
+  return [
+    blockEdited(id, text),
+    () => pages.run({ type: 'editBlock', blockId: id, text }),
+  ];
 }
 
-export function remove(pages: Pick<PagesApi, 'deleteBlock'>, id: string): Step {
-  return [blockDeleted(id), () => pages.deleteBlock(id)];
+export function remove(pages: StepsPages, id: string): Step {
+  return [blockDeleted(id), () => pages.run({ type: 'deleteBlock', blockId: id })];
 }
 
 /**
@@ -59,20 +56,30 @@ export function remove(pages: Pick<PagesApi, 'deleteBlock'>, id: string): Step {
  * nothing is sent.
  */
 export function indent(
-  pages: Pick<PagesApi, 'indentBlock'>,
+  pages: StepsPages,
   blocks: Block[],
   id: string,
 ): Step | undefined {
   const payload = indented(blocks, id);
-  return payload && [blockIndented(payload), () => pages.indentBlock(id)];
+  return (
+    payload && [
+      blockIndented(payload),
+      () => pages.run({ type: 'indentBlock', blockId: id }),
+    ]
+  );
 }
 
 /** Shift+Tab on a block. Undefined at the top level, like `indent` at the top. */
 export function outdent(
-  pages: Pick<PagesApi, 'outdentBlock'>,
+  pages: StepsPages,
   blocks: Block[],
   id: string,
 ): Step | undefined {
   const payload = outdented(blocks, id);
-  return payload && [blockOutdented(payload), () => pages.outdentBlock(id)];
+  return (
+    payload && [
+      blockOutdented(payload),
+      () => pages.run({ type: 'outdentBlock', blockId: id }),
+    ]
+  );
 }

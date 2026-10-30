@@ -16,7 +16,7 @@ import {
   searchPages,
   today,
 } from "@pbnotes/pages";
-import type { PagesState, Place } from "../../../../../shared/pages.ts";
+import type { Command, PagesState, Place } from "../../../../../shared/pages.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
 import { getState } from "../pages-store/pages-store.ts";
 import type { PagesView } from "../pages-store/pages-store.ts";
@@ -174,17 +174,12 @@ export function createPagesSession(
       searchPages((await open.require()).state, query),
     status: async (): Promise<LogStatus> => (await open.require()).status,
 
-    /** `after` absent puts the block at the end of the page. */
-    addBlock: (id: string, title: string, text: string, after?: string) =>
-      write((view) => addBlock(view, title, text, after, id)),
-    editBlock: (blockId: string, text: string) =>
-      write((view) => editBlock(view, blockId, text)),
-    deleteBlock: (blockId: string) =>
-      write((view) => deleteBlock(view, blockId)),
-    indentBlock: (blockId: string) =>
-      write((view) => indentBlock(view, blockId)),
-    outdentBlock: (blockId: string) =>
-      write((view) => outdentBlock(view, blockId)),
+    /**
+     * Records `command`, checked by `requireCommand` before it gets here, as
+     * the `@pbnotes/pages` command it names (#158). Through `write`, so every
+     * write is recorded one at a time in the order it arrived.
+     */
+    run: (command: Command) => write((view) => apply(view, command)),
 
     /**
      * No event: the image is in the notes once a block's text links it, and
@@ -196,3 +191,26 @@ export function createPagesSession(
 }
 
 export type PagesSession = ReturnType<typeof createPagesSession>;
+
+/** A command run as the one `@pbnotes/pages` command it names. */
+function apply(view: PagesView, command: Command): Promise<unknown> {
+  switch (command.type) {
+    case "addBlock": {
+      const { title, text, after, id } = command;
+      return addBlock(view, title, text, after, id);
+    }
+    case "editBlock":
+      return editBlock(view, command.blockId, command.text);
+    case "deleteBlock":
+      return deleteBlock(view, command.blockId);
+    case "indentBlock":
+      return indentBlock(view, command.blockId);
+    case "outdentBlock":
+      return outdentBlock(view, command.blockId);
+    default: {
+      // Does not compile once `Command` has a case this switch lacks.
+      const unhandled: never = command;
+      throw new TypeError(`Unknown command ${(unhandled as Command).type}`);
+    }
+  }
+}

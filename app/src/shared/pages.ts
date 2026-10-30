@@ -70,12 +70,8 @@ export const PAGE_CHANNELS = {
   rezoom: 'pages:rezoom',
   locate: 'pages:locate',
   search: 'pages:search',
-  addBlock: 'pages:add-block',
+  command: 'pages:command',
   addImage: 'pages:add-image',
-  editBlock: 'pages:edit-block',
-  deleteBlock: 'pages:delete-block',
-  indentBlock: 'pages:indent-block',
-  outdentBlock: 'pages:outdent-block',
   blockMenu: 'pages:block-menu',
   status: 'pages:status',
 } as const;
@@ -85,7 +81,7 @@ export const PAGE_CHANNELS = {
  * call names a project: main holds which one is open, and everything here is
  * about that one.
  *
- * Nothing but `locate`, `search` and `status` answers with content. A write or a step
+ * Nothing but `locate`, `search`, `status` and `addImage` answers with content. A write (`run`) or a step
  * along the trail resolves once `onChanged` has heard the state it led to, so
  * a caller that carries on sees it. That order is the bridge's to keep, not
  * Electron's: main numbers each state on `pages:changed`, replies with the
@@ -146,19 +142,12 @@ export type PagesApi = {
    */
   status(): Promise<LogStatus>;
   /**
-   * Appends a `block.created` event for a block the caller has already named.
-   * `id` is a fresh UUID of the caller's own: the view draws the block before
-   * main has written it, so the id on screen has to be the id on disk. Main
-   * refuses one that is not a UUID or that the project already has. `after`
-   * puts the new block directly beneath that one; without it the block goes
-   * at the end of the page.
+   * Asks main to record `command`, one of the writes below (#158). One call
+   * for every write, so a new write is a case on `Command`, not a channel of
+   * its own. Main checks the command's shape, then runs the `@pbnotes/pages`
+   * command it names, which makes the full checks and builds the event.
    */
-  addBlock(
-    id: string,
-    title: string,
-    text: string,
-    after?: string,
-  ): Promise<void>;
+  run(command: Command): Promise<void>;
   /**
    * Stores an image in the project's folder and returns the link a block
    * holds it by, `images/<sha256>.png`. Appends nothing: the caller puts the
@@ -166,49 +155,65 @@ export type PagesApi = {
    */
   addImage(bytes: Uint8Array, mime: string): Promise<string>;
   /**
-   * Appends a `block.edited` event. The earlier text is not replaced on disk —
-   * the log keeps both facts, and the fold shows the later one.
-   *
-   * No title, here or on the three below: a block id identifies a block across
-   * the whole project, so the page is main's to look up rather than the
-   * caller's to remember — which is why a view showing blocks from several
-   * pages at once, like a references cut, can write to any of them without
-   * tracking a title per block.
-   */
-  editBlock(blockId: string, text: string): Promise<void>;
-  /**
-   * Appends a `block.deleted` event. The block leaves the fold; everything
-   * ever written into it stays on disk, because the log records that the user
-   * deleted it, not that it never existed.
-   */
-  deleteBlock(blockId: string): Promise<void>;
-  /**
-   * Appends a `block.indented` event: the block becomes the last child of the
-   * sibling above it, bringing its own children along.
-   *
-   * A block that is already first among its siblings has nothing to move
-   * under. That resolves with nothing changed rather than throwing — the user
-   * pressed a key and the outline did not change, which is not an error and
-   * not a fact the log has any use for.
-   */
-  indentBlock(blockId: string): Promise<void>;
-  /**
-   * Appends a `block.outdented` event: the block comes out a level and lands
-   * directly beneath the block it used to be filed under.
-   *
-   * The siblings that were below it come along as its children. That is the
-   * only arrangement that leaves the page reading top to bottom in the order
-   * it did before — leaving them behind would put them above the block that
-   * just moved, which is a reordering nobody asked for.
-   *
-   * A block already at the top level has nothing to come out of, and resolves
-   * with nothing changed rather than throwing, like `indentBlock`.
-   */
-  outdentBlock(blockId: string): Promise<void>;
-  /**
    * Pops the native menu for a block's dot at the pointer. Its one item puts
    * `((blockId))` on the clipboard. Resolves once the menu is shown, not when
    * it closes; whatever the item does happens in main.
    */
   blockMenu(blockId: string): Promise<void>;
 };
+
+/**
+ * Every write the window can ask main to record, tagged by `type`. Each runs
+ * exactly one command in `@pbnotes/pages`, and none says anything about what
+ * is showing: where the view is, is not a write.
+ *
+ * A block is named by its id alone, on every case but `addBlock`: an id
+ * identifies a block across the whole project, so the page is main's to look
+ * up rather than the caller's to remember. That is why a view showing blocks
+ * from several pages at once, like a references cut, can write to any of
+ * them without tracking a title per block.
+ */
+export type Command =
+  /**
+   * Appends a `block.created` event for a block the caller has already named.
+   * `id` is a fresh UUID of the caller's own: the view draws the block before
+   * main has written it, so the id on screen has to be the id on disk. Main
+   * refuses one that is not a UUID or that the project already has. `after`
+   * puts the new block directly beneath that one; without it the block goes
+   * at the end of the page.
+   */
+  | { type: 'addBlock'; id: string; title: string; text: string; after?: string }
+  /**
+   * Appends a `block.edited` event. The earlier text is not replaced on disk:
+   * the log keeps both facts, and the fold shows the later one.
+   */
+  | { type: 'editBlock'; blockId: string; text: string }
+  /**
+   * Appends a `block.deleted` event. The block leaves the fold; everything
+   * ever written into it stays on disk, because the log records that the user
+   * deleted it, not that it never existed.
+   */
+  | { type: 'deleteBlock'; blockId: string }
+  /**
+   * Appends a `block.indented` event: the block becomes the last child of the
+   * sibling above it, bringing its own children along.
+   *
+   * A block that is already first among its siblings has nothing to move
+   * under. That resolves with nothing changed rather than throwing: the user
+   * pressed a key and the outline did not change, which is not an error and
+   * not a fact the log has any use for.
+   */
+  | { type: 'indentBlock'; blockId: string }
+  /**
+   * Appends a `block.outdented` event: the block comes out a level and lands
+   * directly beneath the block it used to be filed under.
+   *
+   * The siblings that were below it come along as its children. That is the
+   * only arrangement that leaves the page reading top to bottom in the order
+   * it did before: leaving them behind would put them above the block that
+   * just moved, which is a reordering nobody asked for.
+   *
+   * A block already at the top level has nothing to come out of, and resolves
+   * with nothing changed rather than throwing, like `indentBlock`.
+   */
+  | { type: 'outdentBlock'; blockId: string };
