@@ -155,7 +155,8 @@ function subjectOf(of: Target): string {
 
 const setValue =
   (v: Scalar) =>
-  (entry: Entry): Entry => ({ ...entry, value: { v } });
+  (entry: Entry): Entry =>
+    entry.value && keyOf(entry.value.v) === keyOf(v) ? entry : { ...entry, value: { v } };
 
 function unsetValue(entry: Entry): Entry {
   if (!entry.value) return entry;
@@ -367,6 +368,18 @@ function apply(properties: Properties, of: Target, edits: Edit[]): Properties {
     else entries.set(at, next);
   }
   return changed ? withSubject(properties, of.kind, key, entries) : properties;
+}
+
+/**
+ * Whether `parsed` would change anything in `properties`, compared the way
+ * the fold compares: segments trimmed, strings in NFC. What the commands use
+ * to write nothing when a write would mean nothing.
+ *
+ * `properties` alone, not titles: a page target spells its title the first
+ * time it is named, but that is not a change to any property.
+ */
+export function changes(properties: Properties, { of, edits }: Parsed): boolean {
+  return apply(properties, of, edits) !== properties;
 }
 
 /** The page names a target brings with it: a page's title, and nothing for a block. */

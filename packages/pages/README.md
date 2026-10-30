@@ -88,3 +88,14 @@ The reads take the folded pages, a target and a path. Each returns a snapshot.
 
 Sorting is by path segment, by codepoint, the same on every device. The order means nothing.
 
+To write a property, hand a command a `PagesView`, a target and a path:
+
+- `setProperty(view, of, path, value)` and `unsetProperty(view, of, path)`: the value only.
+- `addPropertyItem(view, of, path, item)` and `removePropertyItem(view, of, path, item)`: one item only.
+- `removeProperty(view, of, path)`: one `property.removed` listing what `view.state` holds at `path` and under it.
+- `renameProperty(view, of, from, to)`: copies everything at and under `from` to `to`, then removes `from`, additions first, so a crash midway leaves both keys and never neither. It refuses a `to` that already holds something.
+
+They refuse what the fold would skip (a malformed path, a segment that is empty once trimmed, a value or item that isn't a scalar, `NaN` and `Infinity` among them) and a block target the state doesn't have. A write that would change nothing writes nothing: setting the value a path already has, unsetting one with none, adding an item already there, or removing one that isn't. They compare the way the fold does, trimmed and in NFC, and leave the trimming and normalizing to the fold.
+
+Each event has a pure builder: `propertySet`, `propertyUnset`, `propertyItemAdded`, `propertyItemRemoved` and `propertyRemoved`. Like the block builders, they skip the checks.
+
