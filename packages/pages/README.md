@@ -16,7 +16,7 @@ To write, hand `addBlock`, `editBlock`, `deleteBlock`, `indentBlock` or `outdent
 
 Each of those writes one event, and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented` and `blockOutdented`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
 
-The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `searchPages` and `locateBlock`) take the folded pages alone, since they never write. So do the property reads under [Page properties](#page-properties).
+The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `searchPages` and `locateBlock`) take the folded pages alone, since they never write. So do the property reads under [Properties](#properties).
 
 ## What it does not depend on
 
@@ -44,34 +44,46 @@ title.replace(/[​﻿]/g, "").trim().toLowerCase().normalize("NFC")
 - **It is computed on every read and never written down.** The log keeps every title as it was typed, and a page shows the first spelling the fold saw.
 - **Changing it regroups pages in every existing folder** the next time it is opened. Change it rarely, on purpose, and say so in the release.
 
-## Page properties
+## Properties
 
-A page can carry properties: values about the page itself, such as a status, its aliases or a cover. They are a tree. A key is a **path**, a non-empty array of strings, and every node holds a value, a set of items, both, or only what is under it. The events give no key a meaning: what `["app", "cover"]` is, is a rule in whatever reads it. By convention the first segment says who owns a key: `["user", ...]` for what people type, `["app", ...]` for keys the app gives a meaning to.
+Anything you can touch can carry properties: a page, a block, and later whatever else gets a `Target` kind. They are values about that thing itself, such as a status, a page's aliases or its cover. Every kind shares one model, one fold and one set of reads (#155).
+
+They are a tree. A key is a **path**, a non-empty array of strings, and every node holds a value, a set of items, both, or only what is under it. The events give no key a meaning: what `["app", "cover"]` is, is a rule in whatever reads it. By convention the first segment says who owns a key: `["user", ...]` for what people type, `["app", ...]` for keys the app gives a meaning to.
+
+Every event names what it is about with `of`, a **target**:
+
+```ts
+type Target =
+  | { kind: "page"; title: string }  // canonicalized like any title; first spelling kept
+  | { kind: "block"; id: string };
+```
 
 | Type | Payload | Meaning |
 |---|---|---|
-| `page.property.set` | `{ page, path, value }` | The value at `path` is now `value`. Its items are untouched. |
-| `page.property.unset` | `{ page, path }` | `path` has no value. Its items are untouched. |
-| `page.property.item.added` | `{ page, path, item }` | `item` is among the items at `path`. Adding one already there moves it to the end. The value is untouched. |
-| `page.property.item.removed` | `{ page, path, item }` | `item` is no longer among them. The value is untouched. |
-| `page.property.removed` | `{ page, seen: [{ path, value?, items }] }` | A property removed: for each path in `seen`, the value if it is still the one seen, and each item listed. What is not listed stays. |
+| `property.set` | `{ of, path, value }` | The value at `path` is now `value`. Its items are untouched. |
+| `property.unset` | `{ of, path }` | `path` has no value. Its items are untouched. |
+| `property.item.added` | `{ of, path, item }` | `item` is among the items at `path`. Adding one already there moves it to the end. The value is untouched. |
+| `property.item.removed` | `{ of, path, item }` | `item` is no longer among them. The value is untouched. |
+| `property.removed` | `{ of, seen: [{ path, value?, items }] }` | A property removed: for each path in `seen`, the value if it is still the one seen, and each item listed. What is not listed stays. |
 
 Each is `NAMESPACE` followed by its name, at `v: 1`.
 
 - **A scalar** is a string, a finite number, a boolean or `null`, and the four stay distinct: `1`, `"1"`, `true` and `null` are four values. `null` is a value; `unset` is how a path stops having one.
 - **The fold trims each path segment and puts every string in NFC,** so `" status "` and `"status"` are one key, and `Café` typed two ways is one key, one value and one item. A writer doesn't need to; the fold does it on every read.
-- **A malformed event is skipped whole:** a page that isn't a non-empty title, a path that isn't a non-empty array of strings, a segment that is empty once trimmed, a value or item that isn't a scalar, or a `removed` whose `seen` is empty or has one bad entry.
+- **A malformed event is skipped whole:** an `of` that isn't an object, has a `kind` this build doesn't know, or lacks its kind's own field (a page's non-empty `title`, a block's non-empty `id`); a path that isn't a non-empty array of strings; a segment that is empty once trimmed; a value or item that isn't a scalar; or a `removed` whose `seen` is empty or has one bad entry. Fields a kind doesn't read are ignored.
 - **No timestamp in any payload,** and the fold keeps none.
 - **No create and no delete by prefix.** A node exists while it or something under it holds something. A removal lists what the writer saw, so what another device added in the meantime survives it.
 - **The later write in fold order wins,** for the value and for each item on its own, so two devices writing different paths, or different items on one path, never overwrite each other.
-- **A property event spells its page's title** the way `block.created` does, and a page with properties and no blocks is still a page.
+- **A page target spells its page's title** the way `block.created` does, and a page with properties and no blocks is still a page. A block target spells nothing.
+- **A block target needs the block.** A property event for a block the fold doesn't have, before its `block.created` or after its `block.deleted`, is dropped, as an edit to it is. Deleting a block drops its properties and those of every block under it; nothing is kept for an undelete. A block's properties follow it wherever it moves.
+- **A page and a block named by the same string are separate:** `{ kind: "page", title: "b1" }` and `{ kind: "block", id: "b1" }` never share properties.
 
-The reads take the folded pages, a page title and a path. Each returns a snapshot.
+The reads take the folded pages, a target and a path. Each returns a snapshot.
 
-- `get(pages, page, path)`: `{ path, value, items }`, both slots, so no reader has to choose. A path with nothing at it reads as no value and no items.
+- `get(pages, of, path)`: `{ path, value, items }`, both slots, so no reader has to choose. A path with nothing at it reads as no value and no items.
 - `getValue` and `getItems`: one slot each. `getItems` is never undefined, and its last item is the latest added.
-- `list(pages, page, scope = [])`: every path at or under `scope` that holds something, sorted by path. `[]` is the page root.
-- `children(pages, page, path)`: the next segment of every path under `path`, each once, sorted.
+- `list(pages, of, scope = [])`: every path at or under `scope` that holds something, sorted by path. `[]` is the root.
+- `children(pages, of, path)`: the next segment of every path under `path`, each once, sorted.
 - `path("a/b/c")` and `showPath(["a", "b", "c"])`: a path from text and back, for code and UI. The events always carry the array.
 
 Sorting is by path segment, by codepoint, the same on every device. The order means nothing.

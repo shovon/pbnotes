@@ -393,6 +393,26 @@ export function reduce<S extends BlockState>(
   return parsed ? apply(state, parsed) : state;
 }
 
+/** A block's id and the id of every block under it. */
+function ids(block: Block): string[] {
+  return [block.id, ...block.children.flatMap(ids)];
+}
+
+/**
+ * The blocks `event` takes out of `state`: a deleted block and its whole
+ * subtree. Empty for any other event, and for a block `state` lacks. Read it
+ * before folding the event, while they are still there to find.
+ */
+export function removedBy(
+  state: BlockState,
+  event: { type: string; payload: unknown },
+): string[] {
+  const parsed = parse(event);
+  if (parsed?.type !== "block.deleted") return [];
+  const found = find(state, parsed.payload.id);
+  return found ? ids(found.siblings[found.at]) : [];
+}
+
 // ── Moves, and predicting them ──────────────────────────────────────────────
 
 /**
