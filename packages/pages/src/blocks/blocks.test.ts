@@ -7,16 +7,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  BLOCK_HANDLES,
-  indented,
-  NAMESPACE,
-  outdented,
-  predict,
-  reduce,
-} from "./blocks.ts";
+import { BLOCK_HANDLES, indented, outdented, predict, reduce } from "./blocks.ts";
+import { NAMESPACE } from "../events/events.ts";
 import { getPage, getReferences, searchPages } from "../pages.ts";
-import type { Block, PageEvent, Pages } from "./blocks.ts";
+import type { Pages } from "../pages.ts";
+import type { Block, PageEvent } from "./blocks.ts";
 
 const TODAY = "2026-09-21";
 
@@ -278,4 +273,29 @@ test("a prediction files a block under any spelling of the page it is drawn on",
   const next = predict(page, [create]);
   assert.equal(next.title, "Mira");
   assert.deepEqual(next.blocks.map((it) => it.id), ["n"]);
+});
+
+/**
+ * A block event from a shared folder may be anything. One that cannot fold is
+ * skipped whole; a non-string text used to fold in and crash every query
+ * that read it. The two leniencies keep a block that can still be shown.
+ */
+test("a malformed block event is skipped whole, and nothing that reads the pages throws", () => {
+  const created = (payload: unknown) => event(`${NAMESPACE}block.created`, 1, payload);
+  const state = [
+    created({ page: "x", id: "a", text: 5 }),
+    created({ page: "x", text: "no id" }),
+    created({ page: "x", id: "", text: "empty id" }),
+    created({ page: "x", id: "b", text: "kept" }),
+    created({ page: "x", id: "c", text: "after a non-string", after: 5 }),
+    created({ id: "d", text: "no page" }),
+    event(`${NAMESPACE}block.edited`, 2, { id: "b", text: ["not", "text"] }),
+  ].reduce(reduce, empty());
+
+  assert.deepEqual(getPage(state, "x").blocks.map((it) => [it.id, it.text]), [
+    ["b", "kept"],
+    ["c", "after a non-string"],
+  ]);
+  assert.deepEqual(getPage(state, "undefined").blocks.map((it) => it.id), ["d"]);
+  assert.doesNotThrow(() => searchPages(state, "x"));
 });
