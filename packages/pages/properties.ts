@@ -18,7 +18,8 @@
  * Like `blocks.ts`, nothing here touches a log, a clock or a window.
  */
 
-import { NAMESPACE, pageKey, spell } from "./blocks.ts";
+import { NAMESPACE, spell } from "./blocks.ts";
+import { canonicalize } from "./canonicalize.ts";
 
 /**
  * A value or an item. The four types stay distinct: `1`, `"1"`, `true` and
@@ -103,7 +104,7 @@ export type Entry = {
 };
 
 /**
- * Every page's properties: page key (`pageKey`) → JSON of the path → entry.
+ * Every page's properties: page key (`canonicalize`) → JSON of the path → entry.
  * Flat, keyed by path, not a stored tree: an event touches only the entries
  * it names, and the tree is a reading of this map that cannot disagree with
  * it. `Map` throughout, so a title, a segment or an item of `__proto__` is an
@@ -236,7 +237,7 @@ function parse(
   if (!type.startsWith(NAMESPACE)) return undefined;
   if (typeof payload !== "object" || payload === null) return undefined;
   const page = field(payload, "page");
-  if (typeof page !== "string" || pageKey(page) === "") return undefined;
+  if (typeof page !== "string" || canonicalize(page) === "") return undefined;
 
   const named = type.slice(NAMESPACE.length);
   if (named === "page.property.removed") {
@@ -279,7 +280,7 @@ function parse(
  * edit changed anything.
  */
 function apply(properties: Properties, page: string, edits: Edit[]): Properties {
-  const key = pageKey(page);
+  const key = canonicalize(page);
   const entries = new Map(properties.get(key));
   let changed = false;
   for (const { path, change } of edits) {
@@ -381,7 +382,7 @@ function byPath(a: string[], b: string[]): number {
  */
 function under(holds: Holds, page: string, scope: string[]): Entry[] {
   const kept = segments(scope);
-  const entries = holds.properties.get(pageKey(page));
+  const entries = holds.properties.get(canonicalize(page));
   if (!kept || !entries) return [];
   return [...entries.values()].filter((entry) => within(entry.path, kept));
 }
@@ -394,7 +395,7 @@ function under(holds: Holds, page: string, scope: string[]): Entry[] {
 export function get(holds: Holds, page: string, path: string[]): Property {
   const kept = segments(path);
   if (!kept) return nothing([...path]);
-  const entry = holds.properties.get(pageKey(page))?.get(keyOf(kept));
+  const entry = holds.properties.get(canonicalize(page))?.get(keyOf(kept));
   return entry ? snapshot(entry) : nothing(kept);
 }
 

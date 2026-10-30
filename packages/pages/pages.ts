@@ -21,7 +21,6 @@ import {
   locate,
   NAMESPACE,
   outdented,
-  pageKey,
   reduce,
   titleOf,
 } from "./blocks.ts";
@@ -33,10 +32,12 @@ import type {
   PageEvent,
   Pages,
 } from "./blocks.ts";
+import { canonicalize } from "./canonicalize.ts";
 import { linking, read } from "./reading.ts";
 import { PROPERTY_HANDLES, reduceProperties } from "./properties.ts";
 import type { PropertyEvent } from "./properties.ts";
 
+export { canonicalize } from "./canonicalize.ts";
 export {
   beside,
   blocksOn,
@@ -46,7 +47,6 @@ export {
   locate,
   NAMESPACE,
   outdented,
-  pageKey,
   predict,
   reduce,
   titleOf,
@@ -212,7 +212,7 @@ export function getPages(pages: Pages): Page[] {
  */
 export function getReferences(pages: Pages, title: string): Page[] {
   const { blocks, titles } = pages;
-  const key = pageKey(title);
+  const key = canonicalize(title);
   return Object.entries(blocks)
     .filter(([page]) => page !== key)
     .map(([page, on]) => ({ title: titles[page], blocks: linking(on, title) }))
@@ -286,9 +286,9 @@ export function searchPages(
     if (blocks.length > 0) add(key);
     collect(blocks);
   }
-  const q = pageKey(query);
+  const q = canonicalize(query);
   return [...titles]
-    .map((title) => ({ title, at: pageKey(title).indexOf(q) }))
+    .map((title) => ({ title, at: canonicalize(title).indexOf(q) }))
     .filter(({ at }) => at !== -1)
     .sort(
       (a, b) =>

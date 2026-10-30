@@ -20,6 +20,7 @@
  * fold, or they drift: that is why this is a package and not a copy.
  */
 
+import { canonicalize } from "./canonicalize.ts";
 import { read } from "./reading.ts";
 import type { Properties } from "./properties.ts";
 
@@ -34,7 +35,7 @@ export type Page = {
   /**
    * What names the page: a local `YYYY-MM-DD` for a journal day, otherwise
    * the first spelling the fold saw for it. Case does not matter — `#Mira`
-   * and `#mira` are one page, see `pageKey` — but the log keeps each title as
+   * and `#mira` are one page, see `canonicalize` — but the log keeps each title as
    * it was typed, so the page shows a spelling someone actually wrote.
    */
   title: string;
@@ -78,29 +79,7 @@ export function lastLeaf(block: Block): Block {
 }
 
 /**
- * What two titles have to share to be one page (#83): `[[Mira]]`, `[[mira]]`
- * and `#MIRA` all open the same one.
- *
- * Not `toLocaleLowerCase()`, which depends on the machine's locale: two
- * devices would fold one ledger into different pages.
- *
- * Unicode forms fold too (#88): `Café` typed as one `é` and as `e` plus a
- * combining accent is one page (NFC, which, unlike NFKC, leaves `ﬁ` and `x²`
- * alone). A zero-width space or byte-order mark pasted in is dropped; the
- * zero-width joiner and non-joiner stay, since emoji and Persian need them.
- * NFC goes last because lowercasing can undo it.
- *
- * Computed on every read and never written down, so the log keeps every title
- * as it was typed. Changing this regroups pages in every existing ledger on
- * the next open — merging or splitting them — so it changes rarely and on
- * purpose.
- */
-export function pageKey(title: string): string {
-  return title.replace(/[\u200B\uFEFF]/g, "").trim().toLowerCase().normalize("NFC");
-}
-
-/**
- * Every page, by `pageKey`: a journal day or a page a link named.
+ * Every page, by `canonicalize`: a journal day or a page a link named.
  *
  * `titles` holds the first spelling the fold saw for each key, as the `page`
  * of a creation or a link in the text of a creation or an edit, and is never
@@ -125,7 +104,7 @@ export type Pages = {
  * throws on an event the log keeps forever never opens again (#62).
  */
 export function blocksOn(pages: Pages, title: string): Block[] {
-  const key = pageKey(title);
+  const key = canonicalize(title);
   return Object.hasOwn(pages.blocks, key) ? pages.blocks[key] : [];
 }
 
@@ -134,7 +113,7 @@ export function blocksOn(pages: Pages, title: string): Block[] {
  * itself for a page nothing has named yet.
  */
 export function titleOf(pages: Pages, title: string): string {
-  const key = pageKey(title);
+  const key = canonicalize(title);
   return Object.hasOwn(pages.titles, key) ? pages.titles[key] : title;
 }
 
@@ -148,7 +127,7 @@ export function titleOf(pages: Pages, title: string): string {
 export function spell(titles: Pages["titles"], names: string[]): Pages["titles"] {
   let next = titles;
   for (const name of names) {
-    const key = pageKey(name);
+    const key = canonicalize(name);
     if (!Object.hasOwn(next, key)) next = { ...next, [key]: name };
   }
   return next;
@@ -364,7 +343,7 @@ function onBlock(
   if (!found) return state;
   const blocks = change(found);
   return blocks
-    ? { ...state, blocks: { ...state.blocks, [pageKey(found.page)]: blocks } }
+    ? { ...state, blocks: { ...state.blocks, [canonicalize(found.page)]: blocks } }
     : state;
 }
 
@@ -421,7 +400,7 @@ export function reduce(
     case "block.created": {
       const { id, text, after } = it.payload;
       // A string for whatever was there: a missing page used to file under
-      // `"undefined"` as an object key, and `pageKey` would throw on it.
+      // `"undefined"` as an object key, and `canonicalize` would throw on it.
       const page = String(it.payload.page);
       const blocks = blocksOn(state, page);
       const block: Block = { id, text, children: [] };
@@ -434,7 +413,7 @@ export function reduce(
       ];
       return {
         ...state,
-        blocks: { ...state.blocks, [pageKey(page)]: next },
+        blocks: { ...state.blocks, [canonicalize(page)]: next },
         // The page before its links: it is where the user was writing.
         titles: spell(state.titles, [page, ...linksIn(text)]),
       };
@@ -575,7 +554,7 @@ function landed(state: Pages, event: PageEvent): boolean {
  */
 export function predict(page: Page, events: PageEvent[]): Page {
   if (events.length === 0) return page;
-  const key = pageKey(page.title);
+  const key = canonicalize(page.title);
   let state: Pages = {
     blocks: { [key]: page.blocks },
     titles: { [key]: page.title },

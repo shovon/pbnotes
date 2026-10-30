@@ -6,7 +6,7 @@
  * Pure, over the blocks as drawn, so the rules run under `node --test` with
  * nothing around them. The views make the id, ask main to write, and draw.
  */
-import { locate, pageKey } from '@pbnotes/pages';
+import { locate, canonicalize } from '@pbnotes/pages';
 import type { Block, Page } from '@pbnotes/pages';
 
 /**
@@ -39,7 +39,7 @@ export function placeNew(root: Block | undefined, after?: string): Placement {
  * zoomed block only when it lands on the zoomed page — a drop on another day
  * in view goes at the end of that day.
  *
- * Matched by `pageKey`: the trail holds the title as the link spelt it, and
+ * Matched by `canonicalize`: the trail holds the title as the link spelt it, and
  * the page shows the spelling it was first given.
  */
 export function imageTarget({
@@ -58,9 +58,9 @@ export function imageTarget({
   zoom?: string;
 }): { page: string; root?: Block } {
   const page = dropped ?? title ?? today;
-  const shown = showing.find((it) => pageKey(it.title) === pageKey(page));
+  const shown = showing.find((it) => canonicalize(it.title) === canonicalize(page));
   const found =
-    zoom && title !== null && pageKey(page) === pageKey(title) && shown
+    zoom && title !== null && canonicalize(page) === canonicalize(title) && shown
       ? locate(shown.blocks, zoom)
       : undefined;
   return { page, root: found?.siblings[found.at] };

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { locate, pageKey, today } from '@pbnotes/pages';
+import { locate, canonicalize, today } from '@pbnotes/pages';
 import type { PagesApi, PagesState } from '../../shared/pages';
 import type { Act } from '../ui';
 import { Previews } from './Block/Block';
@@ -199,7 +199,7 @@ export default function ProjectView({ act, pages, now }: Props) {
     // one of these by construction, so in a cut it is the common case —
     // swallowed, the most obvious thing on screen to click did nothing.
     // Zoomed in, the same link is the way out to the whole page.
-    if (title !== null && pageKey(page) === pageKey(title) && !zoom) return;
+    if (title !== null && canonicalize(page) === canonicalize(title) && !zoom) return;
     event.stopPropagation();
     act(() => pages.go({ page }));
   };
