@@ -13,7 +13,6 @@
  */
 import { BLOCK_HANDLES, find, reduce, removedBy } from "./blocks/blocks.ts";
 import type { Block, BlockState, PageEvent, Page } from "./blocks/blocks.ts";
-import type { BlocksView } from "./blocks/commands.ts";
 import { DATE_PATTERN } from "./journal/journal.ts";
 import {
   foldProperty,
@@ -22,6 +21,8 @@ import {
   PROPERTY_HANDLES,
 } from "./properties/properties.ts";
 import type { Properties, PropertyEvent, Target } from "./properties/properties.ts";
+import * as propertyCommands from "./properties/commands.ts";
+import type { PropertiesView } from "./properties/commands.ts";
 
 export { canonicalize } from "./canonicalize/canonicalize.ts";
 export { NAMESPACE } from "./events/events.ts";
@@ -71,6 +72,13 @@ export {
   outdentBlock,
 } from "./blocks/commands.ts";
 export { inCode, read } from "./reading/reading.ts";
+export {
+  propertyItemAdded,
+  propertyItemRemoved,
+  propertyRemoved,
+  propertySet,
+  propertyUnset,
+} from "./properties/commands.ts";
 export {
   children,
   get,
@@ -172,8 +180,49 @@ export const pagesFold = {
   initial: { blocks: new Map(), titles: new Map(), properties: new Map() } as Pages,
 };
 
-/** What the commands are handed: the pages as they stand, and a `dispatch`. */
-export type PagesView = BlocksView & { readonly state: Pages };
+/**
+ * What the commands are handed: the pages as they stand, and a `dispatch`
+ * for any event this fold reads. A `BlocksView` too, so the block commands
+ * take it as it is.
+ */
+export type PagesView = {
+  readonly state: Pages;
+  /** Resolves once the event is durable and folded into `state`. */
+  dispatch(v: number, type: keyof typeof HANDLES, payload: unknown): Promise<unknown>;
+};
+
+/**
+ * `view` as the property commands see it, with `exists` from both folds.
+ * State is read through, so a command that writes several events sees each
+ * one land.
+ */
+function propertiesOf(view: PagesView): PropertiesView {
+  return {
+    get state() {
+      return view.state;
+    },
+    exists: (of) => exists(view.state, of),
+    dispatch: (v, type, payload) => view.dispatch(v, type, payload),
+  };
+}
+
+/** A property command that takes a `PagesView`, as the block commands do. */
+const onPages =
+  <A extends unknown[]>(command: (view: PropertiesView, ...args: A) => Promise<void>) =>
+  (view: PagesView, ...args: A): Promise<void> =>
+    command(propertiesOf(view), ...args);
+
+/**
+ * The property commands (#133), with a block target checked against the
+ * block fold. Each refuses what the fold would skip and writes nothing when
+ * it would change nothing; see `properties/commands.ts`.
+ */
+export const setProperty = onPages(propertyCommands.setProperty);
+export const unsetProperty = onPages(propertyCommands.unsetProperty);
+export const addPropertyItem = onPages(propertyCommands.addPropertyItem);
+export const removePropertyItem = onPages(propertyCommands.removePropertyItem);
+export const removeProperty = onPages(propertyCommands.removeProperty);
+export const renameProperty = onPages(propertyCommands.renameProperty);
 
 /**
  * The journal: every day that has something on it, newest first. A day whose

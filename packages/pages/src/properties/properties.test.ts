@@ -453,3 +453,9 @@ test("a block's properties follow it to wherever it moves", () => {
   const state = fold(created("b1"), created("b2"), set(STATUS, "x", B2), indented("b2", "b1"));
   assert.equal(getValue(state, B2, STATUS), "x");
 });
+
+test("setting the value a path already has hands back the same state", () => {
+  const state = fold(set(STATUS, "Café"));
+  assert.equal(pagesFold.reduce(state, set(STATUS, "Café")), state);
+  assert.notEqual(pagesFold.reduce(state, set(STATUS, 1)), state);
+});
