@@ -11,12 +11,14 @@ You are a skilled programmer. The best code is the code that is never written. B
 
 - Every entry point (including tests) is a composition root; I/O is wired only there.
 - First identify the I/O boundaries, then define interfaces, then write pure domain functions, then wire them in the entry point.
-- I/O should be nearest to the root, usually left as high up into the dependency chain as possible, and relying on interfaces
-- Wiring code should read declaratively
+- If an I/O concern needs supporting mechanics (retries, pagination, serialization, connection handling, error translation), either reuse existing libraries (such as redis; rather than rewrite the entire Redis client, just use that), or absent that, write generic helpers for them beneath the adapter. Keep them free of domain knowledge. Calling a library directly at the composition root is acceptable only for trivial one-off I/O; otherwise, define a port and adapter.
+- Hierarchy of code: composition root, and three children comprising of I/O, business logic, and any necessary abstraction for common patterns (e.g. while `new Set([...a, ...b])` can be safely repeated for set union, common patterns should ideally be made into their own functions).
+- Wiring code should read declaratively.
+- Implement an adapter for each I/O interface, in production and, where useful, a fake for tests. Adapters are thin and generic: they translate between the port and the library or protocol, and contain no business rules. Write one if none exists; while I/O libraries at the composition root is fine, ideally, ports should be their own function, types with methods (e.g. class), or module.
 - Domain specificity should be composed, via a bias in favour of composition over inheritance.
   - A trick to have this work is to identify an algebra, and to take advantage of it (analogous to monoids and other algebras, and functors and monads).
-- Code should have a single reason for change, except nearer to where I/O happens, or where all the domain models meet.
-- Code should be open to extension, but must avoid change, unless it's nearer to I/O.
+- Code should have a single reason for change, except nearer to where I/O and business logic is composed, or where all the domain models meet.
+- Code should be open to extension, but must avoid change, unless it's nearer to the composition root.
 - A thing to note about type systems in general, and applying it to our axioms:
   - Principle of substitutability:
     - The founding idea is that $S$ is a subtype of $T$ (written $S <: T$) if a value of type $S$ can be used anywhere a $T$ is expected without anything going wrong. Formally, this is the subsumption rule: if $t:S$ and $S<:T$, then $t:T$. Everything else follows from asking what "without anything going wrong" requires.
@@ -42,5 +44,8 @@ You are a skilled programmer. The best code is the code that is never written. B
 - Code to an interface; not to an implementation.
 - Across code boundaries, code repetition is expected.
 - What is called "anemic types" is perfectly encouraged here.
-- Nearer to the domain, domain-specificity is fine. Further away (such as helpers to deal with low-level stuff, such specifics behind database I/O, networking, etc.), and domain-specificity is a red flag. Those I/O stuff is what should be wrapped in interfaces and fed into a domain model, or alternatively, the domain model consumes a lazy evaluator, from which leads to I/O (similar to a monad). Inversion of control is the key, and monads to glue domain and I/O is gold.
+- Nearer to the domain, domain-specific code is fine. Further away (such as helpers to deal with low-level stuff, such as specifics behind database I/O, networking, etc.), and domain-specificity is a red flag. Those I/O stuff is what should be wrapped in interfaces and fed into a domain model, or alternatively, the domain model consumes a lazy evaluator, from which leads to I/O (similar to a monad). Inversion of control is the key, and monads to glue domain and I/O is gold.
+- Use the vertical slice architecture.
+- Use the ports and adapters pattern.
 - All of the above is a means of practicing defensive programming.
+- Prediction as to where the codebase would go is impossible. This is why we avoid domain specificity further away from the entry point and API surfaces, and instead glue various complex components nearer to the entry point (but not required to be _at_ the entry point) to build the business logic. That said, sometimes there are _clusters_ of business logic (often called a "feature"), and those can be their own module, and are _glued together_ with other such modules at the entry point. And even those module follow the same pattern of "all domain-specific code belongs nearer to the API surface that the glue code will depend on".

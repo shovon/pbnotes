@@ -57,3 +57,4 @@ Two stores, and they do not swap. SQLite holds the projects registry and config;
   - A module with a unit test gets a folder named after it, holding both: `src/main/features/projects/pages/trail/{trail.ts,trail.test.ts}`. The same nesting rule applies — `window-bounds` is only used by `window-state`, so it lives inside it. A module with no test stays a loose file until it has one.
 - `@pbnotes/files` is for immutable, hash-named files only. Anything that changes is an event on the ledger, never a file beside it: two devices would each hold a copy with no order between them.
 - For views and front-end-only business logic: use the vertical slice architecture
+- Vertical slice architecture: if there is a `foo.ts`, and a `Foo.tsx`, and a `foo.test.ts` and a `Foo.test.tsx`, and they are coding to the same exact feature, then they belong in the same folder. Also
