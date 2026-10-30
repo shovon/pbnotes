@@ -22,8 +22,6 @@ export type ProjectViewPages = PageViewPages &
     | 'back'
     | 'rezoom'
     | 'addImage'
-    | 'addBlock'
-    | 'indentBlock'
     | 'blockMenu'
   >;
 
@@ -250,9 +248,9 @@ export default function ProjectView({ act, pages, now }: Props) {
         // filed under it, like the box at the end of a zoom in `PageView`.
         const { after, indent } = placeNew(root, last);
         const id = crypto.randomUUID();
-        await pages.addBlock(id, to, text, after);
+        await pages.run({ type: 'addBlock', id, title: to, text, ...(after ? { after } : {}) });
         last = id;
-        if (indent) await pages.indentBlock(id);
+        if (indent) await pages.run({ type: 'indentBlock', blockId: id });
       }
     });
   };

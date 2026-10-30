@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 import { IMAGE_SCHEME, PAGE_CHANNELS } from "../../../../shared/pages";
 import type { PagesState, Place } from "../../../../shared/pages";
 import { requireString } from "../../../ipc";
+import { requireCommand, requireTitle } from "./command/command";
 import type { PagesSession } from "./pages-session/pages-session";
 
 // This software is split into two components: the renderer, and the main
@@ -20,33 +21,6 @@ import type { PagesSession } from "./pages-session/pages-session";
 // hands it to the session (`pages-session.ts`), which holds the trail and the
 // order writes are recorded in. What only Electron can do — sending to the
 // windows, the image scheme, the native menu — is here too.
-
-/**
- * A title is a key in a log that keeps everything forever, so it is checked
- * on arrival: something, and nothing loose around it. Not a date pattern any
- * more — a link can name a page anything — but the link plugin trims what it
- * names, and a title that arrives untrimmed came from somewhere else.
- */
-function requireTitle(value: unknown): string {
-  const title = requireString(value, "title");
-  if (title === "" || title !== title.trim()) {
-    throw new TypeError("Expected a page title");
-  }
-  return title;
-}
-
-/**
- * A block's id comes from the renderer, which drew the block under it before
- * asking for it to be written. It is checked like a title, and for the same
- * reason: it is a key in a log that keeps everything forever.
- */
-function requireBlockId(value: unknown): string {
-  const id = requireString(value, "id");
-  if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)) {
-    throw new TypeError("Expected a block id");
-  }
-  return id;
-}
 
 /**
  * Sends `state` to every window, over `pages:changed`, with its number `n`
@@ -92,17 +66,10 @@ export function registerPageIpc(session: PagesSession): void {
 
   ipcMain.handle(PAGE_CHANNELS.status, () => session.status());
 
-  ipcMain.handle(
-    PAGE_CHANNELS.addBlock,
-    (_event, id: unknown, title: unknown, text: unknown, after: unknown) =>
-      session.addBlock(
-        requireBlockId(id),
-        requireTitle(title),
-        requireString(text, "text"),
-        // Absent means the end of the page; anything else has to be a block id
-        // before it reaches a log that keeps it forever.
-        after === undefined ? undefined : requireString(after, "after"),
-      ),
+  // Every write, on one channel (#158): the command's shape is checked
+  // here, and the session runs the package command it names.
+  ipcMain.handle(PAGE_CHANNELS.command, (_event, command: unknown) =>
+    session.run(requireCommand(command)),
   );
 
   ipcMain.handle(
@@ -132,29 +99,6 @@ export function registerPageIpc(session: PagesSession): void {
       ? net.fetch(pathToFileURL(file).toString())
       : new Response(null, { status: 404 });
   });
-
-  // No title on any of these four. The block id is the whole address, so
-  // there is nothing to check a title against and nothing to write one into.
-  ipcMain.handle(
-    PAGE_CHANNELS.editBlock,
-    (_event, blockId: unknown, text: unknown) =>
-      session.editBlock(
-        requireString(blockId, "blockId"),
-        requireString(text, "text"),
-      ),
-  );
-
-  ipcMain.handle(PAGE_CHANNELS.deleteBlock, (_event, blockId: unknown) =>
-    session.deleteBlock(requireString(blockId, "blockId")),
-  );
-
-  ipcMain.handle(PAGE_CHANNELS.indentBlock, (_event, blockId: unknown) =>
-    session.indentBlock(requireString(blockId, "blockId")),
-  );
-
-  ipcMain.handle(PAGE_CHANNELS.outdentBlock, (_event, blockId: unknown) =>
-    session.outdentBlock(requireString(blockId, "blockId")),
-  );
 
   // Native rather than drawn: placement at the screen edge, keyboard and
   // dismissal come with it. More items go in the template.

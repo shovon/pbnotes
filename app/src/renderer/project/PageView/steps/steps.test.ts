@@ -11,22 +11,16 @@ import {
 import type { Block } from '@pbnotes/pages';
 import { add, edit, indent, outdent, remove } from './steps.ts';
 import type { Step } from './steps.ts';
+import type { Command } from '../../../../shared/pages.ts';
 
-/** The calls a step made, by name and arguments, in place of main. */
+/** The commands a step sent, in place of main. */
 function bridge() {
-  const calls: [string, ...unknown[]][] = [];
-  const record =
-    (name: string) =>
-    async (...args: unknown[]): Promise<void> => {
-      calls.push([name, ...args]);
-    };
+  const calls: Command[] = [];
   return {
     calls,
-    addBlock: record('addBlock'),
-    editBlock: record('editBlock'),
-    deleteBlock: record('deleteBlock'),
-    indentBlock: record('indentBlock'),
-    outdentBlock: record('outdentBlock'),
+    run: async (command: Command): Promise<void> => {
+      calls.push(command);
+    },
   };
 }
 
@@ -49,13 +43,13 @@ async function run(pages: ReturnType<typeof bridge>, step: Step | undefined) {
 
 test('each step draws the event main writes, and sends the write that records it', async () => {
   const pages = bridge();
-  const cases: [Step | undefined, unknown, unknown[]][] = [
-    [add(pages, 'n', 'Mira', 'hi', 'a'), blockCreated('Mira', 'hi', 'a', 'n'), ['addBlock', 'n', 'Mira', 'hi', 'a']],
-    [add(pages, 'n', 'Mira', 'hi'), blockCreated('Mira', 'hi', undefined, 'n'), ['addBlock', 'n', 'Mira', 'hi', undefined]],
-    [edit(pages, 'a', 'A!'), blockEdited('a', 'A!'), ['editBlock', 'a', 'A!']],
-    [remove(pages, 'a'), blockDeleted('a'), ['deleteBlock', 'a']],
-    [indent(pages, blocks, 'b'), blockIndented({ id: 'b', parent: 'a' }), ['indentBlock', 'b']],
-    [outdent(pages, blocks, 'c'), blockOutdented({ id: 'c', after: 'b' }), ['outdentBlock', 'c']],
+  const cases: [Step | undefined, unknown, Command][] = [
+    [add(pages, 'n', 'Mira', 'hi', 'a'), blockCreated('Mira', 'hi', 'a', 'n'), { type: 'addBlock', id: 'n', title: 'Mira', text: 'hi', after: 'a' }],
+    [add(pages, 'n', 'Mira', 'hi'), blockCreated('Mira', 'hi', undefined, 'n'), { type: 'addBlock', id: 'n', title: 'Mira', text: 'hi' }],
+    [edit(pages, 'a', 'A!'), blockEdited('a', 'A!'), { type: 'editBlock', blockId: 'a', text: 'A!' }],
+    [remove(pages, 'a'), blockDeleted('a'), { type: 'deleteBlock', blockId: 'a' }],
+    [indent(pages, blocks, 'b'), blockIndented({ id: 'b', parent: 'a' }), { type: 'indentBlock', blockId: 'b' }],
+    [outdent(pages, blocks, 'c'), blockOutdented({ id: 'c', after: 'b' }), { type: 'outdentBlock', blockId: 'c' }],
   ];
   for (const [step, built, call] of cases) {
     pages.calls.length = 0;

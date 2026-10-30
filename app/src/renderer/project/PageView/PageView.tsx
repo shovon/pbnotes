@@ -23,7 +23,7 @@ type Writing = { after?: string } | null;
  * steps it writes through call. A cut under the page is another `PageView`,
  * so `LinkedReferences` needs no more than this.
  */
-export type PageViewPages = StepsPages & Pick<PagesApi, 'search' | 'deleteBlock'>;
+export type PageViewPages = StepsPages & Pick<PagesApi, 'search'>;
 
 type Props = {
   pages: PageViewPages;
@@ -218,7 +218,7 @@ export default function PageView({
     // as drawn, the view would show the whole page until the zoom has moved.
     act(() =>
       next.unzoom
-        ? pages.deleteBlock(block.id)
+        ? pages.run({ type: 'deleteBlock', blockId: block.id })
         : write(remove(pages, block.id)),
     );
   };

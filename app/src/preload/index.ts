@@ -53,13 +53,9 @@ const pages: PagesApi = {
   locate: (blockId) => ipcRenderer.invoke(PAGE_CHANNELS.locate, blockId),
   search: (query) => ipcRenderer.invoke(PAGE_CHANNELS.search, query),
   status: () => ipcRenderer.invoke(PAGE_CHANNELS.status),
-  addBlock: changes(PAGE_CHANNELS.addBlock),
+  run: changes(PAGE_CHANNELS.command),
   addImage: (bytes, mime) =>
     ipcRenderer.invoke(PAGE_CHANNELS.addImage, bytes, mime),
-  editBlock: changes(PAGE_CHANNELS.editBlock),
-  deleteBlock: changes(PAGE_CHANNELS.deleteBlock),
-  indentBlock: changes(PAGE_CHANNELS.indentBlock),
-  outdentBlock: changes(PAGE_CHANNELS.outdentBlock),
   blockMenu: (blockId) => ipcRenderer.invoke(PAGE_CHANNELS.blockMenu, blockId),
 };
 

@@ -86,7 +86,7 @@ const shown = (state: PagesState | undefined) =>
 test("a write's state is sent before its reply", async () => {
   const { view } = ledger();
   const { pages, sent } = session(view);
-  await pages.addBlock("a1", TODAY, "one");
+  await pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
   assert.deepEqual(shown(sent.at(-1)), ["one"]);
 });
 
@@ -97,7 +97,7 @@ test("every call that sends a state resolves to that state's number", async () =
   const { pages, numbers } = session(view);
   const replies = [
     await pages.show(),
-    await pages.addBlock("a1", TODAY, "one"),
+    await pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" }),
     await pages.go({ page: "Mira" }),
     await pages.back(),
   ];
@@ -121,8 +121,8 @@ test("writes are recorded in the order they arrive, so one may name the block be
   const release = a.hold();
   // Sent back to back, as Enter then typing does: the second names the first,
   // which is not on the page until the first has been written.
-  const first = pages.addBlock("a1", TODAY, "one");
-  const second = pages.addBlock("a2", TODAY, "two", "a1");
+  const first = pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
+  const second = pages.run({ type: "addBlock", id: "a2", title: TODAY, text: "two", after: "a1" });
   release();
   await Promise.all([first, second]);
   assert.deepEqual(shown(sent.at(-1)), ["one", "two"]);
@@ -131,8 +131,8 @@ test("writes are recorded in the order they arrive, so one may name the block be
 test("a refused write does not hold up the ones behind it", async () => {
   const { view, texts } = ledger();
   const { pages } = session(view);
-  const refused = pages.editBlock("nope", "text");
-  const next = pages.addBlock("a1", TODAY, "one");
+  const refused = pages.run({ type: "editBlock", blockId: "nope", text: "text" });
+  const next = pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
   await assert.rejects(refused, /No such block/);
   await next;
   assert.deepEqual(texts(), ["one"]);
@@ -143,8 +143,8 @@ test("a write lands where it was sent, even when what is open changes while it w
   const b = ledger();
   const { pages, openLedger } = session(a.view);
   const release = a.hold();
-  const first = pages.addBlock("a1", TODAY, "one");
-  const second = pages.addBlock("a2", TODAY, "two", "a1");
+  const first = pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
+  const second = pages.run({ type: "addBlock", id: "a2", title: TODAY, text: "two", after: "a1" });
   openLedger(b.view);
   release();
   await Promise.all([first, second]);
@@ -179,7 +179,7 @@ test("with nothing reachable, show says so and nothing is sent", async () => {
   pages.refreshPages();
   // A step still resolves: the windows keep what they have.
   await pages.go({ page: "Mira" });
-  await assert.rejects(pages.addBlock("a1", TODAY, "one"), /not reachable/);
+  await assert.rejects(pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" }), /not reachable/);
   assert.equal(sent.length, 0);
 });
 
@@ -192,4 +192,22 @@ test("which day is today is the clock's, read every time a state is sent", async
   pages.refreshPages();
   await pages.show();
   assert.equal(sent.at(-1)?.showing[0]?.page.title, "2026-10-28");
+});
+
+test("run reaches each block command, and records them in the order they arrived", async () => {
+  const { view, hold } = ledger();
+  const { pages, sent } = session(view);
+  const release = hold();
+  const writes = [
+    pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" }),
+    pages.run({ type: "addBlock", id: "a2", title: TODAY, text: "two", after: "a1" }),
+    pages.run({ type: "indentBlock", blockId: "a2" }),
+    pages.run({ type: "editBlock", blockId: "a2", text: "two!" }),
+    pages.run({ type: "outdentBlock", blockId: "a2" }),
+    pages.run({ type: "addBlock", id: "a3", title: TODAY, text: "three", after: "a2" }),
+    pages.run({ type: "deleteBlock", blockId: "a1" }),
+  ];
+  release();
+  await Promise.all(writes);
+  assert.deepEqual(shown(sent.at(-1)), ["two!", "three"]);
 });
