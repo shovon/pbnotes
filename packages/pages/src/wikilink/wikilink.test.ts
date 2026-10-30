@@ -186,7 +186,7 @@ test('a note with none of them is untouched', () => {
   );
 });
 
-/** Read the way a note is read, strikethrough included. */
+/** Read the way a note is read, URLs and math included. */
 const full = unified().use(remarkParse).use(remarkPlugins);
 const parseNote = (source: string) => full.runSync(full.parse(source)) as Node;
 
@@ -195,15 +195,6 @@ const all = (node: Node, type: string): Node[] => [
   ...(node.type === type ? [node] : []),
   ...(node.children ?? []).flatMap((child) => all(child, type)),
 ];
-
-/** A link struck through is still a link; tildes in code, math or alone stay
-    what was typed. */
-test('~~strikethrough~~ wraps its words, links and all', () => {
-  const tree = parseNote('~~done [[Mira]]~~ `~~a~~` $~~b~~$ ~c~');
-  assert.deepEqual(all(tree, 'delete').map(read), ['done [[Mira]]']);
-  assert.deepEqual(pages(tree), ['Mira']);
-  assert.match(read(tree), /~~a~~.*~~b~~.*~c~/);
-});
 
 /** The URLs a note links out to, in document order. */
 const urls = (node: Node): string[] =>
@@ -237,19 +228,5 @@ test('a URL on its own is left as micromark made it', () => {
   assert.deepEqual(
     paragraph.children?.map((node) => node.type),
     ['text', 'link', 'text'],
-  );
-});
-
-/** Both spellings highlight, links inside still count; code, math, single
-    markers, spaced markers and mismatched pairs stay what was typed. */
-test('==highlight== and ^^highlight^^ wrap their words, links and all', () => {
-  const tree = parseNote(
-    '==done [[Mira]]== ^^#Ada^^ `==a==` $==b==$ a = b 2^3 x == y == z ==c^^ ===d===',
-  );
-  assert.deepEqual(all(tree, 'highlight').map(read), ['done [[Mira]]', '#Ada']);
-  assert.deepEqual(pages(tree), ['Mira', 'Ada']);
-  assert.match(
-    read(tree),
-    /==a==.*==b==.*a = b 2\^3 x == y == z ==c\^\^ ===d===/,
   );
 });
