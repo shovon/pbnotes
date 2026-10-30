@@ -40,7 +40,8 @@ test("an unknown type is refused, inherited names among them", () => {
   for (const type of ["setTitle", "__proto__", "constructor", "toString", "hasOwnProperty", 1, undefined]) {
     assert.throws(() => requireCommand({ type, blockId: "b1" }), /Unknown command/, String(type));
   }
-  for (const value of [null, undefined, "editBlock", 3, []]) {
+  const notObjects: unknown[] = [null, undefined, "editBlock", 3, []];
+  for (const value of notObjects) {
     assert.throws(() => requireCommand(value), TypeError);
   }
 });
