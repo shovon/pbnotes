@@ -139,7 +139,7 @@ export const pagesFold = {
     event.v <= HANDLES[event.type as keyof typeof HANDLES]
       ? reduceProperties(reduce(state, event), event)
       : state,
-  initial: { blocks: {}, titles: {}, properties: new Map() } as Pages,
+  initial: { blocks: new Map(), titles: new Map(), properties: new Map() } as Pages,
 };
 
 /**
@@ -184,16 +184,15 @@ export function getPage(pages: Pages, title: string): Page {
  */
 export function getPages(pages: Pages): Page[] {
   const { blocks, titles, properties } = pages;
-  const on = (key: string): Block[] =>
-    Object.hasOwn(blocks, key) ? blocks[key] : [];
+  const on = (key: string): Block[] => blocks.get(key) ?? [];
   const days = new Set([
-    ...Object.keys(blocks).filter((key) => on(key).length > 0),
+    ...[...blocks.keys()].filter((key) => on(key).length > 0),
     ...properties.keys(),
   ]);
   return [...days]
     .filter((key) => DATE_PATTERN.test(key))
     .sort((a, b) => b.localeCompare(a))
-    .map((key) => ({ title: titles[key], blocks: on(key) }));
+    .map((key) => ({ title: titles.get(key) ?? key, blocks: on(key) }));
 }
 
 /**
@@ -213,9 +212,9 @@ export function getPages(pages: Pages): Page[] {
 export function getReferences(pages: Pages, title: string): Page[] {
   const { blocks, titles } = pages;
   const key = canonicalize(title);
-  return Object.entries(blocks)
+  return [...blocks]
     .filter(([page]) => page !== key)
-    .map(([page, on]) => ({ title: titles[page], blocks: linking(on, title) }))
+    .map(([page, on]) => ({ title: titles.get(page) ?? page, blocks: linking(on, title) }))
     .filter((page) => page.blocks.length > 0)
     .sort((a, b) => {
       const days = [a, b].map((page) => DATE_PATTERN.test(page.title));
@@ -247,7 +246,7 @@ export function getPreviews(pages: Pages): [string, string | null][] {
       collect(block.children);
     }
   };
-  Object.values(pages.blocks).forEach(collect);
+  for (const blocks of pages.blocks.values()) collect(blocks);
   return [...ids].map((id) => {
     const found = find(pages, id);
     return [id, found ? read(found.siblings[found.at].text).preview : null];
@@ -282,7 +281,7 @@ export function searchPages(
       collect(block.children);
     }
   };
-  for (const [key, blocks] of Object.entries(pages.blocks)) {
+  for (const [key, blocks] of pages.blocks) {
     if (blocks.length > 0) add(key);
     collect(blocks);
   }

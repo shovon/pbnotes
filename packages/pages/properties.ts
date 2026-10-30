@@ -316,7 +316,7 @@ function apply(properties: Properties, page: string, edits: Edit[]): Properties 
  * `titles` and `properties` folds through it.
  */
 export function reduceProperties<
-  S extends { titles: Record<string, string>; properties: Properties },
+  S extends { titles: Map<string, string>; properties: Properties },
 >(state: S, event: { type: string; payload: unknown }): S {
   const parsed = parse(event.type, event.payload);
   if (!parsed) return state;

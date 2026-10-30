@@ -31,7 +31,7 @@ function ledger() {
   };
   /** Every top-level block's text, page by page. */
   const texts = () =>
-    Object.values(state.blocks).flatMap((blocks) =>
+    [...state.blocks.values()].flatMap((blocks) =>
       blocks.map((block) => block.text),
     );
   return { view, hold, texts };

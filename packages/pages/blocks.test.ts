@@ -21,7 +21,7 @@ import type { Block, PageEvent, Pages } from "./blocks.ts";
 const TODAY = "2026-09-21";
 
 /** Nothing written yet. */
-const empty = (): Pages => ({ blocks: {}, titles: {}, properties: new Map() });
+const empty = (): Pages => ({ blocks: new Map(), titles: new Map(), properties: new Map() });
 
 /** One event, straight into `reduce`, with no log or device around it. */
 function event(type: string, v: number, payload: unknown) {
@@ -66,7 +66,7 @@ test("a v1 payload still folds, page and all", async () => {
     nested,
     event(`${NAMESPACE}block.edited`, 1, { page: TODAY, id: "b2", text: "rewritten" }),
   );
-  assert.deepEqual(edited.blocks[TODAY], [
+  assert.deepEqual(edited.blocks.get(TODAY), [
     {
       id: "b1",
       text: "first",
@@ -80,8 +80,8 @@ test("a v1 payload still folds, page and all", async () => {
     edited,
     event(`${NAMESPACE}block.edited`, 1, { page: "Mira", id: "b2", text: "again" }),
   );
-  assert.equal(elsewhere.blocks[TODAY][0].children[0].text, "again");
-  assert.deepEqual(Object.keys(elsewhere.blocks), [TODAY]);
+  assert.equal(elsewhere.blocks.get(TODAY)?.[0].children[0].text, "again");
+  assert.deepEqual([...elsewhere.blocks.keys()], [TODAY]);
 });
 
 /**
@@ -94,8 +94,8 @@ test("an event is folded under its namespaced name and no other", () => {
   const none = empty();
 
   assert.deepEqual(reduce(none, event(`${NAMESPACE}block.created`, 1, payload)), {
-    blocks: { [TODAY]: [{ id: "b1", text: "first", children: [] }] },
-    titles: { [TODAY]: TODAY },
+    blocks: new Map([[TODAY, [{ id: "b1", text: "first", children: [] }]]]),
+    titles: new Map([[TODAY, TODAY]]),
     properties: new Map(),
   });
   assert.equal(reduce(none, event("block.created", 1, payload)), none);
@@ -165,9 +165,9 @@ test("a page named after an Object.prototype property folds like any other", () 
       event(`${NAMESPACE}block.created`, 1, { page: title, id: "b1", text: "hi" }),
     );
     const key = title.toLowerCase();
-    assert.deepEqual(state.blocks[key], [{ id: "b1", text: "hi", children: [] }], title);
-    assert.deepEqual(Object.keys(state.blocks), [key], title);
-    assert.equal(state.titles[key], title, title);
+    assert.deepEqual(state.blocks.get(key), [{ id: "b1", text: "hi", children: [] }], title);
+    assert.deepEqual([...state.blocks.keys()], [key], title);
+    assert.equal(state.titles.get(key), title, title);
   }
 });
 
