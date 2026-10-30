@@ -15,7 +15,7 @@ import {
   predict,
   reduce,
 } from "./blocks.ts";
-import { getPage, getReferences, searchPages } from "./pages.ts";
+import { getPage, getReferences, searchPages } from "../pages.ts";
 import type { Block, PageEvent, Pages } from "./blocks.ts";
 
 const TODAY = "2026-09-21";

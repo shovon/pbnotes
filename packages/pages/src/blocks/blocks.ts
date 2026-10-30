@@ -20,9 +20,9 @@
  * fold, or they drift: that is why this is a package and not a copy.
  */
 
-import { canonicalize } from "./canonicalize.ts";
-import { read } from "./reading.ts";
-import type { Properties } from "./properties.ts";
+import { canonicalize } from "../canonicalize/canonicalize.ts";
+import { read } from "../reading/reading.ts";
+import type { Properties } from "../properties/properties.ts";
 
 export type Block = {
   id: string;
@@ -123,7 +123,10 @@ export function titleOf(pages: Pages, title: string): string {
  *
  * Exported for the property fold, which spells a page the same way.
  */
-export function spell(titles: Pages["titles"], names: string[]): Pages["titles"] {
+export function spell(
+  titles: Pages["titles"],
+  names: string[],
+): Pages["titles"] {
   let next = titles;
   for (const name of names) {
     const key = canonicalize(name);
@@ -345,7 +348,10 @@ function onBlock(
   if (!found) return state;
   const blocks = change(found);
   return blocks
-    ? { ...state, blocks: new Map(state.blocks).set(canonicalize(found.page), blocks) }
+    ? {
+        ...state,
+        blocks: new Map(state.blocks).set(canonicalize(found.page), blocks),
+      }
     : state;
 }
 
@@ -531,7 +537,8 @@ export function outdented(
  * children all over again.
  */
 function landed(state: Pages, event: PageEvent): boolean {
-  if (event.type === `${NAMESPACE}block.created`) return !!find(state, event.payload.id);
+  if (event.type === `${NAMESPACE}block.created`)
+    return !!find(state, event.payload.id);
   const found = find(state, event.payload.id);
   if (event.type === `${NAMESPACE}block.indented`) {
     return found?.parent?.id === event.payload.parent;

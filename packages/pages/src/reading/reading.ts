@@ -7,9 +7,9 @@
  */
 import { unified } from "unified";
 import remarkParse from "remark-parse";
-import { canonicalize } from "./canonicalize.ts";
-import type { Block } from "./blocks.ts";
-import { remarkPlugins } from "./wikilink.ts";
+import { canonicalize } from "../canonicalize/canonicalize.ts";
+import type { Block } from "../blocks/blocks.ts";
+import { remarkPlugins } from "../wikilink/wikilink.ts";
 
 /**
  * The pages a text links to and the blocks it refers to, read with the same parser that renders it, so

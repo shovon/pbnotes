@@ -18,8 +18,8 @@
  * Like `blocks.ts`, nothing here touches a log, a clock or a window.
  */
 
-import { NAMESPACE, spell } from "./blocks.ts";
-import { canonicalize } from "./canonicalize.ts";
+import { NAMESPACE, spell } from "../blocks/blocks.ts";
+import { canonicalize } from "../canonicalize/canonicalize.ts";
 
 /**
  * A value or an item. The four types stay distinct: `1`, `"1"`, `true` and
