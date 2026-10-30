@@ -1,23 +1,8 @@
 import type { Link, Root, RootContent, Text } from 'mdast';
 import type { Processor } from 'unified';
 import remarkMath from 'remark-math';
-import { gfmStrikethrough } from 'micromark-extension-gfm-strikethrough';
-import { gfmStrikethroughFromMarkdown } from 'mdast-util-gfm-strikethrough';
 import { gfmAutolinkLiteral } from 'micromark-extension-gfm-autolink-literal';
 import { gfmAutolinkLiteralFromMarkdown } from 'mdast-util-gfm-autolink-literal';
-import type { Extension as FromMarkdownExtension } from 'mdast-util-from-markdown';
-import type {
-  Code,
-  Construct,
-  Event,
-  Resolver,
-  State,
-  Token,
-  Tokenizer,
-} from 'micromark-util-types';
-import { splice } from 'micromark-util-chunked';
-import { classifyCharacter } from 'micromark-util-classify-character';
-import { resolveAll } from 'micromark-util-resolve-all';
 
 /**
  * A hashtag and a link are the same idea here, so there is one plugin and
@@ -192,177 +177,6 @@ function linkFor(match: RegExpExecArray): RootContent {
 const read = (node: Link) => (node.children[0] as Text).value;
 
 /**
- * `~~foo~~`, and only that piece of GFM: `remark-gfm` would also bring
- * tables, task lists, footnotes and bare-URL autolinks, each of which changes
- * how existing notes look. A single `~` stays text, so `~5 min` is safe.
- * Rendering needs nothing more — the `delete` node already becomes `<del>`.
- */
-function remarkStrikethrough(this: Processor) {
-  const data = this.data();
-  (data.micromarkExtensions ??= []).push(
-    gfmStrikethrough({ singleTilde: false }),
-  );
-  (data.fromMarkdownExtensions ??= []).push(gfmStrikethroughFromMarkdown());
-}
-
-declare module 'micromark-util-types' {
-  interface TokenTypeMap {
-    highlight: 'highlight';
-    highlightSequence: 'highlightSequence';
-    highlightSequenceTemporary: 'highlightSequenceTemporary';
-    highlightText: 'highlightText';
-  }
-}
-
-const EQUALS = 61;
-const CARET = 94;
-
-/**
- * `==foo==`, Obsidian's highlight, and `^^foo^^`, Roam's: one node, drawn as
- * `<mark>`. The tokenizer is GFM strikethrough's with the tilde swapped out —
- * the same flanking rules, so `a == b` and `x ^^ y` stay text, and the same
- * doubled marker, so `a = b` and `2^3` do too. What it adds is that a closer
- * has to be the marker its opener was: `==a^^` highlights nothing.
- *
- * ponytail: a bare URL right before the closer, `==see https://a.com==`,
- * takes the `==` into the URL and nothing is highlighted — the autolink
- * extension's list of trailing punctuation to drop is fixed and has `~` but
- * not `=` or `^`. A space before the closer does not help either. Fork that
- * tokenizer's trail check if anyone highlights links.
- */
-function remarkHighlight(this: Processor) {
-  const tokenizer: Construct = {
-    name: 'highlight',
-    tokenize: tokenizeHighlight,
-    resolveAll: resolveAllHighlight,
-  };
-  const data = this.data();
-  (data.micromarkExtensions ??= []).push({
-    text: { [EQUALS]: tokenizer, [CARET]: tokenizer },
-    insideSpan: { null: [tokenizer] },
-    attentionMarkers: { null: [EQUALS, CARET] },
-  });
-  (data.fromMarkdownExtensions ??= []).push({
-    canContainEols: ['highlight'],
-    enter: {
-      highlight(token) {
-        const node = {
-          type: 'highlight',
-          children: [] as RootContent[],
-          data: { hName: 'mark' },
-        };
-        this.enter(node as never, token);
-      },
-    },
-    exit: {
-      highlight(token) {
-        this.exit(token);
-      },
-    },
-  } satisfies FromMarkdownExtension);
-}
-
-/** Pair each closer with the nearest opener spelled the same way. */
-const resolveAllHighlight: Resolver = (events, context) => {
-  for (let index = 0; index < events.length; index++) {
-    const close = events[index][1];
-    if (
-      events[index][0] !== 'enter' ||
-      close.type !== 'highlightSequenceTemporary' ||
-      !close._close
-    ) {
-      continue;
-    }
-    let open = index;
-    while (open--) {
-      const opener = events[open][1];
-      if (
-        events[open][0] === 'exit' &&
-        opener.type === 'highlightSequenceTemporary' &&
-        opener._open &&
-        context.sliceSerialize(opener) === context.sliceSerialize(close)
-      ) {
-        opener.type = 'highlightSequence';
-        close.type = 'highlightSequence';
-        const highlight: Token = {
-          type: 'highlight',
-          start: { ...opener.start },
-          end: { ...close.end },
-        };
-        const text: Token = {
-          type: 'highlightText',
-          start: { ...opener.end },
-          end: { ...close.start },
-        };
-        const next: Event[] = [
-          ['enter', highlight, context],
-          ['enter', opener, context],
-          ['exit', opener, context],
-          ['enter', text, context],
-        ];
-        const insideSpan = context.parser.constructs.insideSpan.null;
-        if (insideSpan) {
-          splice(
-            next,
-            next.length,
-            0,
-            resolveAll(insideSpan, events.slice(open + 1, index), context),
-          );
-        }
-        splice(next, next.length, 0, [
-          ['exit', text, context],
-          ['enter', close, context],
-          ['exit', close, context],
-          ['exit', highlight, context],
-        ]);
-        splice(events, open - 1, index - open + 3, next);
-        index = open + next.length - 2;
-        break;
-      }
-    }
-  }
-  for (const [, token] of events) {
-    if (token.type === 'highlightSequenceTemporary') token.type = 'data';
-  }
-  return events;
-};
-
-/** Exactly two of one marker; whether they open, close or both is down to
-    what is either side of them, as with `~~`. */
-const tokenizeHighlight: Tokenizer = function (effects, ok, nok) {
-  const previous = this.previous;
-  const events = this.events;
-  let marker: Code = null;
-  let size = 0;
-  const more: State = (code) => {
-    if (code === marker) {
-      if (size > 1) return nok(code);
-      effects.consume(code);
-      size++;
-      return more;
-    }
-    if (size < 2) return nok(code);
-    const token = effects.exit('highlightSequenceTemporary');
-    const before = classifyCharacter(previous);
-    const after = classifyCharacter(code);
-    token._open = !after || (after === 2 && Boolean(before));
-    token._close = !before || (before === 2 && Boolean(after));
-    return ok(code);
-  };
-  return (code) => {
-    marker = code;
-    if (
-      previous === marker &&
-      events[events.length - 1][1].type !== 'characterEscape'
-    ) {
-      return nok(code);
-    }
-    effects.enter('highlightSequenceTemporary');
-    return more(code);
-  };
-};
-
-/**
  * Bare URLs, `https://example.com` and `www.example.com`, the way GitHub
  * links them: trailing punctuation left out, parentheses balanced, code and
  * math left alone. An email address becomes a `mailto:` link the same way.
@@ -377,22 +191,20 @@ function remarkAutolinkLiteral(this: Processor) {
 /**
  * The remark plugins a note is read with, in the order they run. Math
  * first: `$…$` becomes a node without text children, so a `#` inside a
- * formula never becomes a link. Strikethrough and highlight are syntax, like
- * math; the walk then descends into a `delete` or a `mark` as into any other
- * formatting. Bare URLs come before the walk too, which takes them back apart
- * where they cut into a link.
+ * formula never becomes a link. Bare URLs come before the walk too, which
+ * takes them back apart where they cut into a link.
  *
  * Exported because whoever renders a block has to read it the same way
  * `reading.ts` does to find the pages it links to, which is how a page lists
  * what links to it. Two parsers that have to agree on what a link is would be
  * one more than anyone can keep in step — a `#foo` in a code span would
- * render as text and count as a reference.
+ * render as text and count as a reference. A renderer may add marks that
+ * only draw (strikethrough, highlight); the walk descends into those as into
+ * any other formatting.
  */
 export const remarkPlugins = [
   remarkMath,
-  remarkStrikethrough,
   remarkAutolinkLiteral,
-  remarkHighlight,
   remarkWikilink,
 ];
 
