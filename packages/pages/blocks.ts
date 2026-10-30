@@ -90,22 +90,22 @@ export function lastLeaf(block: Block): Block {
  * `properties` sits beside the blocks, not inside them, so nothing that reads
  * blocks changes (`properties.ts`, #84). A property event spells its page in
  * `titles` too, so every key in `properties` is in `titles` as well.
+ *
+ * `Map` throughout, like `properties`: a title is whatever was typed, and as
+ * a key of a plain object `toString` or `__proto__` is something every object
+ * inherits. A fold that throws on an event the log keeps forever never opens
+ * again (#62). A `Map` survives the structured clone to the renderer as well
+ * as an object does (#146).
  */
 export type Pages = {
-  blocks: Record<string, Block[]>;
-  titles: Record<string, string>;
+  blocks: Map<string, Block[]>;
+  titles: Map<string, string>;
   properties: Properties;
 };
 
-/**
- * The blocks on a page, empty for one nothing has been written to. An own
- * property only: a title is whatever was typed, and `state["toString"]` is a
- * function every object inherits. Spreading that throws, and a fold that
- * throws on an event the log keeps forever never opens again (#62).
- */
+/** The blocks on a page, empty for one nothing has been written to. */
 export function blocksOn(pages: Pages, title: string): Block[] {
-  const key = canonicalize(title);
-  return Object.hasOwn(pages.blocks, key) ? pages.blocks[key] : [];
+  return pages.blocks.get(canonicalize(title)) ?? [];
 }
 
 /**
@@ -113,8 +113,7 @@ export function blocksOn(pages: Pages, title: string): Block[] {
  * itself for a page nothing has named yet.
  */
 export function titleOf(pages: Pages, title: string): string {
-  const key = canonicalize(title);
-  return Object.hasOwn(pages.titles, key) ? pages.titles[key] : title;
+  return pages.titles.get(canonicalize(title)) ?? title;
 }
 
 /**
@@ -128,7 +127,10 @@ export function spell(titles: Pages["titles"], names: string[]): Pages["titles"]
   let next = titles;
   for (const name of names) {
     const key = canonicalize(name);
-    if (!Object.hasOwn(next, key)) next = { ...next, [key]: name };
+    if (next.has(key)) continue;
+    // Copied once, on the first new name: what was handed in is a checkpoint.
+    if (next === titles) next = new Map(titles);
+    next.set(key, name);
   }
   return next;
 }
@@ -316,9 +318,9 @@ export type Found = NonNullable<ReturnType<typeof locate>> & {
  * from it, the way `without` does.
  */
 export function find(pages: Pages, id: string): Found | undefined {
-  for (const [key, blocks] of Object.entries(pages.blocks)) {
+  for (const [key, blocks] of pages.blocks) {
     const where = locate(blocks, id);
-    if (where) return { page: pages.titles[key], blocks, ...where };
+    if (where) return { page: pages.titles.get(key) ?? key, blocks, ...where };
   }
   return undefined;
 }
@@ -343,7 +345,7 @@ function onBlock(
   if (!found) return state;
   const blocks = change(found);
   return blocks
-    ? { ...state, blocks: { ...state.blocks, [canonicalize(found.page)]: blocks } }
+    ? { ...state, blocks: new Map(state.blocks).set(canonicalize(found.page), blocks) }
     : state;
 }
 
@@ -400,7 +402,7 @@ export function reduce(
     case "block.created": {
       const { id, text, after } = it.payload;
       // A string for whatever was there: a missing page used to file under
-      // `"undefined"` as an object key, and `canonicalize` would throw on it.
+      // `"undefined"` as a key, and `canonicalize` would throw on it.
       const page = String(it.payload.page);
       const blocks = blocksOn(state, page);
       const block: Block = { id, text, children: [] };
@@ -413,7 +415,7 @@ export function reduce(
       ];
       return {
         ...state,
-        blocks: { ...state.blocks, [canonicalize(page)]: next },
+        blocks: new Map(state.blocks).set(canonicalize(page), next),
         // The page before its links: it is where the user was writing.
         titles: spell(state.titles, [page, ...linksIn(text)]),
       };
@@ -556,8 +558,8 @@ export function predict(page: Page, events: PageEvent[]): Page {
   if (events.length === 0) return page;
   const key = canonicalize(page.title);
   let state: Pages = {
-    blocks: { [key]: page.blocks },
-    titles: { [key]: page.title },
+    blocks: new Map([[key, page.blocks]]),
+    titles: new Map([[key, page.title]]),
     properties: new Map(),
   };
   for (const event of events) {
