@@ -11,12 +11,17 @@
  * What several machines writing at once does to a page is
  * `app/docs/block-sync.md`.
  */
-import { BLOCK_HANDLES, reduce } from "./blocks/blocks.ts";
+import { BLOCK_HANDLES, find, reduce, removedBy } from "./blocks/blocks.ts";
 import type { Block, BlockState, PageEvent, Page } from "./blocks/blocks.ts";
 import type { BlocksView } from "./blocks/commands.ts";
 import { DATE_PATTERN } from "./journal/journal.ts";
-import { PROPERTY_HANDLES, reduceProperties } from "./properties/properties.ts";
-import type { Properties, PropertyEvent } from "./properties/properties.ts";
+import {
+  foldProperty,
+  forget,
+  parseProperty,
+  PROPERTY_HANDLES,
+} from "./properties/properties.ts";
+import type { Properties, PropertyEvent, Target } from "./properties/properties.ts";
 
 export { canonicalize } from "./canonicalize/canonicalize.ts";
 export { NAMESPACE } from "./events/events.ts";
@@ -76,7 +81,9 @@ export {
   showPath,
 } from "./properties/properties.ts";
 export type {
+  Entries,
   Entry,
+  Kind,
   Properties,
   Property,
   PropertyEvent,
@@ -87,14 +94,16 @@ export type {
   PropertyUnset,
   Scalar,
   Seen,
+  Target,
 } from "./properties/properties.ts";
 export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
 
 /**
  * Every page, by `canonicalize`: the blocks on it, the first spelling the
- * fold saw for it, and its properties. Properties sit beside the blocks, not
- * inside them, so nothing that reads blocks changes (#84). Every key in
- * `blocks` or `properties` is in `titles`.
+ * fold saw for it, and the properties of every page and block. Properties sit
+ * beside the blocks, not inside them, so nothing that reads blocks changes
+ * (#84). Every key in `blocks`, and every page in `properties`, is in
+ * `titles`; every block in `properties` is in `blocks`.
  *
  * `Map` throughout, so a title of `__proto__` is an ordinary key (#62), and
  * it survives the structured clone to the renderer (#146).
@@ -112,19 +121,53 @@ export const HANDLES: Record<PageEvent["type"] | PropertyEvent["type"], number> 
 };
 
 /**
+ * Whether the fold has `of` to hang properties on. A page is named into
+ * being, so it always is; a block is there once created and until deleted.
+ */
+function exists(state: Pages, of: Target): boolean {
+  switch (of.kind) {
+    case "page":
+      return true;
+    case "block":
+      return find(state, of.id) !== undefined;
+  }
+}
+
+/**
+ * One event through both folds, and the rules that need both (#155):
+ *
+ * - A property of a block the fold lacks is dropped, as an edit to it is.
+ *   The ledger folds in clock order, so a writer that saw the block sorts
+ *   after it; only a clock skewed past `MAX_CLOCK_SKEW_MS` loses a write.
+ * - A deleted block takes its properties, and its subtree's, with it.
+ *   Nothing is kept in memory for an undelete; the log still has it all.
+ */
+function reducePages(state: Pages, event: { type: string; payload: unknown }): Pages {
+  const property = parseProperty(event);
+  if (property) return exists(state, property.of) ? foldProperty(state, property) : state;
+
+  const gone = removedBy(state, event);
+  const next = reduce(state, event);
+  if (gone.length === 0) return next;
+  const properties = forget(
+    next.properties,
+    gone.map((id): Target => ({ kind: "block", id })),
+  );
+  return properties === next.properties ? next : { ...next, properties };
+}
+
+/**
  * The pages fold, for whoever runs it over a ledger: `ledger.onEvent(
  * pagesFold.initial, pagesFold.reduce)`.
  *
  * The gate is here: a type this build does not have, or a `v` newer than it
- * reads, leaves the pages as they were. Behind it, the block fold then the
- * property fold; each hands back the state it was given for an event that is
- * not its own, so composing them is all it takes.
+ * reads, leaves the pages as they were. Behind it, `reducePages`.
  */
 export const pagesFold = {
   reduce: (state: Pages, event: { type: string; v: number; payload: unknown }): Pages =>
     Object.hasOwn(HANDLES, event.type) &&
     event.v <= HANDLES[event.type as keyof typeof HANDLES]
-      ? reduceProperties(reduce(state, event), event)
+      ? reducePages(state, event)
       : state,
   initial: { blocks: new Map(), titles: new Map(), properties: new Map() } as Pages,
 };
@@ -146,7 +189,7 @@ export function getPages(pages: Pages): Page[] {
   const on = (key: string): Block[] => blocks.get(key) ?? [];
   const days = new Set([
     ...[...blocks.keys()].filter((key) => on(key).length > 0),
-    ...properties.keys(),
+    ...(properties.get("page")?.keys() ?? []),
   ]);
   return [...days]
     .filter((key) => DATE_PATTERN.test(key))
