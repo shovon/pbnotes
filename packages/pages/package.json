@@ -4,10 +4,10 @@
   "description": "What pbnotes events mean: the pages fold, the queries over it, and the commands that write it.",
   "private": true,
   "type": "module",
-  "main": "./pages.ts",
-  "exports": "./pages.ts",
+  "main": "./src/pages.ts",
+  "exports": "./src/pages.ts",
   "scripts": {
-    "test": "node --test '*.test.ts'"
+    "test": "node --test '**/*.test.ts'"
   },
   "dependencies": {
     "mdast-util-gfm-autolink-literal": "^2.0.1",

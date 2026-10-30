@@ -23,7 +23,7 @@ import {
   outdented,
   reduce,
   titleOf,
-} from "./blocks.ts";
+} from "./blocks/blocks.ts";
 import type {
   Block,
   BlockIndented,
@@ -31,13 +31,13 @@ import type {
   Page,
   PageEvent,
   Pages,
-} from "./blocks.ts";
-import { canonicalize } from "./canonicalize.ts";
-import { linking, read } from "./reading.ts";
-import { PROPERTY_HANDLES, reduceProperties } from "./properties.ts";
-import type { PropertyEvent } from "./properties.ts";
+} from "./blocks/blocks.ts";
+import { canonicalize } from "./canonicalize/canonicalize.ts";
+import { linking, read } from "./reading/reading.ts";
+import { PROPERTY_HANDLES, reduceProperties } from "./properties/properties.ts";
+import type { PropertyEvent } from "./properties/properties.ts";
 
-export { canonicalize } from "./canonicalize.ts";
+export { canonicalize } from "./canonicalize/canonicalize.ts";
 export {
   beside,
   blocksOn,
@@ -51,7 +51,7 @@ export {
   reduce,
   titleOf,
   without,
-} from "./blocks.ts";
+} from "./blocks/blocks.ts";
 export type {
   Block,
   BlockCreated,
@@ -63,8 +63,8 @@ export type {
   Page,
   PageEvent,
   Pages,
-} from "./blocks.ts";
-export { inCode, linking, read } from "./reading.ts";
+} from "./blocks/blocks.ts";
+export { inCode, linking, read } from "./reading/reading.ts";
 export {
   children,
   get,
@@ -73,7 +73,7 @@ export {
   list,
   path,
   showPath,
-} from "./properties.ts";
+} from "./properties/properties.ts";
 export type {
   Entry,
   Properties,
@@ -86,8 +86,8 @@ export type {
   PropertyUnset,
   Scalar,
   Seen,
-} from "./properties.ts";
-export { remarkPlugins, remarkWikilink } from "./wikilink.ts";
+} from "./properties/properties.ts";
+export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
 
 /**
  * What makes a title a journal day. Whoever writes picks the day, so the fold

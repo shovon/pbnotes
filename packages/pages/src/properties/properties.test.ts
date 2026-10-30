@@ -19,8 +19,8 @@ import {
   pagesFold,
   path,
   showPath,
-} from "./pages.ts";
-import type { Pages } from "./pages.ts";
+} from "../pages.ts";
+import type { Pages } from "../pages.ts";
 
 const PAGE = "Mira";
 const DAY = "2026-10-29";
