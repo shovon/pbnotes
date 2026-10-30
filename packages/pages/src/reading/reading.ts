@@ -2,13 +2,10 @@
  * What a block's text says once it is read as markdown: the pages it links
  * to, the blocks it refers to, and what a ref to it shows.
  *
- * Text in, data out. Nothing here knows a project, a ledger or a view —
- * `pages.ts` fetches the fold and asks these about the blocks in it.
+ * Text in, data out. Nothing here knows a block, a page, a ledger or a view.
  */
 import { unified } from "unified";
 import remarkParse from "remark-parse";
-import { canonicalize } from "../canonicalize/canonicalize.ts";
-import type { Block } from "../blocks/blocks.ts";
 import { remarkPlugins } from "../wikilink/wikilink.ts";
 
 /**
@@ -108,20 +105,4 @@ export function inCode(text: string, offset: number): boolean {
         offset < node.position!.end.offset
       : (node.children ?? []).some(inside);
   return inside(md.parse(text) as Node);
-}
-
-/**
- * The blocks that link to `title`, in whatever case the link was written,
- * each with its subtree intact. A block that links is taken whole and not
- * searched inside: its children are already on show under it, and listing
- * one of them again for a link of its own would put the same words on the
- * page twice.
- */
-export function linking(blocks: Block[], title: string): Block[] {
-  const key = canonicalize(title);
-  return blocks.flatMap((block) =>
-    read(block.text).links.some((link) => canonicalize(link) === key)
-      ? [block]
-      : linking(block.children, title),
-  );
 }

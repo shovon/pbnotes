@@ -18,8 +18,11 @@
  * Like `blocks.ts`, nothing here touches a log, a clock or a window.
  */
 
-import { NAMESPACE, spell } from "../blocks/blocks.ts";
 import { canonicalize } from "../canonicalize/canonicalize.ts";
+import { field, NAMESPACE, unnamed } from "../events/events.ts";
+import type { Named } from "../events/events.ts";
+import { spell } from "../titles/titles.ts";
+import type { Titles } from "../titles/titles.ts";
 
 /**
  * A value or an item. The four types stay distinct: `1`, `"1"`, `true` and
@@ -64,9 +67,6 @@ export type Seen = { path: string[]; value?: Scalar; items: Scalar[] };
  * One event for the whole removal, so a crash cannot leave half of it.
  */
 export type PropertyRemoved = { page: string; seen: Seen[] };
-
-/** An event type as it is written: under the namespace. */
-type Named<T extends string> = `${typeof NAMESPACE}${T}`;
 
 /**
  * Every property event and its payload. No timestamp in any of them: the
@@ -152,13 +152,6 @@ const removeItem =
     return { ...entry, items };
   };
 
-/** A field the payload holds itself, never one every object inherits. */
-function field(payload: object, name: string): unknown {
-  return Object.hasOwn(payload, name)
-    ? (payload as Record<string, unknown>)[name]
-    : undefined;
-}
-
 /**
  * A scalar as the fold keeps it, boxed so that `null` is not a refusal:
  * strings in NFC, `-0` as `0`. Undefined for anything that is not a scalar,
@@ -234,12 +227,12 @@ function parse(
   type: string,
   payload: unknown,
 ): { page: string; edits: Edit[] } | undefined {
-  if (!type.startsWith(NAMESPACE)) return undefined;
+  const named = unnamed(type);
+  if (!named) return undefined;
   if (typeof payload !== "object" || payload === null) return undefined;
   const page = field(payload, "page");
   if (typeof page !== "string" || canonicalize(page) === "") return undefined;
 
-  const named = type.slice(NAMESPACE.length);
   if (named === "page.property.removed") {
     const seen = field(payload, "seen");
     if (!Array.isArray(seen) || seen.length === 0) return undefined;
@@ -316,7 +309,7 @@ function apply(properties: Properties, page: string, edits: Edit[]): Properties 
  * `titles` and `properties` folds through it.
  */
 export function reduceProperties<
-  S extends { titles: Map<string, string>; properties: Properties },
+  S extends { titles: Titles; properties: Properties },
 >(state: S, event: { type: string; payload: unknown }): S {
   const parsed = parse(event.type, event.payload);
   if (!parsed) return state;

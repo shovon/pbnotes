@@ -1,28 +1,24 @@
 /**
- * The block is the primitive, and this is everything that knows what one is.
+ * The block is the primitive, and this is everything that knows what one is:
+ * the event schema, the tree operations a fold is made of, and the fold.
  *
  * A page is not a record anywhere: it is a title that blocks carry, so pages
  * come into being by being named and go away by having nothing left on them.
- * That is why only a creation says anything about a page — it is where the
- * user wrote the block — and why every event after it names the block alone.
+ * That is why only a creation says anything about a page, and why every event
+ * after it names the block alone.
  *
- * Nothing here touches a log, a file, a device or a window. It is the domain:
- * an event schema, the tree operations a fold is made of, and the fold itself.
- * `pages.ts` is what a caller points a log at. The split is the reason this
- * file is readable — and the reason it runs under plain `node --test` with
- * nothing around it.
- *
- * Both sides of the app fold with it, and so does anyone else reading a
- * folder. The app's main process folds the log, and its fold is the truth.
- * The renderer folds only the writes it has sent and not yet heard back
- * about, over what main last said, so that a key shows its result without
- * waiting for the disk — see `predict`. Two folds that have to agree are one
- * fold, or they drift: that is why this is a package and not a copy.
+ * Nothing here touches a log, a file, a device or a window. Both sides of the
+ * app fold with it — main's fold is the truth, the renderer's `predict` is a
+ * guess over it — and so does anyone else reading a folder. Two folds that
+ * have to agree are one fold, or they drift.
  */
 
 import { canonicalize } from "../canonicalize/canonicalize.ts";
+import { field, NAMESPACE, unnamed } from "../events/events.ts";
+import type { Named } from "../events/events.ts";
 import { read } from "../reading/reading.ts";
-import type { Properties } from "../properties/properties.ts";
+import { spell } from "../titles/titles.ts";
+import type { Titles } from "../titles/titles.ts";
 
 export type Block = {
   id: string;
@@ -34,9 +30,8 @@ export type Block = {
 export type Page = {
   /**
    * What names the page: a local `YYYY-MM-DD` for a journal day, otherwise
-   * the first spelling the fold saw for it. Case does not matter — `#Mira`
-   * and `#mira` are one page, see `canonicalize` — but the log keeps each title as
-   * it was typed, so the page shows a spelling someone actually wrote.
+   * the first spelling the fold saw for it. Case does not matter (see
+   * `canonicalize`), but the log keeps each title as it was typed.
    */
   title: string;
   /** In the order they belong on the page, which is the order they fold. */
@@ -44,13 +39,24 @@ export type Page = {
 };
 
 /**
- * Where a block sits: the array it is in, its index in that array, and the
- * block it hangs under. Undefined `parent` means the top level of the page.
+ * What the block fold reads and writes. `Pages` is one; any state with these
+ * two fields folds through it.
  *
- * Exported because a caller needs the same walk the fold does — the app's
- * main to find the sibling an indent moves a block under, its renderer to
- * work out where a caret goes — and two copies of one tree walk that have to
- * agree drift.
+ * `Map`, not a plain object: a title is whatever was typed, and `__proto__`
+ * is a key every object inherits (#62). Every key in `blocks` is in `titles`,
+ * but not the other way round: a link names a page before anyone writes on it.
+ */
+export type BlockState = {
+  readonly blocks: Map<string, Block[]>;
+  readonly titles: Titles;
+};
+
+// ── The tree ────────────────────────────────────────────────────────────────
+
+/**
+ * Where a block sits: the array it is in, its index there, and the block it
+ * hangs under (undefined at the top level). Exported because the app walks
+ * the tree the same way the fold does, and two walks that must agree drift.
  */
 export function locate(
   blocks: Block[],
@@ -66,10 +72,7 @@ export function locate(
   return undefined;
 }
 
-/**
- * The deepest last descendant — the block that renders directly above
- * whatever comes after this one's subtree. Itself, for a leaf.
- */
+/** The deepest last descendant: what renders directly above the next block. */
 export function lastLeaf(block: Block): Block {
   let last = block;
   while (last.children.length > 0) {
@@ -79,180 +82,8 @@ export function lastLeaf(block: Block): Block {
 }
 
 /**
- * Every page, by `canonicalize`: a journal day or a page a link named.
- *
- * `titles` holds the first spelling the fold saw for each key, as the `page`
- * of a creation or a link in the text of a creation or an edit, and is never
- * overwritten: editing the link away later leaves it as it was. A page can
- * have a spelling and no blocks yet — a link names it before anyone writes on
- * it — so every key in `blocks` is in `titles` but not the other way round.
- *
- * `properties` sits beside the blocks, not inside them, so nothing that reads
- * blocks changes (`properties.ts`, #84). A property event spells its page in
- * `titles` too, so every key in `properties` is in `titles` as well.
- *
- * `Map` throughout, like `properties`: a title is whatever was typed, and as
- * a key of a plain object `toString` or `__proto__` is something every object
- * inherits. A fold that throws on an event the log keeps forever never opens
- * again (#62). A `Map` survives the structured clone to the renderer as well
- * as an object does (#146).
- */
-export type Pages = {
-  blocks: Map<string, Block[]>;
-  titles: Map<string, string>;
-  properties: Properties;
-};
-
-/** The blocks on a page, empty for one nothing has been written to. */
-export function blocksOn(pages: Pages, title: string): Block[] {
-  return pages.blocks.get(canonicalize(title)) ?? [];
-}
-
-/**
- * How a page is shown: the first spelling the fold saw for it, or `title`
- * itself for a page nothing has named yet.
- */
-export function titleOf(pages: Pages, title: string): string {
-  return pages.titles.get(canonicalize(title)) ?? title;
-}
-
-/**
- * `titles` with a spelling for each of `names` whose key has none yet, in
- * order, so the first of two spellings in one event is the one kept. The
- * same object back when every name already has one.
- *
- * Exported for the property fold, which spells a page the same way.
- */
-export function spell(
-  titles: Pages["titles"],
-  names: string[],
-): Pages["titles"] {
-  let next = titles;
-  for (const name of names) {
-    const key = canonicalize(name);
-    if (next.has(key)) continue;
-    // Copied once, on the first new name: what was handed in is a checkpoint.
-    if (next === titles) next = new Map(titles);
-    next.set(key, name);
-  }
-  return next;
-}
-
-/**
- * The pages a block's text links to. Nothing for text that is not a string:
- * a payload from a shared folder may be anything, and the parser would throw.
- */
-function linksIn(text: unknown): string[] {
-  return typeof text === "string" ? read(text).links : [];
-}
-
-/**
- * Where the user wrote a block. The only event that carries a page, because
- * it is the only one that says anything about one: a block's page is settled
- * when it is created and no event moves it to another.
- */
-export type BlockCreated = {
-  page: string;
-  id: string;
-  text: string;
-  /**
-   * The sibling it was written directly beneath, at whatever depth that
-   * sibling sits. Absent means the end of the page.
-   *
-   * A position, never an index: an index stored on a record has to be
-   * rewritten on every neighbour the moment anything lands between them,
-   * whereas which block the user wrote beneath is a fact that stays true
-   * forever. The array is derived from it, the same way on replay as it was
-   * live.
-   */
-  after?: string;
-};
-
-/** The later of two facts about one block's text. The earlier one stays. */
-export type BlockEdited = { id: string; text: string };
-
-/** That the user was done with it. Nothing leaves the disk. */
-export type BlockDeleted = { id: string };
-
-/** The block it became the last child of, resolved when the user indented. */
-export type BlockIndented = { id: string; parent: string };
-
-/** The block it used to hang under, and now sits directly beneath. */
-export type BlockOutdented = { id: string; after: string };
-
-/**
- * Every event this fold understands, and the shape each one's payload has.
- *
- * The four that follow a creation were once written with a `page` too. It is
- * not declared here because it is not read: an extra field on disk is
- * invisible to a fold that never asks for it, which is what made dropping it
- * an upcast-free change in this direction. `blocks.test.ts` pins that a `v1`
- * payload still folds, including one whose page is outright wrong.
- *
- * Named under the namespace, which is the only name an event has. The first
- * logs were written with bare names (`block.created`); those were rewritten
- * once (#39) and are not read (#40).
- */
-export type PageEvent =
-  | { type: Named<"block.created">; payload: BlockCreated }
-  | { type: Named<"block.edited">; payload: BlockEdited }
-  | { type: Named<"block.deleted">; payload: BlockDeleted }
-  | { type: Named<"block.indented">; payload: BlockIndented }
-  | { type: Named<"block.outdented">; payload: BlockOutdented };
-
-/**
- * What every pbnotes event type starts with:
- * `github.com/shovon/pbnotes#block.created`. See #37.
- *
- * An identifier and not a link. Once a log holds it, it is on disk forever,
- * and it stays these bytes wherever the repository goes.
- *
- * Public contract, with `HANDLES`: programs other than the app read these
- * names. A name and a `v`, once written, never mean anything else — a new
- * meaning is a new `v` or a new name. See the README.
- *
- * ponytail: here because this is the only fold there is. A second feature's
- * fold takes this out to a package of its own.
- */
-export const NAMESPACE = "github.com/shovon/pbnotes#";
-
-/** An event type as it is written: under the namespace. */
-type Named<T extends string> = `${typeof NAMESPACE}${T}`;
-
-/**
- * Event type → the payload `v` this build folds, which is also the `v` it
- * writes. One number for both on purpose: a build that wrote a version its own
- * gate refuses would skip its own events.
- *
- * Keyed on `PageEvent['type']`, so the table cannot drift from the schema — a
- * new event type without a version here, or a version here for an event type
- * that does not exist, stops the build.
- *
- * The block events' half of `HANDLES` in `pages.ts`, which is the table the
- * gate reads. The gate itself is `pagesFold` there. Its job is the case a
- * single-writer log could never produce: a newer build on another machine
- * writing something this one does not understand. Those events are skipped.
- */
-export const BLOCK_HANDLES: Record<PageEvent["type"], number> = {
-  [`${NAMESPACE}block.created`]: 1,
-  // 2 since the page came off the payload. Nothing needed an upcast in this
-  // direction — the field is simply unread — but an older build handed one of
-  // these would look up `state[undefined]`, miss, and drop the user's text
-  // without a word. At `v: 2` its own gate refuses the event and says so.
-  [`${NAMESPACE}block.edited`]: 2,
-  [`${NAMESPACE}block.deleted`]: 2,
-  [`${NAMESPACE}block.indented`]: 2,
-  [`${NAMESPACE}block.outdented`]: 2,
-};
-
-/**
- * `block` spliced in directly after `after`, wherever in the tree that is.
- * Undefined when `after` is not in this subtree, so the caller can tell
- * "not here, keep looking" from "here, and this is the result".
- *
- * A sibling of `after`, which is what makes `after` alone enough to place a
- * block at any depth: Enter inside a nested block writes the next one beside
- * it, not back at the top level.
+ * `block` spliced in directly after `after`, as its sibling, at whatever depth
+ * `after` sits. Undefined when `after` is not in this subtree.
  */
 export function beside(
   blocks: Block[],
@@ -304,6 +135,13 @@ function mapChildren(
   );
 }
 
+// ── Pages of blocks ─────────────────────────────────────────────────────────
+
+/** The blocks on a page, empty for one nothing has been written to. */
+export function blocksOn(holds: Pick<BlockState, "blocks">, title: string): Block[] {
+  return holds.blocks.get(canonicalize(title)) ?? [];
+}
+
 /** Where a block sits, and which page it sits on, by the title it shows. */
 export type Found = NonNullable<ReturnType<typeof locate>> & {
   page: string;
@@ -312,65 +150,61 @@ export type Found = NonNullable<ReturnType<typeof locate>> & {
 
 /**
  * The block, wherever in the project it is. A block id is unique across every
- * page, so it is enough on its own — which is why nothing after
- * `block.created` carries a page.
+ * page, which is why nothing after `block.created` carries a page.
  *
  * ponytail: scans every page per event, so a replay is O(blocks × events).
  * Keep a block id → page index in the fold state if a long log ever shows up
- * as a slow launch; a delete would have to drop that block's whole subtree
- * from it, the way `without` does.
+ * as a slow launch.
  */
-export function find(pages: Pages, id: string): Found | undefined {
-  for (const [key, blocks] of pages.blocks) {
+export function find(state: BlockState, id: string): Found | undefined {
+  for (const [key, blocks] of state.blocks) {
     const where = locate(blocks, id);
-    if (where) return { page: pages.titles.get(key) ?? key, blocks, ...where };
+    if (where) return { page: state.titles.get(key) ?? key, blocks, ...where };
   }
   return undefined;
 }
 
-/**
- * Applies `change` to the page the block turned out to be on. A block that is
- * not in the project, or an `undefined` from `change`, leaves the view exactly
- * as it was.
- *
- * The page comes from `find` and never from a payload. A page on an edit would
- * be a copy of where the block sat when the edit was typed — true on the
- * machine that wrote it, and a miss that drops the user's text the moment
- * anything else is true. This is the one place that could reintroduce that, so
- * it is the only place allowed to choose which page a fold writes to.
- */
-function onBlock(
-  state: Pages,
-  id: string,
-  change: (found: Found) => Block[] | undefined,
-): Pages {
-  const found = find(state, id);
-  if (!found) return state;
-  const blocks = change(found);
-  return blocks
-    ? {
-        ...state,
-        blocks: new Map(state.blocks).set(canonicalize(found.page), blocks),
-      }
-    : state;
-}
+// ── The events ──────────────────────────────────────────────────────────────
+
+/** Where the user wrote a block. The only event that carries a page. */
+export type BlockCreated = {
+  page: string;
+  id: string;
+  text: string;
+  /**
+   * The sibling it was written directly beneath, at whatever depth. Absent
+   * means the end of the page. A position, never an index: which block the
+   * user wrote beneath stays true forever, an index does not.
+   */
+  after?: string;
+};
+
+/** The later of two facts about one block's text. The earlier one stays. */
+export type BlockEdited = { id: string; text: string };
+
+/** That the user was done with it. Nothing leaves the disk. */
+export type BlockDeleted = { id: string };
+
+/** The block it became the last child of, resolved when the user indented. */
+export type BlockIndented = { id: string; parent: string };
+
+/** The block it used to hang under, and now sits directly beneath. */
+export type BlockOutdented = { id: string; after: string };
 
 /**
- * The default branch of the fold. `event` is `never` to the compiler, so
- * adding a type to `PageEvent` without a case for it stops the build here —
- * which matters because the alternative is a page that silently folds without
- * part of itself, the exact silence this log is built against.
- *
- * At run time it is reachable and ordinary: an event type some other build
- * wrote, already refused by the gate in `pagesFold`. The view is left as it
- * was either way.
+ * Every event this fold understands, and its payload. The four after a
+ * creation were once written with a `page` too; it is not read, so a `v1`
+ * payload still folds (`blocks.test.ts` pins that).
  */
-function foreign(_event: never, state: Pages): Pages {
-  return state;
-}
+export type PageEvent =
+  | { type: Named<"block.created">; payload: BlockCreated }
+  | { type: Named<"block.edited">; payload: BlockEdited }
+  | { type: Named<"block.deleted">; payload: BlockDeleted }
+  | { type: Named<"block.indented">; payload: BlockIndented }
+  | { type: Named<"block.outdented">; payload: BlockOutdented };
 
-/** A `PageEvent` with the namespace off its type, which is what `reduce` switches on. */
-type Bare<E> = E extends {
+/** A `PageEvent` with the namespace off its type. */
+export type Bare<E = PageEvent> = E extends {
   type: `${typeof NAMESPACE}${infer T}`;
   payload: infer P;
 }
@@ -378,52 +212,117 @@ type Bare<E> = E extends {
   : never;
 
 /**
- * Pure, and over state that survives a structured clone: the view crosses to
- * the renderer as data and the fold may one day run off-thread.
- *
- * Each branch pulls in the fields its own event has and no others. A payload
- * shape that changes gets a new `v` and a branch of its own here; the file on
- * disk is never rewritten, because an edit is a second fact appended after the
- * first rather than a correction of it.
- *
- * Guards stay on fields the schema calls required. The types describe what
- * *this build writes*; what arrives in a shared folder was written by
- * something else, and may be anything.
+ * Event type → the payload `v` this build folds, which is also the `v` it
+ * writes. Keyed on `PageEvent['type']`, so it cannot drift from the schema.
+ * The block half of `HANDLES`; the gate that reads it is `pagesFold`.
  */
-export function reduce(
-  state: Pages,
-  event: { type: string; payload: unknown },
-): Pages {
-  // Ours are under the namespace and nothing else is: a bare `block.created`
-  // is not this event (#40), and the gate in `pagesFold` refuses one too.
-  if (!event.type.startsWith(NAMESPACE)) return state;
-  // The one cast in the fold: "if this is one of ours, this is its shape."
-  // `foreign` below is where that turns out not to be true.
-  const it = {
-    ...event,
-    type: event.type.slice(NAMESPACE.length),
-  } as unknown as Bare<PageEvent>;
+export const BLOCK_HANDLES: Record<PageEvent["type"], number> = {
+  [`${NAMESPACE}block.created`]: 1,
+  // 2 since the page came off the payload: an older build handed one would
+  // look up a page of `undefined` and drop the text without a word. At `v: 2`
+  // its own gate refuses the event instead.
+  [`${NAMESPACE}block.edited`]: 2,
+  [`${NAMESPACE}block.deleted`]: 2,
+  [`${NAMESPACE}block.indented`]: 2,
+  [`${NAMESPACE}block.outdented`]: 2,
+};
 
+// ── The fold: parse, then apply ─────────────────────────────────────────────
+
+/** A string field of the payload, or undefined for anything else. */
+function string(payload: object, name: string): string | undefined {
+  const value = field(payload, name);
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * A block event as this build reads it, or undefined for anything else: not
+ * one of ours, or malformed. A malformed event is skipped whole, never folded
+ * in part. The types say what *this build writes*; what arrives in a shared
+ * folder was written by something else, and may be anything.
+ *
+ * Two leniencies, both so that a block is never dropped that could be shown:
+ * a page that is not a string is filed under its `String` (it always was),
+ * and an `after` that is not a string means the end of the page.
+ */
+function parse(event: { type: string; payload: unknown }): Bare | undefined {
+  const name = unnamed(event.type);
+  const payload = event.payload;
+  if (!name || typeof payload !== "object" || payload === null) return undefined;
+  const id = string(payload, "id");
+  if (!id) return undefined;
+
+  switch (name) {
+    case "block.created": {
+      const text = string(payload, "text");
+      if (text === undefined) return undefined;
+      const page = String(field(payload, "page"));
+      const after = string(payload, "after");
+      return { type: name, payload: { page, id, text, ...(after ? { after } : {}) } };
+    }
+    case "block.edited": {
+      const text = string(payload, "text");
+      return text === undefined ? undefined : { type: name, payload: { id, text } };
+    }
+    case "block.deleted":
+      return { type: name, payload: { id } };
+    case "block.indented": {
+      const parent = string(payload, "parent");
+      return parent ? { type: name, payload: { id, parent } } : undefined;
+    }
+    case "block.outdented": {
+      const after = string(payload, "after");
+      return after ? { type: name, payload: { id, after } } : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Applies `change` to the page the block turned out to be on. A block that is
+ * not in the project, or an `undefined` from `change`, leaves the state as it
+ * was.
+ *
+ * The page comes from `find` and never from a payload: a page on an edit
+ * would be where the block sat on the machine that wrote it, and a miss drops
+ * the user's text. This is the only place that chooses which page a fold
+ * writes to.
+ */
+function onBlock<S extends BlockState>(
+  state: S,
+  id: string,
+  change: (found: Found) => Block[] | undefined,
+): S {
+  const found = find(state, id);
+  if (!found) return state;
+  const blocks = change(found);
+  return blocks
+    ? { ...state, blocks: new Map(state.blocks).set(canonicalize(found.page), blocks) }
+    : state;
+}
+
+/** Adding a type to `PageEvent` without a case for it stops the build here. */
+function foreign(_event: never, state: unknown): never {
+  return state as never;
+}
+
+/** One parsed event applied. Pure, and never changes what it is handed. */
+function apply<S extends BlockState>(state: S, it: Bare): S {
   switch (it.type) {
     case "block.created": {
-      const { id, text, after } = it.payload;
-      // A string for whatever was there: a missing page used to file under
-      // `"undefined"` as a key, and `canonicalize` would throw on it.
-      const page = String(it.payload.page);
+      const { page, id, text, after } = it.payload;
       const blocks = blocksOn(state, page);
       const block: Block = { id, text, children: [] };
-      // `addBlock` refuses an `after` the page does not have, so missing it
-      // here means a log written by something else. Append rather than drop: a
-      // block in the wrong place can be moved, one the fold discarded is gone.
-      const next = (after && beside(blocks, after, block)) || [
-        ...blocks,
-        block,
-      ];
+      // `addBlock` refuses an `after` the page lacks, so a miss here is a log
+      // written by something else. Append rather than drop: a block in the
+      // wrong place can be moved, one the fold discarded is gone.
+      const next = (after && beside(blocks, after, block)) || [...blocks, block];
       return {
         ...state,
         blocks: new Map(state.blocks).set(canonicalize(page), next),
         // The page before its links: it is where the user was writing.
-        titles: spell(state.titles, [page, ...linksIn(text)]),
+        titles: spell(state.titles, [page, ...read(text).links]),
       };
     }
 
@@ -432,36 +331,26 @@ export function reduce(
       const next = onBlock(state, id, ({ blocks }) => retext(blocks, id, text));
       // An edit to a block the ledger lacks names nothing either.
       if (next === state) return state;
-      return { ...next, titles: spell(next.titles, linksIn(text)) };
+      return { ...next, titles: spell(next.titles, read(text).links) };
     }
 
     case "block.deleted": {
+      // A plain filter, no tombstone, and the subtree goes with it. Every
+      // event that built them is still on disk.
       const { id } = it.payload;
-      // A plain filter, no tombstone. Nothing later in the log needs to know
-      // this block was here: `after` only ever names a block that was present
-      // when it was written, and a stray edit arriving afterwards already
-      // folds to nothing through `onBlock`.
-      //
-      // The subtree goes with it. The events that built those children are all
-      // still on disk — what the fold stops showing is a block the user said
-      // they were done with, and everything they had filed underneath it.
       return onBlock(state, id, ({ blocks }) => without(blocks, id));
     }
 
     case "block.indented": {
       const { id, parent } = it.payload;
       return onBlock(state, id, (found) => {
-        // A parent on another page is not a move across pages; there is no
-        // such event yet, so it folds to nothing.
-        if (!parent || !locate(found.blocks, parent)) return undefined;
-        // Read before the detach: the block carries its own children across,
-        // so what lands under `parent` is the whole subtree, not a stripped
-        // root.
+        // A parent on another page would be a move across pages, and there
+        // is no such event yet.
+        if (!locate(found.blocks, parent)) return undefined;
+        // Read before the detach, so the whole subtree moves.
         const moving = found.siblings[found.at];
-        // Under itself or its own subtree: the detach would take `parent`
-        // with it, and both would leave the page. Two machines each indenting
-        // one block under the other before they sync is how this gets
-        // written (#62).
+        // Under itself or its own subtree: two machines each indenting one
+        // block under the other before they sync writes this (#62).
         if (parent === id || locate(moving.children, parent)) return undefined;
         return mapChildren(without(found.blocks, id), parent, (children) => [
           ...children,
@@ -473,24 +362,15 @@ export function reduce(
     case "block.outdented": {
       const { id, after } = it.payload;
       return onBlock(state, id, (found) => {
-        if (!after || !found.parent) return undefined;
-
-        // The siblings below it come along as its own children. Leaving them
-        // behind would strand them inside the old parent, which renders
-        // *above* where this block is going — so the page would come back
-        // reading in a different order than the user left it, off one
-        // keystroke that only asked about depth.
+        if (!found.parent) return undefined;
+        // The siblings below it come along as its own children, or they would
+        // be stranded above it and the page would read in a different order.
         const moving = found.siblings[found.at];
         const trailing = found.siblings.slice(found.at + 1);
-        const outdented = {
-          ...moving,
-          children: [...moving.children, ...trailing],
-        };
+        const outdented = { ...moving, children: [...moving.children, ...trailing] };
         const trimmed = mapChildren(found.blocks, found.parent.id, (children) =>
           children.slice(0, found.at),
         );
-        // `after` is the block it used to hang under, so this lands it
-        // directly beneath, at that block's own level.
         return beside(trimmed, after, outdented) ?? [...trimmed, outdented];
       });
     }
@@ -501,12 +381,24 @@ export function reduce(
 }
 
 /**
- * What indenting a block is, on the page as it stands: filed under the
- * sibling above it. Undefined for a block that is first among its siblings —
- * there is nothing above it to move under — or one the page does not have.
- *
- * Here, and not in the store, because whoever predicts a move has to resolve
- * it exactly as whoever records it does.
+ * The block fold: one event in, the state out. Hands back `state` itself for
+ * any event that is not a well-formed block event, so it composes with the
+ * property fold.
+ */
+export function reduce<S extends BlockState>(
+  state: S,
+  event: { type: string; payload: unknown },
+): S {
+  const parsed = parse(event);
+  return parsed ? apply(state, parsed) : state;
+}
+
+// ── Moves, and predicting them ──────────────────────────────────────────────
+
+/**
+ * What indenting a block is: filed under the sibling above it. Undefined for
+ * a block first among its siblings, or one the page lacks. Here, because
+ * whoever predicts a move has to resolve it exactly as whoever records it.
  */
 export function indented(
   blocks: Block[],
@@ -518,10 +410,7 @@ export function indented(
     : undefined;
 }
 
-/**
- * What outdenting a block is: directly beneath the block it hangs under.
- * Undefined at the top level, where there is nothing to come out of.
- */
+/** What outdenting is: directly beneath the block it hangs under. */
 export function outdented(
   blocks: Block[],
   id: string,
@@ -532,42 +421,34 @@ export function outdented(
 
 /**
  * Whether the page already shows what `event` did. Asked only of the events
- * that are not safe to fold twice: a creation would put a second block on the
- * page, and an outdent would take the siblings now below the block as its
- * children all over again.
+ * that are not safe to fold twice.
  */
-function landed(state: Pages, event: PageEvent): boolean {
-  if (event.type === `${NAMESPACE}block.created`)
-    return !!find(state, event.payload.id);
+function landed(state: BlockState, event: PageEvent): boolean {
   const found = find(state, event.payload.id);
-  if (event.type === `${NAMESPACE}block.indented`) {
-    return found?.parent?.id === event.payload.parent;
+  switch (event.type) {
+    case `${NAMESPACE}block.created`:
+      return !!found;
+    case `${NAMESPACE}block.indented`:
+      return found?.parent?.id === event.payload.parent;
+    case `${NAMESPACE}block.outdented`:
+      return found?.siblings[found.at - 1]?.id === event.payload.after;
+    default:
+      return false;
   }
-  if (event.type === `${NAMESPACE}block.outdented`) {
-    return found?.siblings[found.at - 1]?.id === event.payload.after;
-  }
-  return false;
 }
 
 /**
- * The page as it will stand once `events` have been recorded: writes the
- * renderer has sent and not yet heard back about, folded over the page main
- * last sent.
- *
- * A guess, and thrown away on purpose. The renderer drops an event when its
- * write settles, and a write settles only once the state it led to is in —
- * so there is a moment when the page already holds an event that is still in
- * `events`. `landed` is what makes that moment draw the same page rather
- * than the event twice. A write main refuses is dropped the same way, and the
- * page goes back to what main has.
+ * The page as it will stand once `events` are recorded: the renderer's unsent
+ * writes, folded over the page main last sent. A guess, thrown away when each
+ * write settles. `landed` keeps an event the page already holds from being
+ * drawn twice in the moment before it is dropped.
  */
 export function predict(page: Page, events: PageEvent[]): Page {
   if (events.length === 0) return page;
   const key = canonicalize(page.title);
-  let state: Pages = {
+  let state: BlockState = {
     blocks: new Map([[key, page.blocks]]),
     titles: new Map([[key, page.title]]),
-    properties: new Map(),
   };
   for (const event of events) {
     if (!landed(state, event)) state = reduce(state, event);
