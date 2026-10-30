@@ -7,7 +7,7 @@
  */
 import { unified } from "unified";
 import remarkParse from "remark-parse";
-import { pageKey } from "./blocks.ts";
+import { canonicalize } from "./canonicalize.ts";
 import type { Block } from "./blocks.ts";
 import { remarkPlugins } from "./wikilink.ts";
 
@@ -118,9 +118,9 @@ export function inCode(text: string, offset: number): boolean {
  * page twice.
  */
 export function linking(blocks: Block[], title: string): Block[] {
-  const key = pageKey(title);
+  const key = canonicalize(title);
   return blocks.flatMap((block) =>
-    read(block.text).links.some((link) => pageKey(link) === key)
+    read(block.text).links.some((link) => canonicalize(link) === key)
       ? [block]
       : linking(block.children, title),
   );
