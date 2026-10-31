@@ -7,7 +7,7 @@
  * Deliberately free of `electron` imports: callers hand in the view, which
  * keeps the store runnable under `node --test`.
  */
-import { getPage, getPages, getPreviews, getReferences } from "@pbnotes/pages";
+import { getPage, getPages, getPreviews, getReferences, list } from "@pbnotes/pages";
 import type { Page, PagesView as Base } from "@pbnotes/pages";
 import type { PagesState, Place } from "../../../../../shared/pages.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
@@ -65,6 +65,7 @@ export function getState(
     showing: pages.map((page) => ({
       page,
       references: at?.block ? [] : getReferences(view.state, page.title),
+      properties: list(view.state, { kind: "page", title: page.title }),
     })),
     previews: getPreviews(view.state),
   };
