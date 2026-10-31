@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pagesFold } from "@pbnotes/pages";
+import { getValue, pagesFold } from "@pbnotes/pages";
 import type { PagesState } from "../../../../../shared/pages.ts";
 import type { PagesView } from "../pages-store/pages-store.ts";
 import { createPagesSession } from "./pages-session.ts";
@@ -210,4 +210,43 @@ test("run reaches each block command, and records them in the order they arrived
   release();
   await Promise.all(writes);
   assert.deepEqual(shown(sent.at(-1)), ["two!", "three"]);
+});
+
+test("a property write is recorded in order with the block writes around it", async () => {
+  const { view, hold } = ledger();
+  const { pages, sent } = session(view);
+  const of = { kind: "block", id: "a1" } as const;
+  const release = hold();
+  const writes = [
+    pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" }),
+    // Names a block the write before it is still writing.
+    pages.run({ type: "setProperty", of, path: ["user", "status"], value: "draft" }),
+    pages.run({ type: "renameProperty", of, from: ["user", "status"], to: ["user", "state"] }),
+    pages.run({ type: "setProperty", of: { kind: "page", title: TODAY }, path: ["user", "mood"], value: "fine" }),
+    pages.run({ type: "editBlock", blockId: "a1", text: "one!" }),
+  ];
+  release();
+  await Promise.all(writes);
+  assert.deepEqual(shown(sent.at(-1)), ["one!"]);
+  assert.equal(getValue(view.state, of, ["user", "state"]), "draft");
+  assert.equal(getValue(view.state, of, ["user", "status"]), undefined);
+  assert.deepEqual(
+    sent.at(-1)?.showing[0].properties.map(({ path, value }) => [path, value]),
+    [[["user", "mood"], "fine"]],
+  );
+});
+
+test("a refused property write does not hold up the writes behind it", async () => {
+  const { view } = ledger();
+  const { pages, sent } = session(view);
+  const refused = pages.run({
+    type: "setProperty",
+    of: { kind: "block", id: "nope" },
+    path: ["user", "status"],
+    value: "draft",
+  });
+  const next = pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
+  await assert.rejects(refused, /No such block/);
+  await next;
+  assert.deepEqual(shown(sent.at(-1)), ["one"]);
 });

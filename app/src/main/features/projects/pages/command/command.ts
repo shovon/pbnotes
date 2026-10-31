@@ -8,8 +8,9 @@
  *
  * Free of `electron` imports, so it runs under `node --test`.
  */
+import type { Scalar, Target } from "@pbnotes/pages";
 import type { Command } from "../../../../../shared/pages.ts";
-import { requireString } from "../../../../ipc.ts";
+import { requireString, requireStringArray } from "../../../../ipc.ts";
 
 /**
  * A title is a key in a log that keeps everything forever, so it is checked
@@ -46,6 +47,42 @@ function own(raw: Raw, name: string): unknown {
   return Object.hasOwn(raw, name)
     ? (raw as Record<string, unknown>)[name]
     : undefined;
+}
+
+/**
+ * What a property is about, rebuilt from the fields its kind reads: the
+ * builders write `of` as they are given it, so anything else the window put
+ * in it would reach the log. A page's title is checked as every title is.
+ */
+function requireTarget(value: unknown): Target {
+  if (typeof value !== "object" || value === null) {
+    throw new TypeError("Expected a target");
+  }
+  switch (own(value, "kind")) {
+    case "page":
+      return { kind: "page", title: requireTitle(own(value, "title")) };
+    case "block":
+      return { kind: "block", id: requireString(own(value, "id"), "id") };
+    default:
+      throw new TypeError("Expected a target");
+  }
+}
+
+/** A path's type only; the package refuses an empty one or a blank segment. */
+function requirePath(value: unknown, label: string): string[] {
+  return [...requireStringArray(value, label)];
+}
+
+/** A string, a number, a boolean or `null`. The package refuses a non-finite number. */
+function requireScalar(value: unknown, label: string): Scalar {
+  if (value === null) return null;
+  switch (typeof value) {
+    case "string":
+    case "number":
+    case "boolean":
+      return value;
+  }
+  throw new TypeError(`Expected ${label} to be a string, number, boolean or null`);
 }
 
 /**
@@ -86,6 +123,40 @@ const CHECKERS: {
   outdentBlock: (raw) => ({
     type: "outdentBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
+  }),
+  setProperty: (raw) => ({
+    type: "setProperty",
+    of: requireTarget(own(raw, "of")),
+    path: requirePath(own(raw, "path"), "path"),
+    value: requireScalar(own(raw, "value"), "value"),
+  }),
+  unsetProperty: (raw) => ({
+    type: "unsetProperty",
+    of: requireTarget(own(raw, "of")),
+    path: requirePath(own(raw, "path"), "path"),
+  }),
+  addPropertyItem: (raw) => ({
+    type: "addPropertyItem",
+    of: requireTarget(own(raw, "of")),
+    path: requirePath(own(raw, "path"), "path"),
+    item: requireScalar(own(raw, "item"), "item"),
+  }),
+  removePropertyItem: (raw) => ({
+    type: "removePropertyItem",
+    of: requireTarget(own(raw, "of")),
+    path: requirePath(own(raw, "path"), "path"),
+    item: requireScalar(own(raw, "item"), "item"),
+  }),
+  removeProperty: (raw) => ({
+    type: "removeProperty",
+    of: requireTarget(own(raw, "of")),
+    path: requirePath(own(raw, "path"), "path"),
+  }),
+  renameProperty: (raw) => ({
+    type: "renameProperty",
+    of: requireTarget(own(raw, "of")),
+    from: requirePath(own(raw, "from"), "from"),
+    to: requirePath(own(raw, "to"), "to"),
   }),
 };
 

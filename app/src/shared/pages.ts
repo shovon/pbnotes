@@ -14,7 +14,7 @@
  * records what the user did, and looking at a page is not something they did.
  */
 
-import type { Page } from '@pbnotes/pages';
+import type { Page, Property, Scalar, Target } from '@pbnotes/pages';
 import type { LogStatus } from './log';
 
 /**
@@ -49,8 +49,13 @@ export type PagesState = {
    * day with something on it, newest first, and today whether or not it has.
    * Each with what links to it, cut down to the blocks that do; none under a
    * zoom, where what links to one block is not what links to its page.
+   *
+   * And its page's properties (#142), every path that holds something, as
+   * `list` in `@pbnotes/pages` reads them: sorted by path, each item set in
+   * the order its items were last added. A page's, not its blocks': nothing
+   * draws a block's properties yet.
    */
-  showing: { page: Page; references: Page[] }[];
+  showing: { page: Page; references: Page[]; properties: Property[] }[];
   /**
    * What each `((id))` in the project shows: the id and the Markdown of that
    * block's first paragraph, or null for an id the project does not have.
@@ -167,7 +172,13 @@ export type PagesApi = {
  * exactly one command in `@pbnotes/pages`, and none says anything about what
  * is showing: where the view is, is not a write.
  *
- * A block is named by its id alone, on every case but `addBlock`: an id
+ * A property command names what it is about with `of`, a page by its title
+ * or a block by its id, and a key by its path: a non-empty list of segments,
+ * `["user", "status"]`. The fold trims each segment and puts every string in
+ * NFC, so the caller doesn't. A command that would change nothing records
+ * nothing and still resolves.
+ *
+ * A block is named by its id alone, on every block case but `addBlock`: an id
  * identifies a block across the whole project, so the page is main's to look
  * up rather than the caller's to remember. That is why a view showing blocks
  * from several pages at once, like a references cut, can write to any of
@@ -216,4 +227,24 @@ export type Command =
    * A block already at the top level has nothing to come out of, and resolves
    * with nothing changed rather than throwing, like `indentBlock`.
    */
-  | { type: 'outdentBlock'; blockId: string };
+  | { type: 'outdentBlock'; blockId: string }
+  /** Appends a `property.set` event: the value at `path` is now `value`. Its items are untouched. */
+  | { type: 'setProperty'; of: Target; path: string[]; value: Scalar }
+  /** Appends a `property.unset` event: `path` has no value. Its items are untouched. */
+  | { type: 'unsetProperty'; of: Target; path: string[] }
+  /** Appends a `property.item.added` event: `item` is among the items at `path`. The value is untouched. */
+  | { type: 'addPropertyItem'; of: Target; path: string[]; item: Scalar }
+  /** Appends a `property.item.removed` event: `item` is no longer among them. The value is untouched. */
+  | { type: 'removePropertyItem'; of: Target; path: string[]; item: Scalar }
+  /**
+   * Appends one `property.removed` event for everything main holds at `path`
+   * and under it. What another device wrote that main has not seen yet
+   * survives, by design.
+   */
+  | { type: 'removeProperty'; of: Target; path: string[] }
+  /**
+   * Moves everything at and under `from` to `to`: the additions first, then
+   * one removal of `from`, so a crash midway leaves both keys, never neither.
+   * Refused when `to` already holds something.
+   */
+  | { type: 'renameProperty'; of: Target; from: string[]; to: string[] };
