@@ -1,10 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { Block, Page } from '@pbnotes/pages';
-import type { PagesApi } from '../../../../shared/pages';
+import type { PageViewPages } from '../PageView';
 import LinkedReferences from './LinkedReferences';
 
-/** Every call resolves `undefined`, like the preview's stub bridge. */
-const pages = new Proxy({}, { get: () => async (): Promise<undefined> => undefined }) as PagesApi;
+/**
+ * Writes go nowhere and search finds nothing. A plain object, not a Proxy:
+ * Storybook calls `String(pages)` for the source snippet, and a Proxy that
+ * answers every key answers `toString` with a Promise (#162).
+ */
+const pages: PageViewPages = { run: async () => undefined, search: async () => [] };
 
 const block = (id: string, text: string, children: Block[] = []): Block => ({
   id,
