@@ -39,8 +39,7 @@ export type Page = {
 };
 
 /**
- * What the block fold reads and writes. `Pages` is one; any state with these
- * two fields folds through it.
+ * What the block fold reads and writes, which `Pages` is.
  *
  * `Map`, not a plain object: a title is whatever was typed, and `__proto__`
  * is a key every object inherits (#62). Every key in `blocks` is in `titles`,
@@ -289,11 +288,11 @@ function parse(event: { type: string; payload: unknown }): Bare | undefined {
  * the user's text. This is the only place that chooses which page a fold
  * writes to.
  */
-function onBlock<S extends BlockState>(
-  state: S,
+function onBlock(
+  state: BlockState,
   id: string,
   change: (found: Found) => Block[] | undefined,
-): S {
+): BlockState {
   const found = find(state, id);
   if (!found) return state;
   const blocks = change(found);
@@ -308,7 +307,7 @@ function foreign(_event: never, state: unknown): never {
 }
 
 /** One parsed event applied. Pure, and never changes what it is handed. */
-function apply<S extends BlockState>(state: S, it: Bare): S {
+function apply(state: BlockState, it: Bare): BlockState {
   switch (it.type) {
     case "block.created": {
       const { page, id, text, after } = it.payload;
@@ -382,35 +381,14 @@ function apply<S extends BlockState>(state: S, it: Bare): S {
 
 /**
  * The block fold: one event in, the state out. Hands back `state` itself for
- * any event that is not a well-formed block event, so it composes with the
- * property fold.
+ * any event that is not a well-formed block event.
  */
-export function reduce<S extends BlockState>(
-  state: S,
-  event: { type: string; payload: unknown },
-): S {
-  const parsed = parse(event);
-  return parsed ? apply(state, parsed) : state;
-}
-
-/** A block's id and the id of every block under it. */
-function ids(block: Block): string[] {
-  return [block.id, ...block.children.flatMap(ids)];
-}
-
-/**
- * The blocks `event` takes out of `state`: a deleted block and its whole
- * subtree. Empty for any other event, and for a block `state` lacks. Read it
- * before folding the event, while they are still there to find.
- */
-export function removedBy(
+export function reduce(
   state: BlockState,
   event: { type: string; payload: unknown },
-): string[] {
+): BlockState {
   const parsed = parse(event);
-  if (parsed?.type !== "block.deleted") return [];
-  const found = find(state, parsed.payload.id);
-  return found ? ids(found.siblings[found.at]) : [];
+  return parsed ? apply(state, parsed) : state;
 }
 
 // ── Moves, and predicting them ──────────────────────────────────────────────

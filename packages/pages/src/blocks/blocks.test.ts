@@ -16,7 +16,7 @@ import type { Block, PageEvent } from "./blocks.ts";
 const TODAY = "2026-09-21";
 
 /** Nothing written yet. */
-const empty = (): Pages => ({ blocks: new Map(), titles: new Map(), properties: new Map() });
+const empty = (): Pages => ({ blocks: new Map(), titles: new Map() });
 
 /** One event, straight into `reduce`, with no log or device around it. */
 function event(type: string, v: number, payload: unknown) {
@@ -91,7 +91,6 @@ test("an event is folded under its namespaced name and no other", () => {
   assert.deepEqual(reduce(none, event(`${NAMESPACE}block.created`, 1, payload)), {
     blocks: new Map([[TODAY, [{ id: "b1", text: "first", children: [] }]]]),
     titles: new Map([[TODAY, TODAY]]),
-    properties: new Map(),
   });
   assert.equal(reduce(none, event("block.created", 1, payload)), none);
   // Only the exact prefix. A slash is what #37 first proposed and is not it.

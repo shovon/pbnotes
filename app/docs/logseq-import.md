@@ -23,7 +23,7 @@ The outline format is small enough to split by hand:
 
 None of these is hard to parse. Each is a product decision about a Logseq feature pbnotes does not have yet.
 
-- **Property lines** (`key:: value`, including page properties on a file's first block): pbnotes keeps page properties in a table on the page, not as syntax in block text (#84, and "Properties are a table, not syntax" in `design.md`). A page property can become a property event on import; a block property has nowhere to go yet, so it is dropped or kept as plain text.
+- **Property lines** (`key:: value`, including page properties on a file's first block): pbnotes has no properties for now (the first design was removed in #164), so a property line has nowhere to go: it is dropped or kept as plain text.
 - **Block refs** (`((uuid))`): these only keep working if the Logseq `id::` becomes the pbnotes block id. Otherwise they are left as dead text.
 - **Collapsed state** (`collapsed:: true`): this waits on the collapsed-subtree decision.
 - **Assets** (`../assets/…`): the links break unless the files are copied alongside the notes.
