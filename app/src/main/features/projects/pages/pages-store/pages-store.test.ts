@@ -59,8 +59,6 @@ const getReferences = query(pages.getReferences);
 const getState = on(store.getState);
 const indentBlock = on(pages.indentBlock);
 const outdentBlock = on(pages.outdentBlock);
-const setProperty = on(pages.setProperty);
-const addPropertyItem = on(pages.addPropertyItem);
 
 const TODAY = "2026-09-21";
 const TOMORROW = "2026-09-22";
@@ -823,47 +821,6 @@ test("the state is the journal with today on top, or the one page the trail ends
   const block = journal.showing[1].page.blocks[0].id;
   const zoomed = await getState(it, [{ page: "Mira", block }], TOMORROW);
   assert.deepEqual(zoomed.showing[0].references, []);
-
-  await closeLedgers();
-});
-
-test("each page showing carries its own properties, blocks or none", async () => {
-  const it = await project();
-  const mira = { kind: "page", title: "Mira" } as const;
-  await addBlock(it, "Mira", "Prefers the good coffee");
-  await setProperty(it, mira, ["user", "status"], "draft");
-  await addPropertyItem(it, mira, ["app", "alias"], "M");
-  await addPropertyItem(it, mira, ["app", "alias"], "Mir");
-  // A page named by a property alone, with no blocks on it.
-  await setProperty(it, { kind: "page", title: "Shed" }, ["user", "size"], 3);
-  // A day with a property and no blocks is in the journal.
-  await setProperty(it, { kind: "page", title: TODAY }, ["user", "mood"], "fine");
-  // A block's properties are not a page's.
-  const block = (await addBlock(it, "Mira", "second")).blocks[1].id;
-  await setProperty(it, { kind: "block", id: block }, ["user", "done"], true);
-
-  const plain = (state: Awaited<ReturnType<typeof getState>>) =>
-    state.showing.map(({ page, properties }) => [
-      page.title,
-      properties.map(({ path, value, items }) => [path, value, [...items]]),
-    ]);
-
-  assert.deepEqual(plain(await getState(it, [{ page: "Mira" }], TODAY)), [
-    [
-      "Mira",
-      [
-        [["app", "alias"], undefined, ["M", "Mir"]],
-        [["user", "status"], "draft", []],
-      ],
-    ],
-  ]);
-  assert.deepEqual(plain(await getState(it, [{ page: "Shed" }], TODAY)), [
-    ["Shed", [[["user", "size"], 3, []]]],
-  ]);
-  assert.deepEqual(plain(await getState(it, [], TOMORROW)), [
-    [TOMORROW, []],
-    [TODAY, [[["user", "mood"], "fine", []]]],
-  ]);
 
   await closeLedgers();
 });

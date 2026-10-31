@@ -126,10 +126,9 @@ test("every builder writes the v its own gate reads, and there is one for every 
     blockOutdented({ id: "x", after: "y" }),
   ];
   for (const event of built) assert.equal(event.v, HANDLES[event.type], event.type);
-  // Block events only: the property events' builders are #133.
   assert.deepEqual(
     built.map((event) => event.type).sort(),
-    Object.keys(HANDLES).filter((type) => type.startsWith(`${NAMESPACE}block.`)).sort(),
+    Object.keys(HANDLES).sort(),
   );
 });
 

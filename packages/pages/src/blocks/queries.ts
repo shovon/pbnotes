@@ -14,6 +14,19 @@ export function getPage(state: BlockState, title: string): Page {
   return { title: titleOf(state, title), blocks: blocksOn(state, title) };
 }
 
+/**
+ * The journal: every day that has something on it, newest first. A day whose
+ * only block was deleted is left out. Today is not added: which day that is
+ * depends on the clock, and a caller that shows a journal puts it at the top
+ * itself.
+ */
+export function getPages(state: BlockState): Page[] {
+  return [...state.blocks]
+    .filter(([key, blocks]) => blocks.length > 0 && DATE_PATTERN.test(key))
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([key, blocks]) => ({ title: state.titles.get(key) ?? key, blocks }));
+}
+
 /** Every block in a tree, depth first. */
 function* every(blocks: Block[]): Generator<Block> {
   for (const block of blocks) {

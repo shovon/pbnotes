@@ -8,19 +8,13 @@
  */
 import {
   addBlock,
-  addPropertyItem,
   deleteBlock,
   editBlock,
   indentBlock,
   locateBlock,
   outdentBlock,
-  removeProperty,
-  removePropertyItem,
-  renameProperty,
   searchPages,
-  setProperty,
   today,
-  unsetProperty,
 } from "@pbnotes/pages";
 import type { Command, PagesState, Place } from "../../../../../shared/pages.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
@@ -213,18 +207,6 @@ function apply(view: PagesView, command: Command): Promise<unknown> {
       return indentBlock(view, command.blockId);
     case "outdentBlock":
       return outdentBlock(view, command.blockId);
-    case "setProperty":
-      return setProperty(view, command.of, command.path, command.value);
-    case "unsetProperty":
-      return unsetProperty(view, command.of, command.path);
-    case "addPropertyItem":
-      return addPropertyItem(view, command.of, command.path, command.item);
-    case "removePropertyItem":
-      return removePropertyItem(view, command.of, command.path, command.item);
-    case "removeProperty":
-      return removeProperty(view, command.of, command.path);
-    case "renameProperty":
-      return renameProperty(view, command.of, command.from, command.to);
     default: {
       // Does not compile once `Command` has a case this switch lacks.
       const unhandled: never = command;

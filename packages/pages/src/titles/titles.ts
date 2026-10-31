@@ -1,6 +1,5 @@
 /**
  * How a page is spelled: `canonicalize` key → the first spelling the fold saw.
- * Blocks and properties both name pages, so both spell them here.
  */
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 
