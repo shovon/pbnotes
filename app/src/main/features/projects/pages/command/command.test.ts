@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { requireCommand } from "./command.ts";
+import { requireCommand, requireDay } from "./command.ts";
 
 const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 
@@ -61,4 +61,11 @@ test("fields a command does not read are dropped", () => {
     requireCommand({ type: "addBlock", id: ID, title: "Mira", text: "hi", after: undefined, page: "x" }),
     { type: "addBlock", id: ID, title: "Mira", text: "hi" },
   );
+});
+
+test("today is a day as YYYY-MM-DD, and nothing else", () => {
+  assert.equal(requireDay("2026-10-31"), "2026-10-31");
+  for (const bad of [undefined, 20261031, "", "2026-10-31T00:00", "Oct 31"]) {
+    assert.throws(() => requireDay(bad), TypeError);
+  }
 });

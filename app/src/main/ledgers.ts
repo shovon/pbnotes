@@ -60,8 +60,8 @@ export function createLedgers(paces: Paces = PACES) {
   const entries = new Map<string, Entry>();
 
   /**
-   * Told which project's pages changed: an arrival from another session, or a
-   * fold that caught up with a write of our own. One listener; a second call
+   * Told which project's pages changed: a write of ours, an arrival from
+   * another session, or a fold that caught up with a write of our own. One listener; a second call
    * replaces the first. Left unset, nobody is told, which is what a test wants.
    */
   let announce: ((projectId: string) => void) | undefined;
@@ -69,6 +69,15 @@ export function createLedgers(paces: Paces = PACES) {
   function onChange(next: (projectId: string) => void): void {
     announce = next;
   }
+
+  /**
+   * The fold's version: one more every time any ledger's pages change, a
+   * write of ours and an arrival alike. One counter for every ledger, so it
+   * never goes back, even when a project's ledger is reopened at a new path.
+   * A view reads it beside the state it labels, with no `await` between them,
+   * so a view at version `n` holds every change up to `n`.
+   */
+  let version = 0;
 
   /** The pace every ledger is read at now, and the one a new one opens at. */
   let pace = paces.focused;
@@ -107,19 +116,26 @@ export function createLedgers(paces: Paces = PACES) {
     // The first yield is the catch-up, so the view has every page before it is
     // handed out.
     let state = (await states.next()).value as PagesView["state"];
+    let at = ++version;
+
+    /** The pages moved: a new version, and the windows are told. */
+    const moved = (next: PagesView["state"]): void => {
+      state = next;
+      at = ++version;
+      announce?.(project.id);
+    };
 
     // Every later yield is the truth, including one that refolded the past.
     // A yield that is the state already held changes nothing on screen.
     //
     // ponytail: a yield computed just before our own `post` landed can arrive
     // just after `dispatch` folded it in, and briefly drop it until the next
-    // yield. Needs an arrival in the same tick as a write; carry an event count
-    // in the fold state if it ever shows.
+    // yield, at a version that claims to hold it. Needs an arrival in the same
+    // tick as a write; carry an event count in the fold state if it ever shows.
     void (async () => {
       for (let next; !(next = await states.next()).done; ) {
         if (next.value === state) continue;
-        state = next.value;
-        announce?.(project.id);
+        moved(next.value);
       }
     })();
 
@@ -127,16 +143,20 @@ export function createLedgers(paces: Paces = PACES) {
       get state() {
         return state;
       },
+      get version() {
+        return at;
+      },
       get status() {
         return ledger.status;
       },
-      // The event is folded in here, before this resolves, so the state the
-      // reply names already holds it: the renderer drops its prediction
-      // when the write settles, and a state without it would make the block
-      // jump back for a frame.
+      // The event is folded in here, before this resolves, so the version the
+      // reply names already holds it: the renderer drops its prediction once
+      // a view at that version arrives, and one without it would make the
+      // block jump back for a frame. Announced like an arrival: a write of
+      // ours reaches every window the way another device's does.
       async dispatch(v, type, payload) {
         const event = await ledger.writer().post(v, type, payload);
-        state = pagesFold.reduce(state, event);
+        moved(pagesFold.reduce(state, event));
       },
     };
     return { ledger, view };

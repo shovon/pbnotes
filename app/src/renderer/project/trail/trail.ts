@@ -1,10 +1,10 @@
 /**
  * The steps along a trail: where the view is, kept as how it got there. Pure,
  * so the three of them run under `node --test` with nothing around them;
- * `pages-session.ts` holds the trail these are applied to.
+ * `ProjectView` holds the trail these are applied to.
  */
 import { canonicalize } from "@pbnotes/pages";
-import type { Place } from "../../../../../shared/pages.ts";
+import type { Place } from "../../../shared/pages.ts";
 
 /** By `canonicalize`: `[[mira]]` followed from `Mira` is the page already showing. */
 const same = (a: Place | undefined, b: Place) =>

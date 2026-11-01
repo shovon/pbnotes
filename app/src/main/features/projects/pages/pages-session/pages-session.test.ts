@@ -1,26 +1,35 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pagesFold } from "@pbnotes/pages";
-import type { PagesState } from "../../../../../shared/pages.ts";
+import { blockEdited, pagesFold } from "@pbnotes/pages";
 import type { PagesView } from "../pages-store/pages-store.ts";
 import { createPagesSession } from "./pages-session.ts";
 
 /**
- * A ledger held in memory: the real fold, and a `dispatch` that waits on a
- * gate a test can hold shut, so a write can be kept in flight.
+ * A ledger held in memory: the real fold, a version that moves with it as
+ * `ledgers.ts`'s does, and a `dispatch` that waits on a gate a test can hold
+ * shut, so a write can be kept in flight. `arrive` stands in for another
+ * device's event landing.
  */
 function ledger() {
   let state = pagesFold.initial;
+  let version = 0;
   let gate: Promise<void> = Promise.resolve();
+  const fold = (event: { type: string; v: number; payload: unknown }) => {
+    state = pagesFold.reduce(state, event);
+    version++;
+  };
   const view: PagesView = {
     get state() {
       return state;
     },
+    get version() {
+      return version;
+    },
     status: { devices: [], ignored: [] },
     async dispatch(v, type, payload) {
       await gate;
-      state = pagesFold.reduce(state, { type, v, payload });
+      fold({ type, v, payload });
     },
   };
   /** Holds every dispatch until the returned function is called. */
@@ -34,21 +43,17 @@ function ledger() {
     [...state.blocks.values()].flatMap((blocks) =>
       blocks.map((block) => block.text),
     );
-  return { view, hold, texts };
+  return { view, hold, texts, arrive: fold };
 }
 
 /**
  * The composition root for these tests: what is open is whichever ledger a
  * test says, read the moment `require` is called — as `requireProject` reads
- * it — and refused when there is none. The clock is fixed until a test moves
- * it, and every state sent is kept.
+ * it — and refused when there is none. Every version told is kept.
  */
 function session(first: PagesView | null) {
   let current = first;
-  let clock = new Date(2026, 9, 27, 9);
-  const sent: PagesState[] = [];
-  /** The number each state in `sent` went out with. */
-  const numbers: number[] = [];
+  const told: number[] = [];
   const pages = createPagesSession(
     {
       async require() {
@@ -60,72 +65,89 @@ function session(first: PagesView | null) {
       saveImage: async () => "images/x.png",
       findImage: async () => undefined,
     },
-    () => clock,
-    (state, n) => {
-      sent.push(state);
-      numbers.push(n);
-    },
+    (version) => told.push(version),
   );
   return {
     pages,
-    sent,
-    numbers,
+    told,
     openLedger: (view: PagesView | null): void => {
       current = view;
-    },
-    setClock: (date: Date): void => {
-      clock = date;
     },
   };
 }
 
 const TODAY = "2026-10-27";
-const shown = (state: PagesState | undefined) =>
-  state?.showing.flatMap(({ page }) => page.blocks.map((block) => block.text));
+const shown = (view: { showing: { page: { blocks: { text: string }[] } }[] }) =>
+  view.showing.flatMap(({ page }) => page.blocks.map((block) => block.text));
 
-test("a write's state is sent before its reply", async () => {
+test("a write replies with the version the fold reached", async () => {
   const { view } = ledger();
-  const { pages, sent } = session(view);
+  const { pages } = session(view);
+  assert.equal(await pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" }), 1);
+  assert.equal(await pages.run({ type: "editBlock", blockId: "a1", text: "two" }), 2);
+  // An indent with nowhere to go changes nothing, and names the version held.
+  assert.equal(await pages.run({ type: "indentBlock", blockId: "a1" }), 2);
+});
+
+test("a view holds every write up to the version it reports", async () => {
+  const { view } = ledger();
+  const { pages } = session(view);
+  const v = await pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
+  const seen = await pages.view(undefined, TODAY);
+  assert.equal(seen.version, v);
+  assert.deepEqual(shown(seen), ["one"]);
+});
+
+test("an arrival moves the version as a write does", async () => {
+  const { view, arrive } = ledger();
+  const { pages } = session(view);
   await pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
-  assert.deepEqual(shown(sent.at(-1)), ["one"]);
+  const before = (await pages.view(undefined, TODAY)).version;
+  arrive(blockEdited("a1", "from elsewhere"));
+  const after = await pages.view(undefined, TODAY);
+  assert.ok(after.version > before);
+  assert.deepEqual(shown(after), ["from elsewhere"]);
 });
 
-test("every call that sends a state resolves to that state's number", async () => {
-  // What the preload waits on: Electron does not deliver a state sent before
-  // a reply ahead of it, so the reply names the state instead.
+test("the view is the journal with today on top, or the one page asked for", async () => {
   const { view } = ledger();
-  const { pages, numbers } = session(view);
-  const replies = [
-    await pages.show(),
-    await pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" }),
-    await pages.go({ page: "Mira" }),
-    await pages.back(),
-  ];
-  assert.deepEqual(replies, [1, 2, 3, 4]);
-  assert.deepEqual(numbers, [1, 2, 3, 4]);
+  const { pages } = session(view);
+  // Nothing written: today is there anyway, empty.
+  const empty = await pages.view(undefined, TODAY);
+  assert.deepEqual(empty.showing.map(({ page }) => [page.title, page.blocks.length]), [[TODAY, 0]]);
+  await pages.run({ type: "addBlock", id: "a1", title: "Mira", text: "hi" });
+  const page = await pages.view({ page: "Mira" }, TODAY);
+  assert.deepEqual(page.showing.map(({ page }) => page.title), ["Mira"]);
+  // Zoomed, what links to the page is not shown.
+  const zoomed = await pages.view({ page: "Mira", block: "a1" }, TODAY);
+  assert.deepEqual(zoomed.showing[0].references, []);
 });
 
-test("a call that sends nothing resolves to no number", async () => {
-  const { pages, numbers, openLedger } = session(null);
-  await assert.rejects(pages.show(), /not reachable/);
-  // A step still answers when the ledger cannot be read, and sends nothing.
-  assert.equal(await pages.go({ page: "Mira" }), undefined);
-  openLedger(ledger().view);
-  assert.equal(await pages.back(), 1);
-  assert.deepEqual(numbers, [1]);
+test("refreshing tells the windows the version, and nothing when nothing is reachable", async () => {
+  const { view } = ledger();
+  const { pages, told, openLedger } = session(view);
+  await pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
+  pages.refreshPages();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(told, [1]);
+  openLedger(null);
+  pages.refreshPages();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(told, [1]);
+  await assert.rejects(pages.view(undefined, TODAY), /not reachable/);
 });
 
 test("writes are recorded in the order they arrive, so one may name the block before it", async () => {
   const a = ledger();
-  const { pages, sent } = session(a.view);
+  const { pages } = session(a.view);
   const release = a.hold();
   // Sent back to back, as Enter then typing does: the second names the first,
   // which is not on the page until the first has been written.
   const first = pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
   const second = pages.run({ type: "addBlock", id: "a2", title: TODAY, text: "two", after: "a1" });
   release();
-  await Promise.all([first, second]);
-  assert.deepEqual(shown(sent.at(-1)), ["one", "two"]);
+  assert.deepEqual(await Promise.all([first, second]), [1, 2]);
+  assert.deepEqual(a.texts(), ["one", "two"]);
 });
 
 test("a refused write does not hold up the ones behind it", async () => {
@@ -152,51 +174,14 @@ test("a write lands where it was sent, even when what is open changes while it w
   assert.deepEqual(b.texts(), []);
 });
 
-test("the trail is held here, and starts over when what is open changes", async () => {
-  const { view } = ledger();
-  const { pages, sent } = session(view);
-  await pages.go({ page: "Mira" });
-  await pages.go({ page: "Juno", block: "b1" });
-  assert.deepEqual(sent.at(-1)?.trail, [
-    { page: "Mira" },
-    { page: "Juno", block: "b1" },
-  ]);
-  await pages.rezoom();
-  assert.deepEqual(sent.at(-1)?.trail, [
-    { page: "Mira" },
-    { page: "Juno", block: undefined },
-  ]);
-  await pages.back();
-  assert.deepEqual(sent.at(-1)?.trail, [{ page: "Mira" }]);
-  pages.resetTrail();
-  await pages.show();
-  assert.deepEqual(sent.at(-1)?.trail, []);
-});
-
-test("with nothing reachable, show says so and nothing is sent", async () => {
-  const { pages, sent } = session(null);
-  await assert.rejects(pages.show(), /not reachable/);
-  pages.refreshPages();
-  // A step still resolves: the windows keep what they have.
-  await pages.go({ page: "Mira" });
+test("with nothing reachable, a write is refused", async () => {
+  const { pages } = session(null);
   await assert.rejects(pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" }), /not reachable/);
-  assert.equal(sent.length, 0);
-});
-
-test("which day is today is the clock's, read every time a state is sent", async () => {
-  const { view } = ledger();
-  const { pages, sent, setClock } = session(view);
-  await pages.show();
-  assert.equal(sent.at(-1)?.showing[0]?.page.title, TODAY);
-  setClock(new Date(2026, 9, 28, 9));
-  pages.refreshPages();
-  await pages.show();
-  assert.equal(sent.at(-1)?.showing[0]?.page.title, "2026-10-28");
 });
 
 test("run reaches each block command, and records them in the order they arrived", async () => {
   const { view, hold } = ledger();
-  const { pages, sent } = session(view);
+  const { pages } = session(view);
   const release = hold();
   const writes = [
     pages.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" }),
@@ -209,5 +194,5 @@ test("run reaches each block command, and records them in the order they arrived
   ];
   release();
   await Promise.all(writes);
-  assert.deepEqual(shown(sent.at(-1)), ["two!", "three"]);
+  assert.deepEqual(shown(await pages.view(undefined, TODAY)), ["two!", "three"]);
 });

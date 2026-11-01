@@ -145,7 +145,7 @@ app.on("ready", () => {
   );
   const ledgers = createLedgers();
   // The real clock and the real disk, chosen here and nowhere else. The clock
-  // dates an add or an open, and decides which page is today.
+  // dates an add or an open; which page is today is each window's clock.
   const now = () => new Date();
   const disk = createDisk();
 
@@ -155,12 +155,11 @@ app.on("ready", () => {
     newId: randomUUID,
     pathKey: pathKeyOn(process.platform),
   });
-  // A different project is open, so a trail through the last one is over.
-  // `pages` is declared below; this only runs once a project changes, by
-  // which time it exists.
-  const projects = createOpenProject(store, disk.probe, () =>
-    pages.resetTrail(),
-  );
+  // Nothing in main holds anything per project that a change of project has
+  // to clear: the trail is each window's, and `App` remounts the project view
+  // when the project changes. A feature that does hold something gets a line
+  // here.
+  const projects = createOpenProject(store, disk.probe, () => undefined);
   registerProjectIpc(store, projects);
 
   // Pages are handed their view of what is open, and the images beside it,
@@ -190,16 +189,15 @@ app.on("ready", () => {
         return project ? findImage(project.path, name) : undefined;
       },
     },
-    now,
     // Every window of the app, over `pages:changed`.
     broadcastPages,
   );
   registerPageIpc(pages);
 
-  // A project's pages moved: another session's events landed in its folder,
-  // or the fold caught up with a write of ours. Every fold has taken them in
-  // by now, so nothing is fed to a feature here: each one is only told to draw
-  // again, and only when the project is the one on screen — which is settled
+  // A project's pages moved: a write of ours, another session's events
+  // landing in its folder, or the fold catching up with a write of ours. Every
+  // fold has taken them in by now, so nothing is fed to a feature here: each
+  // one is only told to tell the windows, and only when the project is the one on screen — which is settled
   // here, so no feature has to ask. The ledgers hold one listener, and this
   // is it — a new feature adds its line here.
   ledgers.onChange((projectId) => {

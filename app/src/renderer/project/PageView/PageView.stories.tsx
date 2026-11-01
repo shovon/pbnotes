@@ -19,14 +19,15 @@ const block = (id: string, text: string, children: Block[] = []): Block => ({
 const page = (title: string, blocks: Block[]): Page => ({ title, blocks });
 
 /**
- * Writes resolve `undefined` through the stub above, so these
- * stories are for reading: the page's heading, its blocks, and — stacked —
+ * Writes resolve `undefined` through the stub above — no version, so what
+ * they draw is dropped at once — and these stories are for reading: the page's heading, its blocks, and — stacked —
  * what separates one day from the next.
  */
 const meta = {
   component: PageView,
   args: {
     pages,
+    version: 0,
     references: [] as Page[],
     act: () => undefined,
   },

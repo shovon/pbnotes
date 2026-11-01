@@ -19,12 +19,12 @@ const block = (id: string, text: string, children: Block[] = []): Block => ({
 const page = (title: string, blocks: Block[]): Page => ({ title, blocks });
 
 /**
- * Writes resolve `undefined` through the stub above, so these
- * stories are for reading: the count, the cuts, and their headings.
+ * Writes resolve `undefined` through the stub above — no version, so what
+ * they draw is dropped at once — and these stories are for reading: the count, the cuts, and their headings.
  */
 const meta = {
   component: LinkedReferences,
-  args: { pages, act: () => undefined },
+  args: { pages, version: 0, act: () => undefined },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: '36rem' }}>

@@ -56,7 +56,7 @@ const getPage = query(pages.getPage);
 const getPages = query(pages.getPages);
 const getPreviews = query(pages.getPreviews);
 const getReferences = query(pages.getReferences);
-const getState = on(store.getState);
+const getView = on(store.getView);
 const indentBlock = on(pages.indentBlock);
 const outdentBlock = on(pages.outdentBlock);
 
@@ -798,19 +798,18 @@ test("a block ref previews the first paragraph of its target", async () => {
   await closeLedgers();
 });
 
-test("the state is the journal with today on top, or the one page the trail ends on", async () => {
+test("the view is the journal with today on top, or the one page asked for", async () => {
   const it = await project();
   await addBlock(it, TODAY, "saw [[Mira]]");
 
   // Tomorrow has nothing on it yet, and is still where the user will type.
-  const journal = await getState(it, [], TOMORROW);
+  const journal = await getView(it, undefined, TOMORROW);
   assert.deepEqual(
     journal.showing.map((shown) => shown.page.title),
     [TOMORROW, TODAY],
   );
 
-  const page = await getState(it, [{ page: "Mira" }], TOMORROW);
-  assert.deepEqual(page.trail, [{ page: "Mira" }]);
+  const page = await getView(it, { page: "Mira" }, TOMORROW);
   assert.equal(page.showing.length, 1);
   assert.deepEqual(
     page.showing[0].references.map((cut) => [cut.title, cut.blocks[0].text]),
@@ -819,7 +818,7 @@ test("the state is the journal with today on top, or the one page the trail ends
 
   // Zoomed, what links to the page is not shown.
   const block = journal.showing[1].page.blocks[0].id;
-  const zoomed = await getState(it, [{ page: "Mira", block }], TOMORROW);
+  const zoomed = await getView(it, { page: "Mira", block }, TOMORROW);
   assert.deepEqual(zoomed.showing[0].references, []);
 
   await closeLedgers();

@@ -1,6 +1,6 @@
 /**
  * The pages contract: types and channel names shared by main, preload and
- * renderer, and the state main sends the renderer to draw. What a page and a
+ * renderer, and what main answers the renderer with to draw. What a page and a
  * block are, and the fold over them, are `@pbnotes/pages`. Like
  * `projects.ts`, this file is bundled into the renderer too, so it stays free
  * of `node:` imports.
@@ -27,26 +27,27 @@ export const IMAGE_SCHEME = 'pbnotes-image';
 
 /**
  * A stop on the trail: a page, or one block of a page as the root of the
- * view. Both are places you go back to, so they share the one history.
+ * view. Both are places you go back to, so they share the one history. The
+ * trail is the window's own (`ProjectView`); main is only ever asked what
+ * shows at one place.
  */
 export type Place = { page: string; block?: string };
 
 /**
- * What main has in mind for the project that is open: where the view is, and
- * everything that shows there. The renderer draws this and holds no copy of
- * its own — a write, a step along the trail and another device's notes
- * landing all reach the screen as the next one of these.
+ * What shows at one place, as main read it: the answer to `view`. The
+ * renderer draws this and keeps it only until a newer one arrives; it never
+ * holds a fold of its own.
  */
-export type PagesState = {
+export type PlaceView = {
   /**
-   * Where the view is, as the trail that got it there rather than one title:
-   * the journal is an empty trail, and every link followed is one more on the
-   * end. Back takes the last one off, so A → B → C comes back through B.
+   * The version of the fold this was read at (`ledgers.ts`). It holds every
+   * change up to that version and none after, which is what a prediction is
+   * dropped by, and what a stale answer loses by.
    */
-  trail: Place[];
+  version: number;
   /**
-   * What is showing: the one page the trail ends on, or the journal — every
-   * day with something on it, newest first, and today whether or not it has.
+   * What is showing: the one page at the place, or the journal — every day
+   * with something on it, newest first, and today whether or not it has.
    * Each with what links to it, cut down to the blocks that do; none under a
    * zoom, where what links to one block is not what links to its page.
    */
@@ -60,14 +61,10 @@ export type PagesState = {
   previews: [string, string | null][];
 };
 
-
 export const PAGE_CHANNELS = {
-  show: 'pages:show',
-  /** Main to renderer: a `PagesState`, then its number. */
+  view: 'pages:view',
+  /** Main to renderer: the fold's version, and nothing else. */
   changed: 'pages:changed',
-  go: 'pages:go',
-  back: 'pages:back',
-  rezoom: 'pages:rezoom',
   locate: 'pages:locate',
   search: 'pages:search',
   command: 'pages:command',
@@ -81,43 +78,26 @@ export const PAGE_CHANNELS = {
  * call names a project: main holds which one is open, and everything here is
  * about that one.
  *
- * Nothing but `locate`, `search`, `status` and `addImage` answers with content. A write (`run`) or a step
- * along the trail resolves once `onChanged` has heard the state it led to, so
- * a caller that carries on sees it. That order is the bridge's to keep, not
- * Electron's: main numbers each state on `pages:changed`, replies with the
- * number of the one a call led to, and the preload holds the call until that
- * one has been heard (`src/preload/heard/heard.ts` says why). Writes are
- * recorded one at a time, in the order they were sent, so one may name a
- * block an earlier one is still writing.
+ * Main holds the data; the window holds where it is. Every change reaches the
+ * window the same way, a write from this window included: `onChanged` hears
+ * the fold's new version, and the window asks `view` again for its place. A
+ * write (`run`) resolves once it is recorded, with the version it led to.
+ * Writes are recorded one at a time, in the order they were sent, so one may
+ * name a block an earlier one is still writing.
  */
 export type PagesApi = {
   /**
-   * Asks main to send what is showing, for a view that has just mounted and
-   * has heard nothing yet. It arrives through `onChanged` like every other
-   * state, so there is one way in and no second copy to keep in step.
+   * What shows at `place`, or with none the journal, read with `today` as
+   * the day on top of it. `today` is the window's clock, not main's.
    * Rejects when the project cannot be reached.
    */
-  show(): Promise<void>;
+  view(place: Place | undefined, today: string): Promise<PlaceView>;
   /**
-   * Calls `listener` with every state main sends: after a write from this
-   * window, after a step along the trail, and after another device's segment
-   * lands in the folder under a sync tool. Returns an unsubscribe.
+   * Calls `listener` with the fold's version every time it moves: a write
+   * from any window, and another device's segment landing in the folder
+   * under a sync tool. Returns an unsubscribe.
    */
-  onChanged(listener: (state: PagesState) => void): () => void;
-  /**
-   * Follows a link: `place` goes on the end of the trail. A link to where the
-   * view already is goes nowhere, and adds nothing.
-   */
-  go(place: Place): Promise<void>;
-  /** One step back along the trail; from the first page that is the journal. */
-  back(): Promise<void>;
-  /**
-   * The zoom moved rather than followed: the zoomed block is gone, and the
-   * view lands on `block` — what it was under — or on the whole page. In
-   * place of the last stop, not after it, so back does not return to a block
-   * that is not there.
-   */
-  rezoom(block?: string): Promise<void>;
+  onChanged(listener: (version: number) => void): () => void;
   /**
    * The page a block is on, found by its id alone — an id is unique across
    * the project. Undefined for an id the project does not have, including
@@ -146,8 +126,10 @@ export type PagesApi = {
    * for every write, so a new write is a case on `Command`, not a channel of
    * its own. Main checks the command's shape, then runs the `@pbnotes/pages`
    * command it names, which makes the full checks and builds the event.
+   * Resolves once it is recorded, to the fold's version after it: a view at
+   * that version or later holds it.
    */
-  run(command: Command): Promise<void>;
+  run(command: Command): Promise<number>;
   /**
    * Stores an image in the project's folder and returns the link a block
    * holds it by, `images/<sha256>.png`. Appends nothing: the caller puts the
