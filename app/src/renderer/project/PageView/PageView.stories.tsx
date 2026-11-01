@@ -81,6 +81,18 @@ export const Named: Story = {
   },
 };
 
+/** A page with properties: the table sits under the title, above the
+    blocks. Each key is a link to the page it names. */
+export const WithProperties: Story = {
+  args: {
+    page: page('Mira', [block('15', 'Prefers #[[the good coffee]].')]),
+    properties: [
+      { key: 'Role', value: 'editor' },
+      { key: 'Team', value: 'Shed' },
+    ],
+  },
+};
+
 /** Zoomed into a block two levels down: it alone is the root, its children
     are the top level, and above it the page and what it hangs under are the
     ways back out. Its sibling is not shown. */

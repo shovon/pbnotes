@@ -196,3 +196,38 @@ test("run reaches each block command, and records them in the order they arrived
   await Promise.all(writes);
   assert.deepEqual(shown(await pages.view(undefined, TODAY)), ["two!", "three"]);
 });
+
+test("property writes are recorded in order with the block writes around them", async () => {
+  const { view, hold } = ledger();
+  const { pages } = session(view);
+  const release = hold();
+  const writes = [
+    pages.run({ type: "addBlock", id: "a1", title: "Mira", text: "hi" }),
+    pages.run({ type: "setProperty", title: "Mira", key: "Owner", value: "Sal" }),
+    pages.run({ type: "renameProperty", title: "Mira", from: "Owner", to: "Author" }),
+    pages.run({ type: "editBlock", blockId: "a1", text: "hello" }),
+    pages.run({ type: "setProperty", title: "Mira", key: "Status", value: "done" }),
+    pages.run({ type: "removeProperty", title: "Mira", key: "Status" }),
+  ];
+  release();
+  await Promise.all(writes);
+  const seen = await pages.view({ page: "Mira" }, TODAY);
+  assert.deepEqual(shown(seen), ["hello"]);
+  assert.deepEqual(seen.showing[0].properties, [{ key: "Author", value: "Sal" }]);
+});
+
+test("a refused rename writes nothing and does not hold up the writes behind it", async () => {
+  const { view } = ledger();
+  const { pages } = session(view);
+  await pages.run({ type: "setProperty", title: "Mira", key: "Owner", value: "Sal" });
+  await pages.run({ type: "setProperty", title: "Mira", key: "Author", value: "Kim" });
+  const before = (await pages.view({ page: "Mira" }, TODAY)).version;
+  await assert.rejects(
+    pages.run({ type: "renameProperty", title: "Mira", from: "Owner", to: "author" }),
+  );
+  assert.equal((await pages.view({ page: "Mira" }, TODAY)).version, before);
+  await pages.run({ type: "removeProperty", title: "Mira", key: "Owner" });
+  assert.deepEqual((await pages.view({ page: "Mira" }, TODAY)).showing[0].properties, [
+    { key: "Author", value: "Kim" },
+  ]);
+});

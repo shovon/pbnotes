@@ -7,9 +7,20 @@ import {
   blockEdited,
   blockIndented,
   blockOutdented,
+  propertyRemoved,
+  propertySet,
 } from '@pbnotes/pages';
 import type { Block } from '@pbnotes/pages';
-import { add, edit, indent, outdent, remove } from './steps.ts';
+import {
+  add,
+  edit,
+  indent,
+  outdent,
+  remove,
+  removeProperty,
+  renameProperty,
+  setProperty,
+} from './steps.ts';
 import type { Step } from './steps.ts';
 import type { Command } from '../../../../shared/pages.ts';
 
@@ -50,6 +61,8 @@ test('each step draws the event main writes, and sends the write that records it
     [remove(pages, 'a'), blockDeleted('a'), { type: 'deleteBlock', blockId: 'a' }],
     [indent(pages, blocks, 'b'), blockIndented({ id: 'b', parent: 'a' }), { type: 'indentBlock', blockId: 'b' }],
     [outdent(pages, blocks, 'c'), blockOutdented({ id: 'c', after: 'b' }), { type: 'outdentBlock', blockId: 'c' }],
+    [setProperty(pages, 'Mira', 'Status', 'done'), propertySet('Mira', 'Status', 'done'), { type: 'setProperty', title: 'Mira', key: 'Status', value: 'done' }],
+    [removeProperty(pages, 'Mira', 'Status'), propertyRemoved('Mira', 'Status'), { type: 'removeProperty', title: 'Mira', key: 'Status' }],
   ];
   for (const [step, built, call] of cases) {
     pages.calls.length = 0;
@@ -65,4 +78,23 @@ test('a move with nowhere to go is no step at all', () => {
   assert.equal(indent(pages, blocks, 'c'), undefined);
   assert.equal(outdent(pages, blocks, 'a'), undefined);
   assert.equal(indent(pages, blocks, 'nope'), undefined);
+});
+
+test('a rename draws both its events and sends its one command once', async () => {
+  const calls: Command[] = [];
+  const pages = {
+    run: async (command: Command) => {
+      calls.push(command);
+      return 7;
+    },
+  };
+  const steps = renameProperty(pages, 'Mira', 'Owner', 'Author', 'Sal');
+  assert.deepEqual(
+    steps.map(([event]) => event),
+    [propertySet('Mira', 'Author', 'Sal'), propertyRemoved('Mira', 'Owner')],
+  );
+  const answers = [];
+  for (const [, send] of steps) answers.push(await send());
+  assert.deepEqual(answers, [7, 7]);
+  assert.deepEqual(calls, [{ type: 'renameProperty', title: 'Mira', from: 'Owner', to: 'Author' }]);
 });

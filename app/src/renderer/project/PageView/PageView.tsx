@@ -1,11 +1,22 @@
 import { Fragment, useEffect, useState } from 'react';
-import { locate, predict } from '@pbnotes/pages';
-import type { Block as BlockType, Page } from '@pbnotes/pages';
+import { locate, predict, predictProperties } from '@pbnotes/pages';
+import type { Block as BlockType, Page, Property } from '@pbnotes/pages';
 import type { PagesApi } from '../../../shared/pages';
 import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
-import { add, edit, indent, outdent, remove } from './steps/steps';
+import Properties from './Properties/Properties';
+import type { Write } from './Properties/rows';
+import {
+  add,
+  edit,
+  indent,
+  outdent,
+  remove,
+  removeProperty,
+  renameProperty,
+  setProperty,
+} from './steps/steps';
 import type { Step, StepsPages } from './steps/steps';
 import { afterCancel, afterDelete, movable, newBlock } from './editing/editing';
 import type { Caret, Then } from './editing/editing';
@@ -38,6 +49,11 @@ type Props = {
   version: number;
   /** What links here. Left off for a page that is itself shown as one. */
   references?: Page[];
+  /**
+   * The page's properties, as main last showed them. Left off where none
+   * are drawn: a cut, which is another page's blocks under its heading.
+   */
+  properties?: Property[];
   /**
    * Shown under another page as what links to it: a cut of this page — the
    * blocks that link, not all of them — decided in main and read again
@@ -85,6 +101,7 @@ export default function PageView({
   page: sent,
   version,
   references,
+  properties: sentProperties,
   reference = false,
   zoom,
   onZoom,
@@ -138,11 +155,13 @@ export default function PageView({
     }
   };
 
+  /** The writes still to draw over what main last sent. */
+  const inFlight = unseen(pending, version).map((it) => it.event);
   /** The page as it is drawn, which is what everything below reads. */
-  const page = predict(
-    sent,
-    unseen(pending, version).map((it) => it.event),
-  );
+  const page = predict(sent, inFlight);
+  /** Its properties as they are drawn, the same way. */
+  const properties =
+    sentProperties && predictProperties(sentProperties, sent.title, inFlight);
 
   /**
    * Tab or Shift+Tab on a block, as the step it is on `blocks`. Undefined at
@@ -379,6 +398,23 @@ export default function PageView({
     reopen(above);
   };
 
+  /**
+   * A row of the properties table left with something to write: drawn at
+   * once, and sent in order. A rename is one command and two events; a value
+   * changed in the same edit is written after it, over the value it kept.
+   */
+  const commitProperties = (writes: Write[]) => {
+    const steps = writes.flatMap((it) =>
+      it.kind === 'set'
+        ? [setProperty(pages, title, it.key, it.value)]
+        : renameProperty(pages, title, it.from, it.to, it.value),
+    );
+    act(() => write(...steps));
+  };
+
+  /** The × on a row. */
+  const removeRow = (key: string) => act(() => write(removeProperty(pages, title, key)));
+
   /** The box for a block that does not exist yet. */
   const newBlockEditor = (
     <BlockEditor
@@ -510,6 +546,20 @@ export default function PageView({
             title
           )}
         </h2>
+      )}
+
+      {/* Under the title, on the page's own view. A journal day shows its
+          table only when it has something in it: an empty one on every day
+          is noise, and the first property on a day is added from its page.
+          Not under a zoom, where what shows is a block and the page's
+          properties would read as its own. */}
+      {properties && !reference && !root && (!linked || properties.length > 0) && (
+        <Properties
+          rows={properties}
+          findKeys={pages.search}
+          onCommit={commitProperties}
+          onRemove={removeRow}
+        />
       )}
 
       {/* The blank space under the page is part of the page: clicking it opens

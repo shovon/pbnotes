@@ -16,7 +16,9 @@ To write, hand `addBlock`, `editBlock`, `deleteBlock`, `indentBlock` or `outdent
 
 Each of those writes one event, and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented` and `blockOutdented`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
 
-Page properties have builders too, `propertySet` and `propertyRemoved`, and no commands yet.
+Page properties have commands too, `setProperty`, `removeProperty` and `renameProperty`, and builders, `propertySet` and `propertyRemoved`.
+
+A view that draws its writes before they are recorded folds them with `predict` for blocks and `predictProperties` for a page's properties. Each passes over events that are not its own, so a view can hand both everything it has in flight.
 
 The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperties`, `searchPages` and `locateBlock`) take the folded pages alone, since they never write.
 
@@ -60,3 +62,4 @@ A page has properties: each a key and a string value. A key is a page title, com
 - **The later event wins,** in fold order, the same on every machine, as with block text. Removing a key the page does not have changes nothing.
 - **Malformed is skipped whole:** a payload that is not an object, a `page`, `key` or `value` that is not a string, or a `page` or `key` that is blank once trimmed. Any other field in a payload is ignored, not an error.
 - **`getProperties(pages, page)`** lists a page's properties as `{ key, value }`, each key in the spelling it shows, ordered by `canonicalize(key)`.
+- **The commands** refuse what the fold would skip (a blank page or key) and write nothing for a change that changes nothing: setting the value a key has, or removing a key the page lacks. `renameProperty(view, page, from, to)` writes a `set` of `to` with `from`'s value, then a `removed` of `from`, so a stop between them leaves both keys and never neither. It refuses a `from` the page lacks and a `to` it already has, and writes nothing for a `to` that is `from` once canonicalized: a key's spelling is its page's, so a rename cannot change it.

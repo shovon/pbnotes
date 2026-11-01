@@ -11,13 +11,16 @@
  *
  * Pure, so the rules run under `node --test`; `PageView` holds the list.
  */
-import type { PageEvent } from '@pbnotes/pages';
+import type { PageEvent, PropertyEvent } from '@pbnotes/pages';
+
+/** Any event a page draws ahead of main: a block's, or a property's. */
+type Drawn = PageEvent | PropertyEvent;
 
 /** One write drawn ahead of main: its event, and the version its reply named. */
-export type Pending = { event: PageEvent; version?: number };
+export type Pending = { event: Drawn; version?: number };
 
 /** `events` are drawn now, ahead of their replies. */
-export function drawn(all: Pending[], events: PageEvent[]): Pending[] {
+export function drawn(all: Pending[], events: Drawn[]): Pending[] {
   return [...all, ...events.map((event) => ({ event }))];
 }
 
@@ -28,7 +31,7 @@ export function drawn(all: Pending[], events: PageEvent[]): Pending[] {
  */
 export function recorded(
   all: Pending[],
-  event: PageEvent,
+  event: Drawn,
   version: unknown,
 ): Pending[] {
   return typeof version === 'number'
@@ -41,7 +44,7 @@ export function recorded(
  * dropped at once: the refused one, and those after it that were never
  * sent. Those already recorded wait for a view like any other.
  */
-export function refused(all: Pending[], events: PageEvent[]): Pending[] {
+export function refused(all: Pending[], events: Drawn[]): Pending[] {
   return all.filter(
     (it) => it.version !== undefined || !events.includes(it.event),
   );

@@ -99,6 +99,25 @@ const CHECKERS: {
     type: "outdentBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
   }),
+  // A key is a page title, and checked as one: it goes into `titles` as the
+  // key page's spelling if nothing has named that page yet.
+  setProperty: (raw) => ({
+    type: "setProperty",
+    title: requireTitle(own(raw, "title")),
+    key: requireTitle(own(raw, "key")),
+    value: requireString(own(raw, "value"), "value"),
+  }),
+  removeProperty: (raw) => ({
+    type: "removeProperty",
+    title: requireTitle(own(raw, "title")),
+    key: requireTitle(own(raw, "key")),
+  }),
+  renameProperty: (raw) => ({
+    type: "renameProperty",
+    title: requireTitle(own(raw, "title")),
+    from: requireTitle(own(raw, "from")),
+    to: requireTitle(own(raw, "to")),
+  }),
 };
 
 /**

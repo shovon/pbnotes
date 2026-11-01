@@ -158,19 +158,47 @@ export function propertyRemoved(page: string, key: string): Built<"property.remo
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
+/** One property as a page shows it: the key in its spelling, and the value. */
+export type Property = { key: string; value: string };
+
 /**
  * `page`'s properties, each key in the spelling it shows, ordered by
  * `canonicalize(key)` so every machine lists them alike. Empty for a page
  * with none.
  */
-export function getProperties(
-  state: PropertyState,
-  page: string,
-): { key: string; value: string }[] {
+export function getProperties(state: PropertyState, page: string): Property[] {
   const held = state.properties.get(canonicalize(page)) ?? new Map<string, string>();
   return [...held]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, value]) => ({ key: titleOf(state, key), value }));
+}
+
+/**
+ * `page`'s properties as they will stand once `events` are recorded: a view's
+ * writes still in flight, folded over the properties main last sent for it. A
+ * guess, thrown away as each write settles.
+ *
+ * Folded with `reduce`, so what is drawn is what will be recorded. Both events
+ * are safe to fold twice, so one the properties already show changes nothing.
+ * Any event that is not a property event on `page` is passed over.
+ */
+export function predictProperties(
+  properties: readonly Property[],
+  page: string,
+  events: readonly { type: string; payload: unknown }[],
+): Property[] {
+  if (events.length === 0) return [...properties];
+  const at = canonicalize(page);
+  const held = new Map(properties.map(({ key, value }) => [canonicalize(key), value]));
+  let state: PropertyState = {
+    properties: held.size === 0 ? new Map() : new Map([[at, held]]),
+    titles: new Map([
+      [at, page],
+      ...properties.map(({ key }): [string, string] => [canonicalize(key), key]),
+    ]),
+  };
+  for (const event of events) state = reduce(state, event);
+  return getProperties(state, page);
 }
 
 /** Every title the properties name: each page that has one, and each key. */

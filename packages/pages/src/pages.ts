@@ -58,8 +58,19 @@ export {
   linking,
   locateBlock,
 } from "./blocks/queries.ts";
-export { getProperties, propertyRemoved, propertySet } from "./properties/properties.ts";
-export type { PropertyEvent, PropertyRemoved, PropertySet } from "./properties/properties.ts";
+export {
+  getProperties,
+  predictProperties,
+  propertyRemoved,
+  propertySet,
+} from "./properties/properties.ts";
+export type {
+  Property,
+  PropertyEvent,
+  PropertyRemoved,
+  PropertySet,
+} from "./properties/properties.ts";
+export { removeProperty, renameProperty, setProperty } from "./properties/commands.ts";
 export {
   addBlock,
   blockCreated,

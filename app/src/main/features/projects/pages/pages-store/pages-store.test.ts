@@ -59,6 +59,7 @@ const getReferences = query(pages.getReferences);
 const getView = on(store.getView);
 const indentBlock = on(pages.indentBlock);
 const outdentBlock = on(pages.outdentBlock);
+const setProperty = on(pages.setProperty);
 
 const TODAY = "2026-09-21";
 const TOMORROW = "2026-09-22";
@@ -820,6 +821,33 @@ test("the view is the journal with today on top, or the one page asked for", asy
   const block = journal.showing[1].page.blocks[0].id;
   const zoomed = await getView(it, { page: "Mira", block }, TOMORROW);
   assert.deepEqual(zoomed.showing[0].references, []);
+
+  await closeLedgers();
+});
+
+test("every page in the view carries its properties, whether or not it has blocks", async () => {
+  const it = await project();
+  await addBlock(it, TODAY, "saw [[Mira]]");
+  await setProperty(it, TODAY, "Weather", "rain");
+  await setProperty(it, "Mira", "Role", "editor");
+
+  const journal = await getView(it, undefined, TOMORROW);
+  assert.deepEqual(
+    journal.showing.map((shown) => [shown.page.title, shown.properties]),
+    [
+      [TOMORROW, []],
+      [TODAY, [{ key: "Weather", value: "rain" }]],
+    ],
+  );
+
+  // A page with properties and no blocks.
+  const mira = await getView(it, { page: "Mira" }, TOMORROW);
+  assert.deepEqual(mira.showing[0].properties, [{ key: "Role", value: "editor" }]);
+
+  // Under a zoom too: drawing them or not is the window's call.
+  const block = journal.showing[1].page.blocks[0].id;
+  const zoomed = await getView(it, { page: TODAY, block }, TOMORROW);
+  assert.deepEqual(zoomed.showing[0].properties, [{ key: "Weather", value: "rain" }]);
 
   await closeLedgers();
 });

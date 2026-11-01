@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { NAMESPACE } from "../events/events.ts";
 import { addBlock, getProperties, pagesFold, searchPages } from "../pages.ts";
 import type { Pages, PagesView } from "../pages.ts";
-import { propertyRemoved, propertySet, reduce } from "./properties.ts";
+import { predictProperties, propertyRemoved, propertySet, reduce } from "./properties.ts";
 
 type Event = { type: string; v: number; payload: unknown };
 
@@ -181,3 +181,31 @@ function memory(): PagesView {
     },
   };
 }
+
+test("predictProperties folds writes in flight over the properties a page was sent", () => {
+  const sent = [{ key: "Owner", value: "Mira" }, { key: "Status", value: "doing" }];
+  assert.deepEqual(
+    predictProperties(sent, "Foo", [
+      set("Foo", "Author", "Mira"),
+      removed("Foo", "Owner"),
+      set("foo", "status", "done"),
+    ]),
+    [
+      { key: "Author", value: "Mira" },
+      { key: "Status", value: "done" },
+    ],
+  );
+});
+
+test("predictProperties passes over other pages' writes and events that are not its own", () => {
+  const sent = [{ key: "Status", value: "doing" }];
+  const block = { type: `${NAMESPACE}block.edited`, payload: { id: "b", text: "x" } };
+  assert.deepEqual(predictProperties(sent, "Foo", [set("Bar", "Status", "done"), block]), sent);
+  assert.deepEqual(predictProperties([], "Foo", [removed("Foo", "Status")]), []);
+});
+
+test("predicting a write the properties already hold changes nothing", () => {
+  const events = [set("Foo", "Author", "Mira"), removed("Foo", "Owner")];
+  const once = predictProperties([{ key: "Owner", value: "Mira" }], "Foo", events);
+  assert.deepEqual(predictProperties(once, "Foo", events), once);
+});

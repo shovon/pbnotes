@@ -148,6 +148,17 @@ test("a prediction is the fold, and folding it over a page that has it changes n
   assert.deepEqual(predict(out, [outdent]), out);
 });
 
+test("a prediction passes over events that are not block events", () => {
+  const page = { title: TODAY, blocks: [{ id: "a", text: "A", children: [] }] };
+  const property = {
+    type: `${NAMESPACE}property.set`,
+    payload: { page: TODAY, key: "Status", value: "done" },
+  };
+  const edit = { type: `${NAMESPACE}block.edited`, payload: { id: "a", text: "B" } };
+  assert.deepEqual(predict(page, [property, edit]).blocks[0].text, "B");
+  assert.deepEqual(predict(page, [property, { type: `${NAMESPACE}block.edited`, payload: null }]), page);
+});
+
 /**
  * #62: a title is whatever was typed, so it can be the name of something
  * every object inherits. A fold that throws on one never gets past it, on

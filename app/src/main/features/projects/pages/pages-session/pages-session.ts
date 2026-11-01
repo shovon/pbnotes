@@ -13,7 +13,10 @@ import {
   indentBlock,
   locateBlock,
   outdentBlock,
+  removeProperty,
+  renameProperty,
   searchPages,
+  setProperty,
 } from "@pbnotes/pages";
 import type { Command, Place, PlaceView } from "../../../../../shared/pages.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
@@ -140,6 +143,12 @@ function apply(view: PagesView, command: Command): Promise<unknown> {
       return indentBlock(view, command.blockId);
     case "outdentBlock":
       return outdentBlock(view, command.blockId);
+    case "setProperty":
+      return setProperty(view, command.title, command.key, command.value);
+    case "removeProperty":
+      return removeProperty(view, command.title, command.key);
+    case "renameProperty":
+      return renameProperty(view, command.title, command.from, command.to);
     default: {
       // Does not compile once `Command` has a case this switch lacks.
       const unhandled: never = command;

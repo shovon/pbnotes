@@ -418,6 +418,15 @@ export function outdented(
   return parent ? { id, after: parent.id } : undefined;
 }
 
+/** One of this fold's event types, with a payload `landed` can read. */
+function isBlockEvent(event: { type: string; payload: unknown }): event is PageEvent {
+  return (
+    Object.hasOwn(BLOCK_HANDLES, event.type) &&
+    typeof event.payload === "object" &&
+    event.payload !== null
+  );
+}
+
 /**
  * Whether the page already shows what `event` did. Asked only of the events
  * that are not safe to fold twice.
@@ -441,8 +450,14 @@ function landed(state: BlockState, event: PageEvent): boolean {
  * writes, folded over the page main last sent. A guess, thrown away when each
  * write settles. `landed` keeps an event the page already holds from being
  * drawn twice in the moment before it is dropped.
+ *
+ * Any other event is passed over, so a view can hand over every write it has
+ * in flight, a property's among them, without sorting them first.
  */
-export function predict(page: Page, events: PageEvent[]): Page {
+export function predict(
+  page: Page,
+  events: readonly { type: string; payload: unknown }[],
+): Page {
   if (events.length === 0) return page;
   const key = canonicalize(page.title);
   let state: BlockState = {
@@ -450,6 +465,7 @@ export function predict(page: Page, events: PageEvent[]): Page {
     titles: new Map([[key, page.title]]),
   };
   for (const event of events) {
+    if (!isBlockEvent(event)) continue;
     if (!landed(state, event)) state = reduce(state, event);
   }
   return { ...page, blocks: blocksOn(state, page.title) };
