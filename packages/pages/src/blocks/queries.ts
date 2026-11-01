@@ -53,9 +53,7 @@ export function linking(blocks: Block[], title: string): Block[] {
  * What links to a page, grouped by the page it was written on and cut down to
  * the blocks that do the linking. A page is not a reference to itself.
  *
- * Journal days first, newest first, then named pages A to Z. Days are told
- * apart before anything is compared, so a page called `1984` does not land
- * among them.
+ * Pages in the order they are listed (`shownOrder`).
  *
  * ponytail: one call per page shown. Fold this into a single reverse index if
  * a ledger ever has enough days for that to show.
@@ -66,11 +64,49 @@ export function getReferences(state: BlockState, title: string): Page[] {
     .filter(([page]) => page !== key)
     .map(([page, on]) => ({ title: state.titles.get(page) ?? page, blocks: linking(on, title) }))
     .filter((page) => page.blocks.length > 0)
-    .sort((a, b) => {
-      const days = [a, b].map((page) => DATE_PATTERN.test(page.title));
-      if (days[0] !== days[1]) return days[0] ? -1 : 1;
-      return days[0] ? b.title.localeCompare(a.title) : a.title.localeCompare(b.title);
-    });
+    .sort((a, b) => shownOrder(a.title, b.title));
+}
+
+/**
+ * The order pages are listed in: journal days first, newest first, then
+ * named pages A to Z. Days are told apart before anything is compared, so a
+ * page called `1984` does not land among them.
+ */
+function shownOrder(a: string, b: string): number {
+  const days = [a, b].map((title) => DATE_PATTERN.test(title));
+  if (days[0] !== days[1]) return days[0] ? -1 : 1;
+  return days[0] ? b.localeCompare(a) : a.localeCompare(b);
+}
+
+/** A block whose text matched: its id, the page it is on, and what it says. */
+export type BlockMatch = { id: string; page: string; text: string };
+
+/**
+ * The blocks whose text contains `query`, ignoring case, at most `limit`.
+ * Matched against what a block says with the markdown taken off (`plain`
+ * in `read`), so link syntax and formatting marks match nothing. Pages in
+ * the order they are listed (`shownOrder`), and blocks in tree order on
+ * each, children after their parent. Nothing for a blank query.
+ *
+ * ponytail: walks every block per call, with `read` memoised. An index if a
+ * ledger ever gets big enough for that to show.
+ */
+export function searchBlocks(state: BlockState, query: string, limit = 20): BlockMatch[] {
+  const q = canonicalize(query);
+  if (!q) return [];
+  const pages = [...state.blocks]
+    .map(([key, blocks]) => ({ title: state.titles.get(key) ?? key, blocks }))
+    .sort((a, b) => shownOrder(a.title, b.title));
+  const found: BlockMatch[] = [];
+  for (const page of pages) {
+    for (const block of every(page.blocks)) {
+      const text = read(block.text).plain;
+      if (!canonicalize(text).includes(q)) continue;
+      found.push({ id: block.id, page: page.title, text });
+      if (found.length === limit) return found;
+    }
+  }
+  return found;
 }
 
 /**

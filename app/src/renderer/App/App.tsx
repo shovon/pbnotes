@@ -17,6 +17,8 @@ type Props = {
   pages: ProjectViewPages;
   /** The clock, passed on to the project that is open. */
   now: () => Date;
+  /** Whether this is macOS, passed on to the project that is open. */
+  mac: boolean;
 };
 
 /**
@@ -32,7 +34,7 @@ function humanize(error: unknown): string {
   );
 }
 
-export default function App({ projects: api, pages, now }: Props) {
+export default function App({ projects: api, pages, now, mac }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
@@ -203,6 +205,7 @@ export default function App({ projects: api, pages, now }: Props) {
             act={act}
             pages={pages}
             now={now}
+            mac={mac}
           />
         ) : (
           !loading && <Welcome onAdd={addProjects} />

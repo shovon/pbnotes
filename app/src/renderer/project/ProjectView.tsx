@@ -11,6 +11,8 @@ import { back, go, rezoom } from './trail/trail';
 import { samePlace } from './held/held';
 import type { Held } from './held/held';
 import { createFetcher } from './fetcher/fetcher';
+import Finder from './Finder/Finder';
+import { opensFinder } from './Finder/shortcut/shortcut';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -22,6 +24,7 @@ export type ProjectViewPages = PageViewPages &
     | 'onChanged'
     | 'view'
     | 'locate'
+    | 'find'
     | 'addImage'
     | 'blockMenu'
   >;
@@ -52,9 +55,11 @@ type Props = {
   pages: ProjectViewPages;
   /** The clock, for which day a drop with no page lands on. */
   now: () => Date;
+  /** Whether this is macOS: Cmd+K opens the finder there, Ctrl+K elsewhere. */
+  mac: boolean;
 };
 
-export default function ProjectView({ act, pages, now }: Props) {
+export default function ProjectView({ act, pages, now, mac }: Props) {
   /** Where the window is, as how it got there. Empty is the journal. */
   const [trail, setTrail] = useState<Place[]>([]);
   const place = trail.at(-1);
@@ -248,6 +253,22 @@ export default function ProjectView({ act, pages, now }: Props) {
     step((trail) => go(trail, { page }));
   };
 
+  /**
+   * Whether the Cmd/Ctrl+K box is open. The key opens it from anywhere, a
+   * block being written included, and closes it again. On the window, so it
+   * is heard whatever has focus.
+   */
+  const [finding, setFinding] = useState(false);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.isComposing || !opensFinder(event, mac)) return;
+      event.preventDefault();
+      setFinding((open) => !open);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mac]);
+
   const wrapper = useRef<HTMLDivElement>(null);
 
   /**
@@ -348,64 +369,79 @@ export default function ProjectView({ act, pages, now }: Props) {
   };
 
   return (
-    <div
-      ref={wrapper}
-      onClickCapture={follow}
-      onContextMenuCapture={blockMenu}
-      // A drop is only offered where `dragover` was refused its default.
-      onDragOver={(event) => {
-        if (event.dataTransfer.types.includes('Files')) event.preventDefault();
-      }}
-      onDrop={onDrop}
-    >
-      {/* The way back belongs with the window's own controls, beside the
-          project picker, not on the page it is a way back from — it is about
-          where you are, like the picker is, and the page below it is just
-          what is there at the moment. `App` owns that strip, and this view
-          owns the state the button acts on, so the button goes up there
-          through a portal: still this view's, rendered in App's corner. */}
-      {titlebar !== null &&
-        place !== undefined &&
-        createPortal(
-          // Borderless until pointed at, like the picker beside it. Capped,
-          // because it names the page it goes back to, and a page is named
-          // whatever a link said — long enough to shove the picker out.
-          <button
-            className="app-region-no-drag ml-1 max-w-56 cursor-pointer truncate rounded-md border border-transparent px-1.5 py-0.5 text-sm hover:border-accent hover:text-accent"
-            onClick={() => step(back)}
-          >
-            ← {trail.at(-2)?.page ?? 'Journal'}
-          </button>,
-          titlebar,
-        )}
+    <>
+      {/* Outside the view, so a click in it is not taken for one on a link,
+          and a paste into it is text rather than an image for the page. */}
+      {finding && (
+        <Finder
+          find={pages.find}
+          onOpen={(hit) => {
+            setFinding(false);
+            if ('block' in hit) goToBlock(hit.block);
+            else step((trail) => go(trail, { page: hit.page }));
+          }}
+          onClose={() => setFinding(false)}
+        />
+      )}
+      <div
+        ref={wrapper}
+        onClickCapture={follow}
+        onContextMenuCapture={blockMenu}
+        // A drop is only offered where `dragover` was refused its default.
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes('Files')) event.preventDefault();
+        }}
+        onDrop={onDrop}
+      >
+        {/* The way back belongs with the window's own controls, beside the
+            project picker, not on the page it is a way back from — it is about
+            where you are, like the picker is, and the page below it is just
+            what is there at the moment. `App` owns that strip, and this view
+            owns the state the button acts on, so the button goes up there
+            through a portal: still this view's, rendered in App's corner. */}
+        {titlebar !== null &&
+          place !== undefined &&
+          createPortal(
+            // Borderless until pointed at, like the picker beside it. Capped,
+            // because it names the page it goes back to, and a page is named
+            // whatever a link said — long enough to shove the picker out.
+            <button
+              className="app-region-no-drag ml-1 max-w-56 cursor-pointer truncate rounded-md border border-transparent px-1.5 py-0.5 text-sm hover:border-accent hover:text-accent"
+              onClick={() => step(back)}
+            >
+              ← {trail.at(-2)?.page ?? 'Journal'}
+            </button>,
+            titlebar,
+          )}
 
-      <Previews value={previews}>
-        {held === null ? (
-          <p className="mt-1 text-sm text-muted">Loading…</p>
-        ) : (
-          held.view.showing.map(({ page, references, properties }) => (
-            // Keyed by the title, so a page is never handed another page's
-            // editor state — the open box and the block id in it belong to
-            // the page they were opened on. The element is only a name on
-            // everything the page shows, for a drop to read; it has no box.
-            <div key={page.title} data-page={page.title} className="contents">
-              <PageView
-                pages={bridge}
-                page={page}
-                version={version}
-                // Not under a zoom: what links to one block is #2's.
-                references={zoom ? undefined : references}
-                properties={properties}
-                zoom={zoom}
-                onZoom={(block) => step((trail) => rezoom(trail, block))}
-                // No title is the journal: each day heads one of many.
-                linked={title === null}
-                act={act}
-              />
-            </div>
-          ))
-        )}
-      </Previews>
-    </div>
+        <Previews value={previews}>
+          {held === null ? (
+            <p className="mt-1 text-sm text-muted">Loading…</p>
+          ) : (
+            held.view.showing.map(({ page, references, properties }) => (
+              // Keyed by the title, so a page is never handed another page's
+              // editor state — the open box and the block id in it belong to
+              // the page they were opened on. The element is only a name on
+              // everything the page shows, for a drop to read; it has no box.
+              <div key={page.title} data-page={page.title} className="contents">
+                <PageView
+                  pages={bridge}
+                  page={page}
+                  version={version}
+                  // Not under a zoom: what links to one block is #2's.
+                  references={zoom ? undefined : references}
+                  properties={properties}
+                  zoom={zoom}
+                  onZoom={(block) => step((trail) => rezoom(trail, block))}
+                  // No title is the journal: each day heads one of many.
+                  linked={title === null}
+                  act={act}
+                />
+              </div>
+            ))
+          )}
+        </Previews>
+      </div>
+    </>
   );
 }

@@ -229,3 +229,14 @@ test("a refused rename writes nothing and does not hold up the writes behind it"
     { key: "Author", value: "Kim" },
   ]);
 });
+
+test("find lists the matching titles, then the matching blocks with their page", async () => {
+  const { view } = ledger();
+  const { pages } = session(view);
+  await pages.run({ type: "addBlock", id: "m1", title: "Mira", text: "her page" });
+  await pages.run({ type: "addBlock", id: "d1", title: TODAY, text: "Call [[Mira]]" });
+  assert.deepEqual(await pages.find("mira"), {
+    pages: ["Mira"],
+    blocks: [{ id: "d1", page: TODAY, text: "Call Mira" }],
+  });
+});

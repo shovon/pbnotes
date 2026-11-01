@@ -54,7 +54,9 @@ export {
   getReferences,
   linking,
   locateBlock,
+  searchBlocks,
 } from "./blocks/queries.ts";
+export type { BlockMatch } from "./blocks/queries.ts";
 export {
   getProperties,
   predictProperties,

@@ -16,11 +16,12 @@ import {
   outdentBlock,
   removeProperty,
   renameProperty,
+  searchBlocks,
   searchPages,
   setProperty,
 } from "@pbnotes/pages";
 import type { PagesView as Base } from "@pbnotes/pages";
-import type { Command, Place, PlaceView } from "../../../../../shared/pages.ts";
+import type { Command, Matches, Place, PlaceView } from "../../../../../shared/pages.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
 import { getView } from "../place-view/place-view.ts";
 
@@ -122,6 +123,10 @@ export function createPagesSession(
       locateBlock((await open.require()).state, blockId),
     search: async (query: string): Promise<string[]> =>
       searchPages((await open.require()).state, query),
+    find: async (query: string): Promise<Matches> => {
+      const { state } = await open.require();
+      return { pages: searchPages(state, query), blocks: searchBlocks(state, query) };
+    },
     status: async (): Promise<LogStatus> => (await open.require()).status,
 
     /**
