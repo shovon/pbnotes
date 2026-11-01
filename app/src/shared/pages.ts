@@ -14,7 +14,7 @@
  * records what the user did, and looking at a page is not something they did.
  */
 
-import type { Page } from '@pbnotes/pages';
+import type { Page, Property } from '@pbnotes/pages';
 import type { LogStatus } from './log';
 
 /**
@@ -49,9 +49,11 @@ export type PlaceView = {
    * What is showing: the one page at the place, or the journal — every day
    * with something on it, newest first, and today whether or not it has.
    * Each with what links to it, cut down to the blocks that do; none under a
-   * zoom, where what links to one block is not what links to its page.
+   * zoom, where what links to one block is not what links to its page. And
+   * each with its properties, in every mode: whether to draw them is the
+   * view's.
    */
-  showing: { page: Page; references: Page[] }[];
+  showing: { page: Page; references: Page[]; properties: Property[] }[];
   /**
    * What each `((id))` in the project shows: the id and the Markdown of that
    * block's first paragraph, or null for an id the project does not have.
@@ -198,4 +200,22 @@ export type Command =
    * A block already at the top level has nothing to come out of, and resolves
    * with nothing changed rather than throwing, like `indentBlock`.
    */
-  | { type: 'outdentBlock'; blockId: string };
+  | { type: 'outdentBlock'; blockId: string }
+  /**
+   * Appends a `property.set` event: `title`'s `key` is now `value`. A key is
+   * a page title, so it arrives trimmed like one. Setting the value the key
+   * already has resolves with nothing written.
+   */
+  | { type: 'setProperty'; title: string; key: string; value: string }
+  /**
+   * Appends a `property.removed` event. Removing a key the page does not
+   * have resolves with nothing written.
+   */
+  | { type: 'removeProperty'; title: string; key: string }
+  /**
+   * `title`'s `from` becomes `to`, keeping its value: a `property.set` of
+   * `to`, then a `property.removed` of `from`, one command so every writer
+   * renames in that order. Main refuses a `to` the page already has, rather
+   * than overwrite it, and a `from` it does not have.
+   */
+  | { type: 'renameProperty'; title: string; from: string; to: string };

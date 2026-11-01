@@ -14,12 +14,14 @@ import {
   blockOutdented,
   indented,
   outdented,
+  propertyRemoved,
+  propertySet,
 } from '@pbnotes/pages';
-import type { Block, PageEvent } from '@pbnotes/pages';
+import type { Block, PageEvent, PropertyEvent } from '@pbnotes/pages';
 import type { Command } from '../../../../shared/pages';
 
 /** An event to draw, and the call that asks main to record it. */
-export type Step = [PageEvent, () => Promise<unknown>];
+export type Step = [PageEvent | PropertyEvent, () => Promise<unknown>];
 
 /**
  * The one call the steps here make, for a view that hands them its bridge.
@@ -87,4 +89,46 @@ export function outdent(
       () => pages.run({ type: 'outdentBlock', blockId: id }),
     ]
   );
+}
+
+/** `title`'s `key` is now `value`. */
+export function setProperty(
+  pages: StepsPages,
+  title: string,
+  key: string,
+  value: string,
+): Step {
+  return [
+    propertySet(title, key, value),
+    () => pages.run({ type: 'setProperty', title, key, value }),
+  ];
+}
+
+/** `title` no longer has `key`. */
+export function removeProperty(pages: StepsPages, title: string, key: string): Step {
+  return [
+    propertyRemoved(title, key),
+    () => pages.run({ type: 'removeProperty', title, key }),
+  ];
+}
+
+/**
+ * `title`'s `from` becomes `to`, keeping `value`, the value `from` is drawn
+ * with. One command and the two events main records for it, in its order:
+ * both are drawn, and the call is made once, by whichever step is sent first,
+ * so its answer is the answer for both.
+ */
+export function renameProperty(
+  pages: StepsPages,
+  title: string,
+  from: string,
+  to: string,
+  value: string,
+): Step[] {
+  let sent: Promise<unknown> | undefined;
+  const send = () => (sent ??= pages.run({ type: 'renameProperty', title, from, to }));
+  return [
+    [propertySet(title, to, value), send],
+    [propertyRemoved(title, from), send],
+  ];
 }

@@ -13,6 +13,10 @@ test("each command passes with the fields it reads", () => {
     { type: "deleteBlock", blockId: "b1" },
     { type: "indentBlock", blockId: "b1" },
     { type: "outdentBlock", blockId: "b1" },
+    { type: "setProperty", title: "Mira", key: "Status", value: "done" },
+    { type: "setProperty", title: "Mira", key: "Status", value: "" },
+    { type: "removeProperty", title: "Mira", key: "Status" },
+    { type: "renameProperty", title: "Mira", from: "Owner", to: "Author" },
   ];
   for (const command of good) assert.deepEqual(requireCommand(command), command);
 });
@@ -30,6 +34,15 @@ test("a missing or wrong-typed field is refused", () => {
     { type: "deleteBlock" },
     { type: "indentBlock", blockId: null },
     { type: "outdentBlock", blockId: ["b1"] },
+    { type: "setProperty", title: "Mira", key: "Status" },
+    { type: "setProperty", title: "Mira", key: " Status", value: "done" },
+    { type: "setProperty", title: "Mira", key: "", value: "done" },
+    { type: "setProperty", key: "Status", value: "done" },
+    { type: "setProperty", title: "Mira", key: "Status", value: 3 },
+    { type: "removeProperty", title: "Mira" },
+    { type: "removeProperty", title: "Mira", key: 1 },
+    { type: "renameProperty", title: "Mira", from: "Owner" },
+    { type: "renameProperty", title: "Mira", from: "Owner", to: "Author " },
   ];
   for (const command of bad) {
     assert.throws(() => requireCommand(command), TypeError, JSON.stringify(command));
