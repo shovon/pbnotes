@@ -225,7 +225,7 @@ test("a fold that was short of our write when it ran is skipped, so no version d
   assert.deepEqual(texts(view.state, "Mira"), ["ours"]);
 
   // The fold computed at 11, with the arrival and without ours, is only now taken up.
-  const stale: Pages = { blocks: new Map(), titles: new Map() };
+  const stale: Pages = { blocks: new Map(), titles: new Map(), properties: new Map() };
   fake.fold({ state: stale, reached: 11 });
   await settle();
   assert.equal(view.version, replied, "the stale fold moved the version");
