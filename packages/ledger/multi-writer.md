@@ -215,6 +215,12 @@ A local append is greater than everything this ledger knows, so it sorts last, a
 
 A batch from this ledger's own writer is yielded like any other. A scan that read nothing new yields nothing.
 
+### How far a fold reached
+
+`onFold(base, reduce)` is `onEvent` with a reach beside each state: the number of events the log held when that state was folded. The log only grows, so reaches only grow, and a state holds every event ingested at or below its reach, whatever a refold did to their order. `reachOf(event)` gives that number for an event this ledger's writer handed back from `post`: the first reach that holds it. A consumer that also applies its own writes ahead of the fold (as the app does, so a write's reply can name a state that holds it) uses the two to tell a yield folded before its write from one folded after: one short of the write's reach lacks it, and one at or past it already holds it, so the write must not be applied again.
+
+`post` resolves only once its event is in the log, so it always has a reach. When a scan has read the record first, the writer's hand-off waits for that scan to ingest what it read, which it does only after reading every directory. The one gap is a scan that fails after reading the record: `reachOf` is then undefined until the next scan ingests it. Events that arrived any other way, and copies of an event, have no reach: it is kept per event object handed back, not per record.
+
 ## Reading foreign logs
 
 Under a sync tool all of the following are routine: a file arrives half-written, grows between two reads, appears before the segment that precedes it, vanishes under selective sync, or exists as an online-only placeholder that throws on read.

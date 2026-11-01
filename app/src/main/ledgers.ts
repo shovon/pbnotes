@@ -11,14 +11,20 @@
  */
 import path from "node:path";
 import { DEFAULT_CADENCE, openOrCreate } from "@pbnotes/ledger";
-import type { Cadence, Ledger } from "@pbnotes/ledger";
+import type { Cadence, Fold, Ledger } from "@pbnotes/ledger";
 import { pagesFold } from "@pbnotes/pages";
 import type { PagesView } from "./features/projects/pages/pages-store/pages-store.ts";
 
 /** Enough to find a ledger: what to remember it by, and the folder it is. */
 export type LedgerRef = { id: string; path: string };
 
-type Opened = { ledger: Ledger; view: PagesView };
+/** What this module asks of a ledger: a `Ledger` is one, and a test may hand in its own. */
+export type LedgerPort = Pick<Ledger, "onFold" | "reachOf" | "writer" | "status" | "pace" | "refresh" | "close">;
+
+/** Opens the ledger in one folder, at a pace. `openOrCreate`, unless a test says otherwise. */
+export type OpenLedger = (path: string, cadence: Cadence) => Promise<LedgerPort>;
+
+type Opened = { ledger: LedgerPort; view: PagesView };
 
 /**
  * Holding the *promise*, so two overlapping opens of one project share one
@@ -54,9 +60,9 @@ async function release(entry: Entry): Promise<void> {
 /**
  * One set of open ledgers, and the one listener told when a project's pages
  * move. The composition root makes one and closes it; a test makes its own,
- * and may pace it its own way.
+ * and may pace it its own way, or open its own ledgers.
  */
-export function createLedgers(paces: Paces = PACES) {
+export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = openOrCreate) {
   const entries = new Map<string, Entry>();
 
   /**
@@ -97,7 +103,7 @@ export function createLedgers(paces: Paces = PACES) {
   }
 
   async function repace(entry: Entry, refresh: boolean): Promise<void> {
-    let ledger: Ledger;
+    let ledger: LedgerPort;
     try {
       ledger = (await entry.opened).ledger;
     } catch {
@@ -110,13 +116,18 @@ export function createLedgers(paces: Paces = PACES) {
   async function open(project: LedgerRef): Promise<Opened> {
     // `openOrCreate` is the app's policy already: a missing or empty folder is
     // made a ledger, and anything else that is not one is refused.
-    const ledger = await openOrCreate(project.path, pace);
-    const fold = ledger.onEvent(pagesFold.initial, pagesFold.reduce);
-    const states = fold[Symbol.asyncIterator]();
+    const ledger = await openLedger(project.path, pace);
+    const fold = ledger.onFold(pagesFold.initial, pagesFold.reduce);
+    const folds = fold[Symbol.asyncIterator]();
     // The first yield is the catch-up, so the view has every page before it is
     // handed out.
-    let state = (await states.next()).value as PagesView["state"];
+    const first = (await folds.next()).value as Fold<PagesView["state"]>;
+    let state = first.state;
     let at = ++version;
+    /** How far the last yield taken reached. */
+    let held = first.reached;
+    /** The reach of the last write `dispatch` folded in itself: a yield short of it lacks that write. */
+    let need = 0;
 
     /** The pages moved: a new version, and the windows are told. */
     const moved = (next: PagesView["state"]): void => {
@@ -125,17 +136,19 @@ export function createLedgers(paces: Paces = PACES) {
       announce?.(project.id);
     };
 
-    // Every later yield is the truth, including one that refolded the past.
-    // A yield that is the state already held changes nothing on screen.
-    //
-    // ponytail: a yield computed just before our own `post` landed can arrive
-    // just after `dispatch` folded it in, and briefly drop it until the next
-    // yield, at a version that claims to hold it. Needs an arrival in the same
-    // tick as a write; carry an event count in the fold state if it ever shows.
+    // A later yield is the truth, including one that refolded the past, once
+    // it reaches every write `dispatch` folded in. One short of that was
+    // folded before the write was in the log: taking it would drop the write
+    // under a version that claims it. Skipping it loses nothing, as the write
+    // dirtied the fold and a yield that reaches it follows. A yield that is
+    // the state already held changes nothing on screen.
     void (async () => {
-      for (let next; !(next = await states.next()).done; ) {
-        if (next.value === state) continue;
-        moved(next.value);
+      for (let next; !(next = await folds.next()).done; ) {
+        const { state: s, reached } = next.value;
+        if (reached < need) continue;
+        held = reached;
+        if (s === state) continue;
+        moved(s);
       }
     })();
 
@@ -152,10 +165,17 @@ export function createLedgers(paces: Paces = PACES) {
       // The event is folded in here, before this resolves, so the version the
       // reply names already holds it: the renderer drops its prediction once
       // a view at that version arrives, and one without it would make the
-      // block jump back for a frame. Announced like an arrival: a write of
-      // ours reaches every window the way another device's does.
+      // block jump back. Announced like an arrival: a write of ours reaches
+      // every window the way another device's does. Unless the fold got here
+      // first: a yield already taken reaches the write, and folding it again
+      // would apply it twice. The version already holds it then.
       async dispatch(v, type, payload) {
         const event = await ledger.writer().post(v, type, payload);
+        const reach = ledger.reachOf(event);
+        if (reach !== undefined && held >= reach) return;
+        // No reach is a post a scan read and then failed on; the next scan
+        // ingests it, and a yield short of it can still drop it until then.
+        if (reach !== undefined) need = Math.max(need, reach);
         moved(pagesFold.reduce(state, event));
       },
     };
