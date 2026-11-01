@@ -8,8 +8,9 @@ import PageView from './PageView/PageView';
 import type { PageViewPages } from './PageView/PageView';
 import { imageTarget, placeNew } from './placement/placement';
 import { back, go, rezoom } from './trail/trail';
-import { keep, samePlace } from './held/held';
+import { samePlace } from './held/held';
 import type { Held } from './held/held';
+import { createFetcher } from './fetcher/fetcher';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -69,60 +70,36 @@ export default function ProjectView({ act, pages, now }: Props) {
   /** `held`'s version, or 0 before the first answer. */
   const version = held?.view.version ?? 0;
 
-  // What the callbacks below read when they run, not when they were made:
-  // an answer or a notice lands after the render that asked for it.
-  const latest = useRef({ place, held });
-  latest.current = { place, held };
-  /** The highest fold version heard of, from a notice or a write's reply. */
-  const known = useRef(0);
-  /** The highest version a fetch already asked for is sure to reach. */
-  const covered = useRef(0);
+  /** Where the window is when an answer lands, not when it was asked for. */
+  const latest = useRef(place);
+  latest.current = place;
 
   /**
-   * Asks main what shows at the place the window is on. Main reads the fold
-   * when it answers, so the answer holds every version heard of by now. An
-   * answer that lands after the window has moved on, or behind one already
-   * held, is dropped (`held/`).
-   *
-   * Not through `act`, which clears the notice and re-reads the projects: a
-   * fetch is not a gesture, and runs on every change from anywhere. Only a
-   * failure goes there, so a project that cannot be reached still says so.
+   * When to ask main what shows here, and which answer to draw (`fetcher/`).
+   * A failure goes through `act`, so a project that cannot be reached still
+   * says so; the fetch itself does not, since it is not a gesture and runs
+   * on every change from anywhere.
    */
-  const ask = () => {
-    const at = latest.current.place;
-    covered.current = known.current;
-    pages.view(at, today(now())).then(
-      (view) => setHeld((last) => keep(last, latest.current.place, { place: at, view })),
-      (error: unknown) => {
-        covered.current = 0;
-        act(() => Promise.reject(error));
-      },
-    );
-  };
+  const [fetcher] = useState(() =>
+    createFetcher({
+      view: (at) => pages.view(at, today(now())),
+      where: () => latest.current,
+      onAnswer: setHeld,
+      onError: (error) => act(() => Promise.reject(error)),
+    }),
+  );
 
   /** A step the user took: through `act`, like every other gesture. */
   const step = (take: (trail: Place[]) => Place[]) =>
     act(async () => setTrail(take));
 
-  /**
-   * The fold reached `v`: a notice from main, or a write's reply. One path
-   * for both, so this window's writes reach the screen the way every other
-   * change does. Nothing to do if the view held, or a fetch already on its
-   * way, holds `v`; the reply's half is the net under a notice that was lost.
-   */
-  const heard = (v: number) => {
-    known.current = Math.max(known.current, v);
-    const { place, held } = latest.current;
-    if (held && samePlace(held.place, place) && held.view.version >= v) return;
-    if (covered.current >= v) return;
-    ask();
-  };
-
   // On mount, and every time the window moves.
-  useEffect(ask, [place?.page, place?.block]);
+  useEffect(fetcher.moved, [place?.page, place?.block]);
 
   useEffect(() => {
-    const off = pages.onChanged(heard);
+    // A notice and a write's reply take one path, so this window's writes
+    // reach the screen the way every other change does.
+    const off = pages.onChanged(fetcher.heard);
     // A stubbed bridge — Storybook's — answers with something that is not an
     // unsubscribe, and a cleanup that is not a function throws.
     return () => {
@@ -136,7 +113,7 @@ export default function ProjectView({ act, pages, now }: Props) {
       ...pages,
       run: async (command) => {
         const v = await pages.run(command);
-        if (typeof v === 'number') heard(v);
+        if (typeof v === 'number') fetcher.heard(v);
         return v;
       },
     }),
