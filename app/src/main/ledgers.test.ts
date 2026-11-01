@@ -123,3 +123,38 @@ test("a ledger opened in the background opens at the background pace", { timeout
   ledgers.setFocused(true, p.id);
   await until(() => heard.count === 1);
 });
+
+test("a write of ours and an arrival both move the version, and both are announced", { timeout: 5000 }, async (t) => {
+  const ledgers = make(t, { focused: NEVER, background: NEVER });
+  const p = await project();
+  const view = await ledgers.pagesOf(p);
+  const heard = listen(ledgers, p);
+  const start = view.version;
+
+  // Ours: moved and announced before the write resolves, and the state read
+  // beside the new version already holds it. The fold catching up with it
+  // may announce once more; a second notice only costs a window a fetch.
+  await pages.addBlock(view, "Mira", "ours", undefined, randomUUID());
+  assert.ok(view.version > start);
+  assert.ok(heard.count >= 1);
+  const ours = heard.count;
+  assert.deepEqual(
+    pages.getPage(view.state, "Mira").blocks.map((block) => block.text),
+    ["ours"],
+  );
+
+  const afterOurs = view.version;
+  await writeFromElsewhere(p, "theirs");
+  ledgers.setFocused(true, p.id);
+  await until(() => pages.getPage(view.state, "Elsewhere").blocks.length === 1);
+  assert.ok(view.version > afterOurs);
+  assert.ok(heard.count > ours);
+});
+
+test("the version never goes back, across projects", { timeout: 5000 }, async (t) => {
+  const ledgers = make(t, { focused: NEVER, background: NEVER });
+  const a = await ledgers.pagesOf(await project());
+  await pages.addBlock(a, "Mira", "one", undefined, randomUUID());
+  const b = await ledgers.pagesOf(await project());
+  assert.ok(b.version > a.version);
+});

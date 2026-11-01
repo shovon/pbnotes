@@ -16,13 +16,18 @@ import {
   outdented,
 } from '@pbnotes/pages';
 import type { Block, PageEvent } from '@pbnotes/pages';
-import type { PagesApi } from '../../../../shared/pages';
+import type { Command } from '../../../../shared/pages';
 
 /** An event to draw, and the call that asks main to record it. */
 export type Step = [PageEvent, () => Promise<unknown>];
 
-/** The one call the steps here make, for a view that hands them its bridge. */
-export type StepsPages = Pick<PagesApi, 'run'>;
+/**
+ * The one call the steps here make, for a view that hands them its bridge.
+ * Whatever it answers is the page's to read: the bridge answers a version,
+ * and a stub that answers nothing only means the prediction is dropped at
+ * once.
+ */
+export type StepsPages = { run(command: Command): Promise<unknown> };
 
 /** A new block, named by the caller, at the end of the page or beneath `after`. */
 export function add(

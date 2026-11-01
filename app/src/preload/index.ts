@@ -5,8 +5,7 @@ import type { IpcRendererEvent } from 'electron';
 import { PROJECT_CHANNELS } from '../shared/projects';
 import type { ProjectsApi } from '../shared/projects';
 import { PAGE_CHANNELS } from '../shared/pages';
-import type { PagesApi, PagesState } from '../shared/pages';
-import { createHeard } from './heard/heard';
+import type { PagesApi } from '../shared/pages';
 
 const projects: ProjectsApi = {
   list: () => ipcRenderer.invoke(PROJECT_CHANNELS.list),
@@ -23,37 +22,23 @@ const projects: ProjectsApi = {
   reveal: (id) => ipcRenderer.invoke(PROJECT_CHANNELS.reveal, id),
 };
 
-// One listener on the channel for the life of the page, registered before the
-// renderer can call anything, so no state goes unnumbered. It hands each state
-// on without the event: the first argument of an IPC event carries `sender`,
-// and the whole point of the bridge is that the renderer never gets that.
-const heard = createHeard<PagesState>();
-ipcRenderer.on(
-  PAGE_CHANNELS.changed,
-  (_event: IpcRendererEvent, state: PagesState, n: number) =>
-    heard.deliver(state, n),
-);
-
-/**
- * A call that leads to a state: main replies with that state's number, and the
- * call is held until `onChanged` has heard it. See `heard.ts` for why Electron
- * cannot be left to keep that order.
- */
-const changes =
-  (channel: string) =>
-  async (...args: unknown[]): Promise<void> =>
-    heard.until(await ipcRenderer.invoke(channel, ...args));
-
 const pages: PagesApi = {
-  show: changes(PAGE_CHANNELS.show),
-  onChanged: (listener) => heard.listen(listener),
-  go: changes(PAGE_CHANNELS.go),
-  back: changes(PAGE_CHANNELS.back),
-  rezoom: changes(PAGE_CHANNELS.rezoom),
+  view: (place, today) => ipcRenderer.invoke(PAGE_CHANNELS.view, place, today),
+  // Hands each version on without the event: the first argument of an IPC
+  // event carries `sender`, and the whole point of the bridge is that the
+  // renderer never gets that.
+  onChanged: (listener) => {
+    const heard = (_event: IpcRendererEvent, version: number) =>
+      listener(version);
+    ipcRenderer.on(PAGE_CHANNELS.changed, heard);
+    return () => {
+      ipcRenderer.off(PAGE_CHANNELS.changed, heard);
+    };
+  },
   locate: (blockId) => ipcRenderer.invoke(PAGE_CHANNELS.locate, blockId),
   search: (query) => ipcRenderer.invoke(PAGE_CHANNELS.search, query),
   status: () => ipcRenderer.invoke(PAGE_CHANNELS.status),
-  run: changes(PAGE_CHANNELS.command),
+  run: (command) => ipcRenderer.invoke(PAGE_CHANNELS.command, command),
   addImage: (bytes, mime) =>
     ipcRenderer.invoke(PAGE_CHANNELS.addImage, bytes, mime),
   blockMenu: (blockId) => ipcRenderer.invoke(PAGE_CHANNELS.blockMenu, blockId),

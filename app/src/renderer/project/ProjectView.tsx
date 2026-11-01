@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { locate, canonicalize, today } from '@pbnotes/pages';
-import type { PagesApi, PagesState } from '../../shared/pages';
+import type { PagesApi, Place } from '../../shared/pages';
 import type { Act } from '../ui';
 import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
 import type { PageViewPages } from './PageView/PageView';
 import { imageTarget, placeNew } from './placement/placement';
+import { back, go, rezoom } from './trail/trail';
+import { keep, samePlace } from './held/held';
+import type { Held } from './held/held';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -16,11 +19,8 @@ export type ProjectViewPages = PageViewPages &
   Pick<
     PagesApi,
     | 'onChanged'
-    | 'show'
+    | 'view'
     | 'locate'
-    | 'go'
-    | 'back'
-    | 'rezoom'
     | 'addImage'
     | 'blockMenu'
   >;
@@ -30,12 +30,13 @@ export type ProjectViewPages = PageViewPages &
  * anything on it, newest first, with today at the top. Follow a link and it
  * is that one page instead, with a way back to the journal above it.
  *
- * All of that is main's: which page is showing, the trail that led there,
- * the pages themselves and what links to them. This view draws the state main
- * last sent and asks for the next one — a write, a link followed, a step
- * back — and nothing here keeps a copy to hold in step. What is its own is
- * what lasts only as long as a gesture: the block to scroll to, and where a
- * pasted image goes.
+ * Where the window is looking is this view's own: the trail of places
+ * followed, stepped here and never sent anywhere. What shows at the end of
+ * it is main's — the pages and what links to them — and this view asks for
+ * it whenever it moves, and whenever main says the fold has. It keeps the
+ * one answer it is drawing and nothing to hold in step. A project change
+ * remounts it (`App` keys it by project), so the trail starts over at the
+ * journal without anyone being told.
  *
  * ponytail: the whole history renders at once. Add windowing when someone has
  * enough years in one project for that to show.
@@ -53,22 +54,75 @@ type Props = {
 };
 
 export default function ProjectView({ act, pages, now }: Props) {
-  /** What main has in mind, as it last said. Null until it first has. */
-  const [state, setState] = useState<PagesState | null>(null);
-  const trail = state?.trail ?? [];
-  const title = trail.at(-1)?.page ?? null;
+  /** Where the window is, as how it got there. Empty is the journal. */
+  const [trail, setTrail] = useState<Place[]>([]);
+  const place = trail.at(-1);
+  /**
+   * What is drawn, and the place it was asked for. Null until main first
+   * answers. It can be a step behind the trail while the next place is being
+   * asked for, which is why everything drawn reads its place from here.
+   */
+  const [held, setHeld] = useState<Held | null>(null);
+  const title = held?.place?.page ?? null;
   /** The block the view is zoomed into, when it is. */
-  const zoom = trail.at(-1)?.block;
+  const zoom = held?.place?.block;
+  /** `held`'s version, or 0 before the first answer. */
+  const version = held?.view.version ?? 0;
+
+  // What the callbacks below read when they run, not when they were made:
+  // an answer or a notice lands after the render that asked for it.
+  const latest = useRef({ place, held });
+  latest.current = { place, held };
+  /** The highest fold version heard of, from a notice or a write's reply. */
+  const known = useRef(0);
+  /** The highest version a fetch already asked for is sure to reach. */
+  const covered = useRef(0);
 
   /**
-   * Listening before asking, so the answer has somewhere to land. Everything
-   * after it arrives the same way: this window's writes, a step along the
-   * trail, and another machine's notes folded in. A project that cannot be
-   * reached rejects the ask, and that is the one notice the view needs.
+   * Asks main what shows at the place the window is on. Main reads the fold
+   * when it answers, so the answer holds every version heard of by now. An
+   * answer that lands after the window has moved on, or behind one already
+   * held, is dropped (`held/`).
+   *
+   * Not through `act`, which clears the notice and re-reads the projects: a
+   * fetch is not a gesture, and runs on every change from anywhere. Only a
+   * failure goes there, so a project that cannot be reached still says so.
    */
+  const ask = () => {
+    const at = latest.current.place;
+    covered.current = known.current;
+    pages.view(at, today(now())).then(
+      (view) => setHeld((last) => keep(last, latest.current.place, { place: at, view })),
+      (error: unknown) => {
+        covered.current = 0;
+        act(() => Promise.reject(error));
+      },
+    );
+  };
+
+  /** A step the user took: through `act`, like every other gesture. */
+  const step = (take: (trail: Place[]) => Place[]) =>
+    act(async () => setTrail(take));
+
+  /**
+   * The fold reached `v`: a notice from main, or a write's reply. One path
+   * for both, so this window's writes reach the screen the way every other
+   * change does. Nothing to do if the view held, or a fetch already on its
+   * way, holds `v`; the reply's half is the net under a notice that was lost.
+   */
+  const heard = (v: number) => {
+    known.current = Math.max(known.current, v);
+    const { place, held } = latest.current;
+    if (held && samePlace(held.place, place) && held.view.version >= v) return;
+    if (covered.current >= v) return;
+    ask();
+  };
+
+  // On mount, and every time the window moves.
+  useEffect(ask, [place?.page, place?.block]);
+
   useEffect(() => {
-    const off = pages.onChanged(setState);
-    act(() => pages.show());
+    const off = pages.onChanged(heard);
     // A stubbed bridge — Storybook's — answers with something that is not an
     // unsubscribe, and a cleanup that is not a function throws.
     return () => {
@@ -76,7 +130,20 @@ export default function ProjectView({ act, pages, now }: Props) {
     };
   }, []);
 
-  const previews = useMemo(() => new Map(state?.previews), [state?.previews]);
+  /** The bridge handed to each page: a write's reply is heard here too. */
+  const bridge = useMemo<ProjectViewPages>(
+    () => ({
+      ...pages,
+      run: async (command) => {
+        const v = await pages.run(command);
+        if (typeof v === 'number') heard(v);
+        return v;
+      },
+    }),
+    [pages],
+  );
+
+  const previews = useMemo(() => new Map(held?.view.previews), [held?.view.previews]);
 
   /**
    * Read after the first commit rather than during render: on the very first
@@ -110,30 +177,30 @@ export default function ProjectView({ act, pages, now }: Props) {
     act(async () => {
       const found = await pages.locate(id);
       if (!found) throw new Error('That block no longer exists.');
-      await pages.go({ page: found.page });
+      setTrail((trail) => go(trail, { page: found.page }));
       setTarget(id);
     });
 
   /**
-   * Makes a block the root of the view: what its dot does. Asked of main like
-   * `goToBlock`, because a dot in a cut belongs to a page that is not the one
-   * showing.
+   * Makes a block the root of the view: what its dot does. Looked up in main
+   * like `goToBlock`, because a dot in a cut belongs to a page that is not
+   * the one showing.
    */
   const zoomTo = (id: string) =>
     act(async () => {
       const found = await pages.locate(id);
       if (!found) throw new Error('That block no longer exists.');
-      await pages.go({ page: found.page, block: id });
+      setTrail((trail) => go(trail, { page: found.page, block: id }));
     });
 
   /**
-   * After the page is drawn, not on `go`: the state is here by the time `go`
-   * resolves, but the block is not in the DOM until it has rendered. Cleared
-   * either way, so a block that is open in an editor — which carries no hook
-   * — is not scrolled to on some later render.
+   * After the page is drawn, not on the step: the block is not in the DOM
+   * until main has answered for the new place and the page has rendered.
+   * Cleared either way, so a block that is open in an editor — which carries
+   * no hook — is not scrolled to on some later render.
    */
   useEffect(() => {
-    if (target === null || state === null) return;
+    if (target === null || !held || !samePlace(held.place, place)) return;
     setTarget(null);
     const element = document.querySelector(
       `[data-block-id="${CSS.escape(target)}"]`,
@@ -150,7 +217,7 @@ export default function ProjectView({ act, pages, now }: Props) {
       ],
       { duration: 1500, easing: 'ease-out' },
     );
-  }, [target, state]);
+  }, [target, held]);
 
   /**
    * The zoomed block is not on its page: another device deleted it, or back
@@ -158,11 +225,13 @@ export default function ProjectView({ act, pages, now }: Props) {
    * left, with a notice so the view did not just change by itself. A delete
    * made here never gets this far — the page zooms out before it writes.
    */
-  const zoomed = zoom ? state?.showing[0]?.page : undefined;
+  const zoomed = zoom ? held?.view.showing[0]?.page : undefined;
   useEffect(() => {
     if (!zoom || !zoomed || locate(zoomed.blocks, zoom)) return;
+    // Already on its way somewhere else: nothing to move.
+    if (!samePlace(held?.place, place)) return;
+    setTrail((trail) => rezoom(trail));
     act(async () => {
-      await pages.rezoom();
       throw new Error('That block no longer exists.');
     });
   }, [zoom, zoomed]);
@@ -199,7 +268,7 @@ export default function ProjectView({ act, pages, now }: Props) {
     // Zoomed in, the same link is the way out to the whole page.
     if (title !== null && canonicalize(page) === canonicalize(title) && !zoom) return;
     event.stopPropagation();
-    act(() => pages.go({ page }));
+    step((trail) => go(trail, { page }));
   };
 
   const wrapper = useRef<HTMLDivElement>(null);
@@ -228,7 +297,7 @@ export default function ProjectView({ act, pages, now }: Props) {
       dropped,
       title,
       today: today(now()),
-      showing: state?.showing.map((it) => it.page) ?? [],
+      showing: held?.view.showing.map((it) => it.page) ?? [],
       zoom,
     });
     // The last one written, so a second lands beneath the first.
@@ -248,9 +317,9 @@ export default function ProjectView({ act, pages, now }: Props) {
         // filed under it, like the box at the end of a zoom in `PageView`.
         const { after, indent } = placeNew(root, last);
         const id = crypto.randomUUID();
-        await pages.run({ type: 'addBlock', id, title: to, text, ...(after ? { after } : {}) });
+        await bridge.run({ type: 'addBlock', id, title: to, text, ...(after ? { after } : {}) });
         last = id;
-        if (indent) await pages.run({ type: 'indentBlock', blockId: id });
+        if (indent) await bridge.run({ type: 'indentBlock', blockId: id });
       }
     });
   };
@@ -319,14 +388,14 @@ export default function ProjectView({ act, pages, now }: Props) {
           owns the state the button acts on, so the button goes up there
           through a portal: still this view's, rendered in App's corner. */}
       {titlebar !== null &&
-        title !== null &&
+        place !== undefined &&
         createPortal(
           // Borderless until pointed at, like the picker beside it. Capped,
           // because it names the page it goes back to, and a page is named
           // whatever a link said — long enough to shove the picker out.
           <button
             className="app-region-no-drag ml-1 max-w-56 cursor-pointer truncate rounded-md border border-transparent px-1.5 py-0.5 text-sm hover:border-accent hover:text-accent"
-            onClick={() => act(() => pages.back())}
+            onClick={() => step(back)}
           >
             ← {trail.at(-2)?.page ?? 'Journal'}
           </button>,
@@ -334,22 +403,23 @@ export default function ProjectView({ act, pages, now }: Props) {
         )}
 
       <Previews value={previews}>
-        {state === null ? (
+        {held === null ? (
           <p className="mt-1 text-sm text-muted">Loading…</p>
         ) : (
-          state.showing.map(({ page, references }) => (
+          held.view.showing.map(({ page, references }) => (
             // Keyed by the title, so a page is never handed another page's
             // editor state — the open box and the block id in it belong to
             // the page they were opened on. The element is only a name on
             // everything the page shows, for a drop to read; it has no box.
             <div key={page.title} data-page={page.title} className="contents">
               <PageView
-                pages={pages}
+                pages={bridge}
                 page={page}
+                version={version}
                 // Not under a zoom: what links to one block is #2's.
                 references={zoom ? undefined : references}
                 zoom={zoom}
-                onZoom={(block) => act(() => pages.rezoom(block))}
+                onZoom={(block) => step((trail) => rezoom(trail, block))}
                 // No title is the journal: each day heads one of many.
                 linked={title === null}
                 act={act}

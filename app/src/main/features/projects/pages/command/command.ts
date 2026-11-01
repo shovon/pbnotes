@@ -27,6 +27,18 @@ export function requireTitle(value: unknown): string {
 }
 
 /**
+ * A day as the window's clock names it, `YYYY-MM-DD`: the journal's today.
+ * Only its shape is checked; which day it is belongs to the window.
+ */
+export function requireDay(value: unknown): string {
+  const day = requireString(value, "today");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    throw new TypeError("Expected a day as YYYY-MM-DD");
+  }
+  return day;
+}
+
+/**
  * A new block's id comes from the renderer, which drew the block under it
  * before asking for it to be written. It is checked like a title, and for
  * the same reason: it is a key in a log that keeps everything forever.

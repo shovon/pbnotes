@@ -1,6 +1,6 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { locate, predict } from '@pbnotes/pages';
-import type { Block as BlockType, Page, PageEvent } from '@pbnotes/pages';
+import type { Block as BlockType, Page } from '@pbnotes/pages';
 import type { PagesApi } from '../../../shared/pages';
 import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
@@ -9,6 +9,8 @@ import { add, edit, indent, outdent, remove } from './steps/steps';
 import type { Step, StepsPages } from './steps/steps';
 import { afterCancel, afterDelete, movable, newBlock } from './editing/editing';
 import type { Caret, Then } from './editing/editing';
+import { drawn, recorded, refused, unseen } from './pending/pending';
+import type { Pending } from './pending/pending';
 
 /**
  * Where an unwritten block is waiting to be typed. `after` is the block it
@@ -27,14 +29,19 @@ export type PageViewPages = StepsPages & Pick<PagesApi, 'search'>;
 
 type Props = {
   pages: PageViewPages;
-  /** The page as main last sent it. */
+  /** The page as main last showed it. */
   page: Page;
+  /**
+   * The fold version the page was read at: what a write drawn here is
+   * dropped by, once it is at or past the version that write's reply named.
+   */
+  version: number;
   /** What links here. Left off for a page that is itself shown as one. */
   references?: Page[];
   /**
    * Shown under another page as what links to it: a cut of this page — the
-   * blocks that link, not all of them — decided in main and sent again
-   * after every write. The title is a link to the whole page. Nothing can be
+   * blocks that link, not all of them — decided in main and read again
+   * after every change. The title is a link to the whole page. Nothing can be
    * added here, and a block cannot be moved: the siblings that would decide
    * where it goes are not in the cut. Editing and deleting are what they are
    * anywhere, a write to the page the block is on.
@@ -63,20 +70,20 @@ type Props = {
  * them.
  *
  * The page is main's, not this one's: it arrives folded, and a write sends
- * nothing back here — main sends the state it led to, and the page comes down
- * again from the project view. A block is on screen in more than one place —
- * on its day, and under every page it links to — and one state for all of
- * them is what shows a write everywhere it shows the block. A write resolves
- * after that state has arrived, so what follows one can count on the page.
- * What is held here is the editing: which box is open, and where the caret
- * is in it — and what an edit made here is about to leave a block as, drawn
- * until main says so itself. Nothing here is aware that there are other pages above and below
+ * nothing back here but the fold version it led to — main tells every window
+ * the fold moved, and the page comes down again from the project view. A
+ * block is on screen in more than one place — on its day, and under every
+ * page it links to — and one view for all of them is what shows a write
+ * everywhere it shows the block. What is held here is the editing: which box
+ * is open, and where the caret is in it — and what an edit made here is about
+ * to leave a block as, drawn until a view from main holds it. Nothing here is aware that there are other pages above and below
  * it, which is what keeps a stack of days the same component as a single
  * named page, and a page the same component as a cut of one.
  */
 export default function PageView({
   pages,
   page: sent,
+  version,
   references,
   reference = false,
   zoom,
@@ -97,33 +104,45 @@ export default function PageView({
    * what links to a page or what a ref quotes — those are main's to work
    * out, and arrive with its state.
    *
-   * An event is dropped when its write settles, and that is all the
-   * bookkeeping there is: a write settles only once the state it led to has
-   * arrived, so by then the page says the same thing — or the write was
-   * refused, and the page going back to what main has is the truth.
+   * An event is dropped by version, not when its write settles (`pending/`):
+   * its reply names the fold version the write led to, and a view at that
+   * version or later holds it, so by then the page says the same thing. A
+   * refused write is dropped at once, and the page going back to what main
+   * has is the truth.
    */
-  const [pending, setPending] = useState<PageEvent[]>([]);
+  const [pending, setPending] = useState<Pending[]>([]);
+
+  /** What a view holds is not kept: it will never be drawn again. */
+  useEffect(() => {
+    setPending((all) => {
+      const left = unseen(all, version);
+      return left.length === all.length ? all : left;
+    });
+  }, [version]);
 
   /**
    * Draws `steps` now and sends them one after another, as a key that is two
    * writes always was. If one is refused the rest are not sent, and none of
-   * them stays drawn.
+   * them that was not recorded stays drawn.
    */
   const write = async (...steps: Step[]) => {
     const events = steps.map(([event]) => event);
-    setPending((all) => [...all, ...events]);
+    setPending((all) => drawn(all, events));
     try {
       for (const [event, send] of steps) {
-        await send();
-        setPending((all) => all.filter((it) => it !== event));
+        const reached = await send();
+        setPending((all) => recorded(all, event, reached));
       }
     } finally {
-      setPending((all) => all.filter((it) => !events.includes(it)));
+      setPending((all) => refused(all, events));
     }
   };
 
   /** The page as it is drawn, which is what everything below reads. */
-  const page = predict(sent, pending);
+  const page = predict(
+    sent,
+    unseen(pending, version).map((it) => it.event),
+  );
 
   /**
    * Tab or Shift+Tab on a block, as the step it is on `blocks`. Undefined at
@@ -543,6 +562,7 @@ export default function PageView({
         <LinkedReferences
           pages={pages}
           references={references}
+          version={version}
           act={act}
         />
       )}

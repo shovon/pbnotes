@@ -15,11 +15,14 @@ import type { PageViewPages } from '../PageView';
 export default function LinkedReferences({
   pages,
   references,
+  version,
   act,
 }: {
   /** Handed on whole to each cut, which is a `PageView`. */
   pages: PageViewPages;
   references: Page[];
+  /** The fold version the cuts were read at, handed on to each. */
+  version: number;
   act: Act;
 }) {
   if (references.length === 0) return null;
@@ -36,6 +39,7 @@ export default function LinkedReferences({
           key={page.title}
           pages={pages}
           page={page}
+          version={version}
           act={act}
           reference
         />

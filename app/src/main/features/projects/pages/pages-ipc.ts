@@ -8,9 +8,9 @@ import {
 } from "electron";
 import { pathToFileURL } from "node:url";
 import { IMAGE_SCHEME, PAGE_CHANNELS } from "../../../../shared/pages";
-import type { PagesState, Place } from "../../../../shared/pages";
+import type { Place } from "../../../../shared/pages";
 import { requireString } from "../../../ipc";
-import { requireCommand, requireTitle } from "./command/command";
+import { requireCommand, requireDay, requireTitle } from "./command/command";
 import type { PagesSession } from "./pages-session/pages-session";
 
 // This software is split into two components: the renderer, and the main
@@ -18,42 +18,37 @@ import type { PagesSession } from "./pages-session/pages-session";
 // relay information among eachother.
 //
 // This file is the pages side of that: each channel checks what arrives and
-// hands it to the session (`pages-session.ts`), which holds the trail and the
-// order writes are recorded in. What only Electron can do — sending to the
+// hands it to the session (`pages-session.ts`), which answers what shows at
+// a place and holds the order writes are recorded in. What only Electron can do — sending to the
 // windows, the image scheme, the native menu — is here too.
 
 /**
- * Sends `state` to every window, over `pages:changed`, with its number `n`
- * (see `publish` in `pages-session.ts`). A window closing between the read and
- * the send is ordinary, which is the only thing the guard is for.
+ * Tells every window the fold's version, over `pages:changed`; each asks
+ * again for the place it is on. A window closing between the read and the
+ * send is ordinary, which is the only thing the guard is for.
  */
-export function broadcastPages(state: PagesState, n: number): void {
+export function broadcastPages(version: number): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
-      window.webContents.send(PAGE_CHANNELS.changed, state, n);
+      window.webContents.send(PAGE_CHANNELS.changed, version);
     }
   }
 }
 
+/** A place as it crossed the bridge: none is the journal. */
+function requirePlace(place: unknown): Place | undefined {
+  if (place === undefined || place === null) return undefined;
+  const { page, block } = place as Record<string, unknown>;
+  return {
+    page: requireTitle(page),
+    ...(block === undefined ? {} : { block: requireString(block, "block") }),
+  };
+}
+
 /** Registers the pages channels, and the image scheme, against `session`. */
 export function registerPageIpc(session: PagesSession): void {
-  ipcMain.handle(PAGE_CHANNELS.show, () => session.show());
-
-  ipcMain.handle(PAGE_CHANNELS.go, (_event, place: unknown) => {
-    const { page, block } = (place ?? {}) as Record<string, unknown>;
-    const next: Place = {
-      page: requireTitle(page),
-      ...(block === undefined ? {} : { block: requireString(block, "block") }),
-    };
-    return session.go(next);
-  });
-
-  ipcMain.handle(PAGE_CHANNELS.back, () => session.back());
-
-  ipcMain.handle(PAGE_CHANNELS.rezoom, (_event, block: unknown) =>
-    session.rezoom(
-      block === undefined ? undefined : requireString(block, "block"),
-    ),
+  ipcMain.handle(PAGE_CHANNELS.view, (_event, place: unknown, today: unknown) =>
+    session.view(requirePlace(place), requireDay(today)),
   );
 
   ipcMain.handle(PAGE_CHANNELS.locate, (_event, blockId: unknown) =>
