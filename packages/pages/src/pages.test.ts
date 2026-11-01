@@ -22,6 +22,8 @@ import {
   NAMESPACE,
   outdentBlock,
   pagesFold,
+  propertyRemoved,
+  propertySet,
   searchPages,
   today,
 } from "./pages.ts";
@@ -117,13 +119,15 @@ test("each builder is the event its command writes, and folds to the same pages"
   }
 });
 
-test("every builder writes the v its own gate reads, and there is one for every block event", () => {
+test("every builder writes the v its own gate reads, and there is one for every event", () => {
   const built = [
     blockCreated(TODAY, "x", undefined, "x"),
     blockEdited("x", "y"),
     blockDeleted("x"),
     blockIndented({ id: "x", parent: "y" }),
     blockOutdented({ id: "x", after: "y" }),
+    propertySet("x", "y", "z"),
+    propertyRemoved("x", "y"),
   ];
   for (const event of built) assert.equal(event.v, HANDLES[event.type], event.type);
   assert.deepEqual(

@@ -92,28 +92,18 @@ export function getPreviews(state: BlockState): [string, string | null][] {
 }
 
 /**
- * The page titles that contain `query`, ignoring case: prefix matches first,
- * then the rest, each A to Z, at most `limit`. A page is any title with blocks
- * on it and any title a link names. Walks the blocks rather than `titles`, so
- * a typo linked once and fixed is not offered forever.
+ * Every title the blocks name: each page with blocks on it, and each page a
+ * block's current text links to. Walks the blocks rather than `titles`, so a
+ * typo linked once and fixed is not named forever.
  *
  * ponytail: walks every block per call, with `read` memoised. Keep a title set
  * in the fold if a ledger ever gets big enough for that to show.
  */
-export function searchPages(state: BlockState, query: string, limit = 10): string[] {
-  const titles = new Set<string>();
-  const add = (title: string): void => void titles.add(titleOf(state, title));
+export function* named(state: BlockState): Generator<string> {
   for (const [key, blocks] of state.blocks) {
-    if (blocks.length > 0) add(key);
-    for (const block of every(blocks)) read(block.text).links.forEach(add);
+    if (blocks.length > 0) yield key;
+    for (const block of every(blocks)) yield* read(block.text).links;
   }
-  const q = canonicalize(query);
-  return [...titles]
-    .map((title) => ({ title, at: canonicalize(title).indexOf(q) }))
-    .filter(({ at }) => at !== -1)
-    .sort((a, b) => Number(a.at !== 0) - Number(b.at !== 0) || a.title.localeCompare(b.title))
-    .slice(0, limit)
-    .map(({ title }) => title);
 }
 
 /** The page a block is on, or undefined for a block the ledger lacks. */

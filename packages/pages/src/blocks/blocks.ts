@@ -288,11 +288,11 @@ function parse(event: { type: string; payload: unknown }): Bare | undefined {
  * the user's text. This is the only place that chooses which page a fold
  * writes to.
  */
-function onBlock(
-  state: BlockState,
+function onBlock<S extends BlockState>(
+  state: S,
   id: string,
   change: (found: Found) => Block[] | undefined,
-): BlockState {
+): S {
   const found = find(state, id);
   if (!found) return state;
   const blocks = change(found);
@@ -307,7 +307,7 @@ function foreign(_event: never, state: unknown): never {
 }
 
 /** One parsed event applied. Pure, and never changes what it is handed. */
-function apply(state: BlockState, it: Bare): BlockState {
+function apply<S extends BlockState>(state: S, it: Bare): S {
   switch (it.type) {
     case "block.created": {
       const { page, id, text, after } = it.payload;
@@ -381,12 +381,13 @@ function apply(state: BlockState, it: Bare): BlockState {
 
 /**
  * The block fold: one event in, the state out. Hands back `state` itself for
- * any event that is not a well-formed block event.
+ * any event that is not a well-formed block event. Whatever else `state`
+ * holds is carried through as it is.
  */
-export function reduce(
-  state: BlockState,
+export function reduce<S extends BlockState>(
+  state: S,
   event: { type: string; payload: unknown },
-): BlockState {
+): S {
   const parsed = parse(event);
   return parsed ? apply(state, parsed) : state;
 }
