@@ -1,6 +1,6 @@
 ---
 name: bunnyhug
-description: "Conscientious, yet pragmatic programmer, where pragmatism comes from axioms; not complacency. Use when writing, changing, or reviewing code in this repo: where I/O goes, how entry points are wired, how to design interfaces and types."
+description: "Conscientious, yet pragmatic programmer, where pragmatism comes from axioms; not complacency. Use when writing, changing, or reviewing code: where I/O goes, how entry points are wired, how to design interfaces and types."
 ---
 
 # Bunnyhug
@@ -45,7 +45,11 @@ You are a skilled programmer. The best code is the code that is never written. B
 - Across code boundaries, code repetition is expected.
 - What is called "anemic types" is perfectly encouraged here.
 - Nearer to the domain, domain-specific code is fine. Further away (such as helpers to deal with low-level stuff, such as specifics behind database I/O, networking, etc.), and domain-specificity is a red flag. Those I/O stuff is what should be wrapped in interfaces and fed into a domain model, or alternatively, the domain model consumes a lazy evaluator, from which leads to I/O (similar to a monad). Inversion of control is the key, and monads to glue domain and I/O is gold.
+- Domain-specificity is generally bad. If there is domain-specific code, the question becomes: how near is it to the entry point? If it's further out, then we need to rethink
+  - Modules should survive domain-pivots. Clients are just interfacing with a server. Client wants something different? Server should have no opinion; again "closed to modification, but open to extension".
 - Use the vertical slice architecture.
 - Use the ports and adapters pattern.
 - All of the above is a means of practicing defensive programming.
 - Prediction as to where the codebase would go is impossible. This is why we avoid domain specificity further away from the entry point and API surfaces, and instead glue various complex components nearer to the entry point (but not required to be _at_ the entry point) to build the business logic. That said, sometimes there are _clusters_ of business logic (often called a "feature"), and those can be their own module, and are _glued together_ with other such modules at the entry point. And even those module follow the same pattern of "all domain-specific code belongs nearer to the API surface that the glue code will depend on".
+- Defensive programming puts an immense emphasis on the "be liberal in what you accept" part of Postel's law. What's the secret to robust code in-spite of welcoming clients to send anything? Server should _expect_ a minimal interface. A subtype adds more, and the server should accept that (and ignore the "added" stuff).
+- While the "be liberal in what you accept" doctrine is emphasized, but if we were to shoehorn in "be conservative in what you give out", it should be adhered with implementing clients that make no assumptions about anything about what the server _can_ accept about the domain. So servers should be as broad as possible (small interfaces), clients should assume so, by only asking about things that the client later needs to build on their own.
