@@ -23,6 +23,9 @@ export type Writer = {
   post(v: number, type: string, payload: unknown): Promise<Event>;
 };
 
+/** A folded state, and how many events the log held when it was folded. */
+export type Fold<T> = { state: T; reached: number };
+
 export type DeviceState = "ok" | "stalled" | "unavailable" | "clockSuspect";
 export type DeviceStatus = { device: string; /** last seq folded */ folded: number; state: DeviceState; detail?: string };
 export type LogStatus = { devices: DeviceStatus[]; /** absolute paths */ ignored: string[] };
@@ -212,7 +215,7 @@ function newWriter(
   start: Start,
   tick: (now: number) => Hlc,
   closed: () => string | undefined,
-  written: (e: LogEvent, segment: number, bytes: number) => Event = toEvent,
+  written: (e: LogEvent, segment: number, bytes: number) => Event | Promise<Event> = toEvent,
 ) {
   const id = basename(dir);
   let { seq, segment, bytes, day } = start;
@@ -389,7 +392,8 @@ export async function openWriter(
   };
 }
 
-type Entry = { log: LogEvent; event: Event };
+/** `reach`: how many events the log held once this one was ingested. A fold that reached that far holds it. */
+type Entry = { log: LogEvent; event: Event; reach: number };
 type Sub = { dirty: number; wake: () => void };
 /**
  * Read position in one writer directory. Only advanced past records that were accepted or skipped as duplicates.
@@ -440,6 +444,8 @@ export class Ledger {
   #queuedFull?: Promise<void>;
   #closed = false;
   #writer?: Writer;
+  /** The reach of each event this ledger's writer handed back. */
+  #reach = new WeakMap<Event, number>();
 
   constructor(root: string, cadence: Cadence) {
     this.#root = root;
@@ -475,13 +481,21 @@ export class Ledger {
       NEW,
       (now) => (this.#hlc = nextHlc(this.#hlc, now)),
       () => (this.#closed ? "ledger closed" : undefined),
-      (e, segment, bytes) => {
+      async (e, segment, bytes) => {
         // A concurrent scan may already have read this record; only one of us ingests it.
         const c = this.#cursor(e.device);
-        if (e.seq <= c.last) return toEvent(e);
+        if (e.seq <= c.last) {
+          // The scan ingests what it read only once it has read every directory. Waiting for it keeps
+          // the promise that a post resolves once its event is in the log, and so has a reach.
+          await this.#polling.catch(() => {});
+          const entry = this.#find(e);
+          if (!entry) return toEvent(e); // a scan that failed after reading it; the next one ingests it
+          this.#reach.set(entry.event, entry.reach);
+          return entry.event;
+        }
         Object.assign(c, { seg: segment, offset: bytes, last: e.seq });
-        const entry = { log: e, event: toEvent(e) };
-        this.#ingest([entry]);
+        const [entry] = this.#ingest([{ log: e, event: toEvent(e) }]);
+        this.#reach.set(entry.event, entry.reach);
         return entry.event;
       },
     );
@@ -496,6 +510,15 @@ export class Ledger {
    * be pure and must not mutate `previous`: checkpoints hold on to it.
    */
   async *onEvent<T>(base: T, reduce: (previous: T, event: Event) => T): AsyncIterable<T> {
+    for await (const { state } of this.onFold(base, reduce)) yield state;
+  }
+
+  /**
+   * `onEvent`, with how far each state reached: the number of events the log
+   * held when it was folded. A state holds every event whose `reachOf` is at
+   * or below its reach. Reaches only grow, from one yield to the next.
+   */
+  async *onFold<T>(base: T, reduce: (previous: T, event: Event) => T): AsyncIterable<Fold<T>> {
     const sub: Sub = { dirty: 0, wake: () => {} };
     // cps[k] = state after folding events[0, cps[k].i)
     const cps = [{ i: 0, s: base }];
@@ -514,11 +537,20 @@ export class Ledger {
           s = reduce(s, this.#events[i].event);
           if ((i + 1) % CHECKPOINT_EVERY === 0) cps.push({ i: i + 1, s });
         }
-        yield s;
+        yield { state: s, reached: this.#events.length };
       }
     } finally {
       this.#subs.delete(sub);
     }
+  }
+
+  /**
+   * How far a fold must reach to hold `event`, for an event this ledger's
+   * writer handed back from `post`. Undefined for any other event, and for a
+   * post the log has not ingested yet (a scan read it and then failed).
+   */
+  reachOf(event: Event): number | undefined {
+    return this.#reach.get(event);
   }
 
   get status(): LogStatus {
@@ -680,11 +712,14 @@ export class Ledger {
     }
   }
 
-  #ingest(fresh: Entry[]) {
-    if (!fresh.length) return;
+  /** Adds `fresh` to the log and dirties every fold. Returns them as entries, with the reach they came in at. */
+  #ingest(fresh: Omit<Entry, "reach">[]): Entry[] {
+    if (!fresh.length) return [];
     const now = Date.now();
-    let min = fresh[0];
-    for (const x of fresh) {
+    const reach = this.#events.length + fresh.length;
+    const entries = fresh.map((x): Entry => ({ ...x, reach }));
+    let min = entries[0];
+    for (const x of entries) {
       const e = x.log;
       if (e.hlc.l <= now + MAX_CLOCK_SKEW_MS && cmpHlc(e.hlc, this.#hlc) > 0) this.#hlc = e.hlc;
       if (cmp(e, min.log) < 0) min = x;
@@ -697,5 +732,15 @@ export class Ledger {
       s.dirty = Math.min(s.dirty, from);
       s.wake();
     }
+    return entries;
+  }
+
+  /** The entry for a record already in the log, looked for from the newest, where a post of ours is. */
+  #find(e: LogEvent): Entry | undefined {
+    for (let i = this.#events.length - 1; i >= 0; i--) {
+      const x = this.#events[i];
+      if (x.log.device === e.device && x.log.seq === e.seq) return x;
+    }
+    return undefined;
   }
 }

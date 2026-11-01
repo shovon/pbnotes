@@ -382,3 +382,38 @@ test("refreshes asked for before one starts share it", { timeout: 5000 }, async 
   await b;
   await l.close();
 });
+
+test("a fold says how far it reached, and holds every post at or below that", { timeout: 5000 }, async (t) => {
+  const dir = await fresh();
+  const l = await openOrCreate(dir, fast);
+  t.after(() => l.close());
+  const it = l.onFold<string[]>([], ids)[Symbol.asyncIterator]();
+  assert.deepEqual((await it.next()).value, { state: [], reached: 0 });
+
+  const posted = await l.writer().post(1, "t", "ours");
+  assert.equal(l.reachOf(posted), 1);
+  assert.deepEqual(await until(it, (f) => f.reached >= 1), { state: ["ours"], reached: 1 });
+
+  await put(dir, "b", 1, recs([ev("b", 1, 1000)])); // sorts before ours
+  await l.refresh();
+  assert.deepEqual(await until(it, (f) => f.reached >= 2), { state: ["b-1", "ours"], reached: 2 });
+  assert.equal(l.reachOf(posted), 1, "a reach does not move once given");
+  assert.equal(l.reachOf({ type: "t", v: 1, at: "", payload: "ours" }), undefined, "only events our writer handed back");
+});
+
+test("a post read first by a scan still resolves with its reach", { timeout: 20000 }, async (t) => {
+  const dir = await fresh();
+  // Directories that sort after any of ours, so a scan that has read our record is still reading when the post ends.
+  for (let k = 0; k < 40; k++) await put(dir, `zz${k}`, 1, recs([ev(`zz${k}`, 1, 1000 + k)]));
+  const l = await openOrCreate(dir, fast);
+  t.after(() => l.close());
+  const it = l.onFold<string[]>([], ids)[Symbol.asyncIterator]();
+  for (let n = 0; n < 100; n++) {
+    // A full read racing the post: some of these read the record, and are not done, when the post hands it back.
+    const [posted] = await Promise.all([l.writer().post(1, "t", `p${n}`), l.refresh()]);
+    const reach = l.reachOf(posted);
+    assert.ok(reach !== undefined, `post ${n} has no reach`);
+    const fold = await until(it, (f) => f.reached >= reach);
+    assert.ok(fold.state.includes(`p${n}`), `post ${n} missing at its reach`);
+  }
+});

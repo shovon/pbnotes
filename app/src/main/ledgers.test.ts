@@ -13,10 +13,10 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { Cadence } from "@pbnotes/ledger";
+import type { Cadence, Event, Fold } from "@pbnotes/ledger";
 import * as pages from "@pbnotes/pages";
 import { createLedgers } from "./ledgers.ts";
-import type { LedgerRef, Ledgers, Paces } from "./ledgers.ts";
+import type { LedgerPort, LedgerRef, Ledgers, Paces } from "./ledgers.ts";
 
 /** This test's ledgers, closed when it ends, pass or fail, so no timer outlives it. */
 function make(t: TestContext, paces: Paces): Ledgers {
@@ -157,4 +157,103 @@ test("the version never goes back, across projects", { timeout: 5000 }, async (t
   await pages.addBlock(a, "Mira", "one", undefined, randomUUID());
   const b = await ledgers.pagesOf(await project());
   assert.ok(b.version > a.version);
+});
+
+type Pages = typeof pages.pagesFold.initial;
+
+/** A post the fake ledger is holding: the event it will hand back, and how to land it at a reach. */
+type Held = { event: Event; land: (reach: number) => void };
+
+/**
+ * A ledger whose folds arrive when the test hands them out, and whose posts
+ * land when the test says, at the reach it says: the order the races in #170
+ * need, which a real ledger only shows now and then.
+ */
+function fakeLedger(first: Fold<Pages>) {
+  const folds: Fold<Pages>[] = [first];
+  let wake: () => void = () => undefined;
+  const reaches = new WeakMap<Event, number>();
+  const posts: Held[] = [];
+  const ledger: LedgerPort = {
+    onFold: async function* () {
+      for (;;) {
+        const next = folds.shift();
+        if (next) yield next;
+        else await new Promise<void>((r) => (wake = r));
+      }
+    } as unknown as LedgerPort["onFold"],
+    reachOf: (event) => reaches.get(event),
+    writer: () => ({
+      directory: "/fake/writer",
+      post: (v, type, payload) =>
+        new Promise<Event>((resolve) => {
+          const event: Event = { type, v, at: new Date(0).toISOString(), payload };
+          posts.push({ event, land: (reach) => (reaches.set(event, reach), resolve(event)) });
+        }),
+    }),
+    status: { devices: [], ignored: [] },
+    pace: () => undefined,
+    refresh: async () => undefined,
+    close: async () => undefined,
+  };
+  return {
+    ledger,
+    posts,
+    fold(next: Fold<Pages>) {
+      folds.push(next);
+      wake();
+    },
+  };
+}
+
+/** Lets the fold loop take whatever was handed to it. */
+const settle = () => new Promise<void>((r) => setImmediate(r));
+
+const texts = (state: Pages, title: string) => pages.getPage(state, title).blocks.map((block) => block.text);
+
+test("a fold that was short of our write when it ran is skipped, so no version drops the write", async () => {
+  const fake = fakeLedger({ state: pages.pagesFold.initial, reached: 10 });
+  const ledgers = createLedgers(undefined, async () => fake.ledger);
+  const view = await ledgers.pagesOf({ id: "p", path: "/fake" });
+
+  const write = pages.addBlock(view, "Mira", "ours", undefined, randomUUID());
+  await until(() => fake.posts.length === 1);
+  // An arrival made the log 11 before our post ingested its event at 12.
+  fake.posts[0].land(12);
+  await write;
+  const replied = view.version;
+  assert.deepEqual(texts(view.state, "Mira"), ["ours"]);
+
+  // The fold computed at 11, with the arrival and without ours, is only now taken up.
+  const stale: Pages = { blocks: new Map(), titles: new Map() };
+  fake.fold({ state: stale, reached: 11 });
+  await settle();
+  assert.equal(view.version, replied, "the stale fold moved the version");
+  assert.deepEqual(texts(view.state, "Mira"), ["ours"], "the stale fold dropped our write");
+
+  // The fold that reaches our write is the truth.
+  const both = pages.pagesFold.reduce(stale, fake.posts[0].event);
+  fake.fold({ state: both, reached: 12 });
+  await until(() => view.state === both);
+  assert.ok(view.version > replied);
+});
+
+test("a write the fold took up first is not folded in again", async () => {
+  const fake = fakeLedger({ state: pages.pagesFold.initial, reached: 10 });
+  const ledgers = createLedgers(undefined, async () => fake.ledger);
+  const view = await ledgers.pagesOf({ id: "p", path: "/fake" });
+
+  const write = pages.addBlock(view, "Mira", "ours", undefined, randomUUID());
+  await until(() => fake.posts.length === 1);
+  // The post ingested its event at 11, and the fold took it up before the post handed it back.
+  const withOurs = pages.pagesFold.reduce(pages.pagesFold.initial, fake.posts[0].event);
+  fake.fold({ state: withOurs, reached: 11 });
+  await until(() => view.state === withOurs);
+  const taken = view.version;
+
+  fake.posts[0].land(11);
+  await write;
+  assert.equal(view.state, withOurs, "the write was folded in a second time");
+  assert.equal(view.version, taken, "the version moved for a state that changed nothing");
+  assert.deepEqual(texts(view.state, "Mira"), ["ours"]);
 });
