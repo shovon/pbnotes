@@ -6,14 +6,14 @@
  * its reply does are the app's, and live here. Shell, not a feature: `pages/`
  * is handed the view this builds and never sees a ledger or a path.
  *
- * Deliberately free of `electron` imports, so `pages-store.test.ts` can run
- * it under `node --test`.
+ * Deliberately free of `electron` imports, so `ledgers.test.ts` and
+ * `ledgers.integration.test.ts` can run it under `node --test`.
  */
 import path from "node:path";
 import { DEFAULT_CADENCE, openOrCreate } from "@pbnotes/ledger";
 import type { Cadence, Fold, Ledger } from "@pbnotes/ledger";
 import { pagesFold } from "@pbnotes/pages";
-import type { PagesView } from "./features/projects/pages/pages-store/pages-store.ts";
+import type { Pages, PagesView } from "@pbnotes/pages";
 
 /** Enough to find a ledger: what to remember it by, and the folder it is. */
 export type LedgerRef = { id: string; path: string };
@@ -24,7 +24,23 @@ export type LedgerPort = Pick<Ledger, "onFold" | "reachOf" | "writer" | "status"
 /** Opens the ledger in one folder, at a pace. `openOrCreate`, unless a test says otherwise. */
 export type OpenLedger = (path: string, cadence: Cadence) => Promise<LedgerPort>;
 
-type Opened = { ledger: LedgerPort; view: PagesView };
+/**
+ * What `pagesOf` hands out: the package's view of the pages fold, and what
+ * only the log knows. Whoever takes it declares the part it reads (`PagesView`
+ * in `pages-session.ts`); this does not import that, and `index.ts`, where the
+ * two meet, is where the compiler checks one is the other.
+ */
+export type LedgerView = PagesView & {
+  /** How much of the folder could be read, and what in it was skipped. */
+  readonly status: Ledger["status"];
+  /**
+   * The fold's version as `state` stands: one more every time it changes.
+   * Read beside `state`, with no `await` between, it labels what was read.
+   */
+  readonly version: number;
+};
+
+type Opened = { ledger: LedgerPort; view: LedgerView };
 
 /**
  * Holding the *promise*, so two overlapping opens of one project share one
@@ -121,7 +137,7 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
     const folds = fold[Symbol.asyncIterator]();
     // The first yield is the catch-up, so the view has every page before it is
     // handed out.
-    const first = (await folds.next()).value as Fold<PagesView["state"]>;
+    const first = (await folds.next()).value as Fold<Pages>;
     let state = first.state;
     let at = ++version;
     /** How far the last yield taken reached. */
@@ -130,7 +146,7 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
     let need = 0;
 
     /** The pages moved: a new version, and the windows are told. */
-    const moved = (next: PagesView["state"]): void => {
+    const moved = (next: Pages): void => {
       state = next;
       at = ++version;
       announce?.(project.id);
@@ -152,7 +168,7 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
       }
     })();
 
-    const view: PagesView = {
+    const view: LedgerView = {
       get state() {
         return state;
       },
@@ -197,7 +213,7 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
     return entry.opened;
   }
 
-  async function pagesOf(project: LedgerRef): Promise<PagesView> {
+  async function pagesOf(project: LedgerRef): Promise<LedgerView> {
     return (await opened(project)).view;
   }
 

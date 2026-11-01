@@ -2,8 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { blockEdited, pagesFold } from "@pbnotes/pages";
-import type { PagesView } from "../pages-store/pages-store.ts";
 import { createPagesSession } from "./pages-session.ts";
+import type { PagesView } from "./pages-session.ts";
 
 /**
  * A ledger held in memory: the real fold, a version that moves with it as
@@ -62,8 +62,6 @@ function session(first: PagesView | null) {
         if (!view) throw new Error("not reachable");
         return view;
       },
-      saveImage: async () => "images/x.png",
-      findImage: async () => undefined,
     },
     (version) => told.push(version),
   );

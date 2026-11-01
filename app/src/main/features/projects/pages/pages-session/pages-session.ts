@@ -1,6 +1,7 @@
 /**
  * The pages of what is open, as the windows see them: what shows at a place,
  * the word that the fold has moved, and the order the writes are recorded in.
+ * Images are not here: storing one writes no event (see `pages-ipc.ts`).
  * Where a window is looking is the window's (`ProjectView`), not this one's.
  *
  * Free of `electron` imports, so it runs under `node --test`; `pages-ipc.ts`
@@ -18,32 +19,45 @@ import {
   searchPages,
   setProperty,
 } from "@pbnotes/pages";
+import type { PagesView as Base } from "@pbnotes/pages";
 import type { Command, Place, PlaceView } from "../../../../../shared/pages.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
-import { getView } from "../pages-store/pages-store.ts";
-import type { PagesView } from "../pages-store/pages-store.ts";
+import { getView } from "../place-view/place-view.ts";
 
 /**
- * What is open, as whoever makes this hands it over: the pages of it, and
- * the images kept beside them. Pages are told nothing else — not what decides
- * what is open, not what it is, and not where it is kept.
+ * What pages need of what is open: the package's view (the fold and a way to
+ * write to it), how much of the log could be read, and the fold's version.
+ * Declared here, by the one that uses it; `ledgers.ts` hands out a view that
+ * is one without importing this.
+ */
+export type PagesView = Base & {
+  /**
+   * How much of the folder could be read, and what in it was skipped.
+   * Nothing here is an error to clear — a log that is still syncing is a
+   * normal state that usually heals itself — but none of it may be skipped
+   * without the user being able to find out.
+   */
+  readonly status: LogStatus;
+  /**
+   * The fold's version as `state` stands: one more every time it changes.
+   * Read beside `state`, with no `await` between, it labels what was read.
+   */
+  readonly version: number;
+};
+
+/**
+ * What is open, as whoever makes this hands it over: the pages of it. Pages
+ * are told nothing else — not what decides what is open, not what it is, and
+ * not where it is kept.
  *
  * `require` is the one to read and write through. It refuses what cannot be
  * reached — opening a ledger creates its directory, and that must not happen
  * on a drive that is not there — and it settles what is open before its
  * first `await`, so a write calls it first: a write sent just before that
- * changed still lands where it was typed. `saveImage` settles it the same
- * way.
- *
- * `findImage` only reads, and opens nothing: with nothing open, or a drive
- * that is not there, it finds nothing.
+ * changed still lands where it was typed.
  */
 export type Open = {
   require(): Promise<PagesView>;
-  /** Stores an image and returns what a note links it by. */
-  saveImage(bytes: Uint8Array, mime: string): Promise<string>;
-  /** The file a note's `images/<name>` is, or undefined. */
-  findImage(name: string): Promise<string | undefined>;
 };
 
 /**
@@ -116,13 +130,6 @@ export function createPagesSession(
      * write is recorded one at a time in the order it arrived.
      */
     run: (command: Command) => write((view) => apply(view, command)),
-
-    /**
-     * No event: the image is in the notes once a block's text links it, and
-     * that is an ordinary edit.
-     */
-    addImage: (bytes: Uint8Array, mime: string) => open.saveImage(bytes, mime),
-    findImage: (name: string) => open.findImage(name),
   };
 }
 

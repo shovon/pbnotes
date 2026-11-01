@@ -55,7 +55,7 @@ None of these block convergence — every device agrees on the same answer. They
 
 ## Tests
 
-The ledger's tests cover the order, the stalls and convergence, with events of their own that are not blocks. The block fold is tested without a log in `packages/pages/src/blocks/blocks.test.ts` and `packages/pages/src/pages.test.ts`, and through one in `src/main/features/projects/pages/pages-store/pages-store.test.ts`. Both write from a single device. Nothing yet tests two devices' block events interleaving, so each deferred item above lands with a test that folds its events in both orders.
+The ledger's tests cover the order, the stalls and convergence, with events of their own that are not blocks. The block fold is tested without a log in `packages/pages/src/blocks/blocks.test.ts` and `packages/pages/src/pages.test.ts`, and through one in `src/main/ledgers.integration.test.ts`. Both write from a single device. Nothing yet tests two devices' block events interleaving, so each deferred item above lands with a test that folds its events in both orders.
 
 ## Order of work
 
