@@ -167,32 +167,31 @@ app.on("ready", () => {
   // open project's, and the one place that turns a project into a path.
   //
   // `requireProject` settles which project before its first `await`, and is
-  // the first thing each of these calls: a write or an image sent just before
-  // the project changed lands where it was sent.
+  // the first thing a read, a write or a stored image calls: one sent just
+  // before the project changed lands where it was sent.
   const pages = createPagesSession(
-    {
-      require: async () => ledgers.pagesOf(await projects.requireProject()),
-      saveImage: async (bytes, mime) => {
-        const project = await projects.requireProject();
-        return saveImage(
-          project.path,
-          await ledgers.writerOf(project),
-          bytes,
-          mime,
-        );
-      },
-      // `currentProject`, not `requireProject`: this only reads. `findImage`
-      // lists directories and creates none, so an unmounted drive is an image
-      // that is not found, not a path invented on the local disk.
-      findImage: async (name) => {
-        const project = projects.currentProject();
-        return project ? findImage(project.path, name) : undefined;
-      },
-    },
+    { require: async () => ledgers.pagesOf(await projects.requireProject()) },
     // Every window of the app, over `pages:changed`.
     broadcastPages,
   );
-  registerPageIpc(pages);
+  registerPageIpc(pages, {
+    save: async (bytes, mime) => {
+      const project = await projects.requireProject();
+      return saveImage(
+        project.path,
+        await ledgers.writerOf(project),
+        bytes,
+        mime,
+      );
+    },
+    // `currentProject`, not `requireProject`: this only reads. `findImage`
+    // lists directories and creates none, so an unmounted drive is an image
+    // that is not found, not a path invented on the local disk.
+    find: async (name) => {
+      const project = projects.currentProject();
+      return project ? findImage(project.path, name) : undefined;
+    },
+  });
 
   // A project's pages moved: a write of ours, another session's events
   // landing in its folder, or the fold catching up with a write of ours. Every

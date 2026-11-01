@@ -1,6 +1,10 @@
 /**
  * Run with: npm test
  *
+ * The integration suite: `ledgers.ts` and the `@pbnotes/pages` fold and
+ * commands over a real folder on disk, closed and opened again to stand in for
+ * a restart. `ledgers.test.ts` is the unit test, over ledgers of its own.
+ *
  * Three properties. The log lives in the project's own directory. Looking at a
  * day appends nothing — a page the user only opened must not become a fact in
  * a log that keeps facts forever. And because the log travels with the folder,
@@ -15,23 +19,21 @@ import path from "node:path";
 import * as pages from "@pbnotes/pages";
 import { lastLeaf, locate, NAMESPACE } from "@pbnotes/pages";
 import type { Block, Pages } from "@pbnotes/pages";
-import * as store from "./pages-store.ts";
-import type { PagesView } from "./pages-store.ts";
-import { createLedgers } from "../../../../ledgers.ts";
-import type { LedgerRef } from "../../../../ledgers.ts";
+import { createLedgers } from "./ledgers.ts";
+import type { LedgerRef, LedgerView } from "./ledgers.ts";
 
 // This file's own set of ledgers. Closing it stands in for a restart: the
 // next `pagesOf` opens the folder again, as a fresh process would.
 const { pagesOf, onChange, close: closeLedgers } = createLedgers();
 
 /**
- * The glue, as `index.ts` is for the app: the store is handed a view, and
+ * The glue, as `index.ts` is for the app: a command is handed a view, and
  * never learns that it came from a ledger. Each call asks for the view again,
  * because a test closes the ledgers part way through to stand in for a
  * restart, and a view of a closed one is of nothing.
  */
 const on =
-  <A extends unknown[], R>(run: (view: PagesView, ...args: A) => R) =>
+  <A extends unknown[], R>(run: (view: LedgerView, ...args: A) => R) =>
   async (project: LedgerRef, ...args: A): Promise<Awaited<R>> =>
     await run(await pagesOf(project), ...args);
 
@@ -56,10 +58,8 @@ const getPage = query(pages.getPage);
 const getPages = query(pages.getPages);
 const getPreviews = query(pages.getPreviews);
 const getReferences = query(pages.getReferences);
-const getView = on(store.getView);
 const indentBlock = on(pages.indentBlock);
 const outdentBlock = on(pages.outdentBlock);
-const setProperty = on(pages.setProperty);
 
 const TODAY = "2026-09-21";
 const TOMORROW = "2026-09-22";
@@ -118,7 +118,7 @@ test("the log is written into the folder it is handed", async () => {
 });
 
 /**
- * #38: what lands on disk is the namespaced name, for every event this store
+ * #38: what lands on disk is the namespaced name, for every event this suite
  * writes. Read off the segment, because that is where the name has to be
  * right: a bare one is not folded (#40), on this machine or any other.
  */
@@ -795,59 +795,6 @@ test("a block ref previews the first paragraph of its target", async () => {
 
   await editBlock(it, prose.id, "Prefers tea now.");
   assert.equal((await previews()).get(prose.id), "Prefers tea now.");
-
-  await closeLedgers();
-});
-
-test("the view is the journal with today on top, or the one page asked for", async () => {
-  const it = await project();
-  await addBlock(it, TODAY, "saw [[Mira]]");
-
-  // Tomorrow has nothing on it yet, and is still where the user will type.
-  const journal = await getView(it, undefined, TOMORROW);
-  assert.deepEqual(
-    journal.showing.map((shown) => shown.page.title),
-    [TOMORROW, TODAY],
-  );
-
-  const page = await getView(it, { page: "Mira" }, TOMORROW);
-  assert.equal(page.showing.length, 1);
-  assert.deepEqual(
-    page.showing[0].references.map((cut) => [cut.title, cut.blocks[0].text]),
-    [[TODAY, "saw [[Mira]]"]],
-  );
-
-  // Zoomed, what links to the page is not shown.
-  const block = journal.showing[1].page.blocks[0].id;
-  const zoomed = await getView(it, { page: "Mira", block }, TOMORROW);
-  assert.deepEqual(zoomed.showing[0].references, []);
-
-  await closeLedgers();
-});
-
-test("every page in the view carries its properties, whether or not it has blocks", async () => {
-  const it = await project();
-  await addBlock(it, TODAY, "saw [[Mira]]");
-  await setProperty(it, TODAY, "Weather", "rain");
-  await setProperty(it, "Mira", "Role", "editor");
-
-  const journal = await getView(it, undefined, TOMORROW);
-  assert.deepEqual(
-    journal.showing.map((shown) => [shown.page.title, shown.properties]),
-    [
-      [TOMORROW, []],
-      [TODAY, [{ key: "Weather", value: "rain" }]],
-    ],
-  );
-
-  // A page with properties and no blocks.
-  const mira = await getView(it, { page: "Mira" }, TOMORROW);
-  assert.deepEqual(mira.showing[0].properties, [{ key: "Role", value: "editor" }]);
-
-  // Under a zoom too: drawing them or not is the window's call.
-  const block = journal.showing[1].page.blocks[0].id;
-  const zoomed = await getView(it, { page: TODAY, block }, TOMORROW);
-  assert.deepEqual(zoomed.showing[0].properties, [{ key: "Weather", value: "rain" }]);
 
   await closeLedgers();
 });

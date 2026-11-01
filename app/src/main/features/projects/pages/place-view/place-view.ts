@@ -1,41 +1,18 @@
 /**
- * The app's side of pages: what `@pbnotes/pages` does not know because it is
- * about this app rather than about the log. Which day is today and which place
- * is showing belong to the window; how much of the folder could be read, and
- * the fold's version, belong to the ledger, and are on the view.
+ * What shows at a place: the fold, read for one window. Which day is today
+ * and which place is showing belong to the window, and are handed in.
  *
- * Deliberately free of `electron` imports: callers hand in the view, which
- * keeps the store runnable under `node --test`.
+ * Pure: it reads the fold it is handed and holds nothing.
  */
 import { getPage, getPages, getPreviews, getProperties, getReferences } from "@pbnotes/pages";
-import type { Page, PagesView as Base } from "@pbnotes/pages";
+import type { Page, Pages } from "@pbnotes/pages";
 import type { Place, PlaceView } from "../../../../../shared/pages.ts";
-import type { LogStatus } from "../../../../../shared/log.ts";
-
-/**
- * The view `ledgers.ts` hands out: the package's, and how much of the log
- * could be read, which the package has no business knowing.
- */
-export type PagesView = Base & {
-  /**
-   * How much of the folder this ledger is kept in could be read, and what in
-   * it was skipped. Nothing here is an error to clear — a session whose log is
-   * still syncing is a normal state that usually heals itself — but none of it
-   * may be skipped without the user being able to find out.
-   */
-  readonly status: LogStatus;
-  /**
-   * The fold's version as `state` stands: one more every time it changes.
-   * Read beside `state`, with no `await` between, it labels what was read.
-   */
-  readonly version: number;
-};
 
 /**
  * Everything that shows at `place`: the one page, or with no place the
  * journal, each with what links to it, and what every ref quotes, labelled
- * with the version of the fold it was read at. Read in one turn, so the label
- * and the content cannot disagree.
+ * with `version`. Read in one turn, so the label and the content cannot
+ * disagree.
  *
  * Today is in the journal whether or not it has been written on: it is the
  * day the user is about to type in. Handed in, because which day that is
@@ -53,7 +30,7 @@ export type PagesView = Base & {
  * when someone has enough years in one ledger for that to show.
  */
 export function getView(
-  view: PagesView,
+  view: { readonly state: Pages; readonly version: number },
   at: Place | undefined,
   today: string,
 ): PlaceView {

@@ -19,8 +19,26 @@ import type { PagesSession } from "./pages-session/pages-session";
 //
 // This file is the pages side of that: each channel checks what arrives and
 // hands it to the session (`pages-session.ts`), which answers what shows at
-// a place and holds the order writes are recorded in. What only Electron can do — sending to the
-// windows, the image scheme, the native menu — is here too.
+// a place and holds the order writes are recorded in, or to the images of
+// what is open. What only Electron can do — sending to the windows, the image
+// scheme, the native menu — is here too.
+
+/**
+ * The images of what is open, as `index.ts` builds them. No event is written
+ * for one: an image is in the notes once a block's text links it, and that is
+ * an ordinary edit through the session, so images skip it.
+ *
+ * `save` refuses what cannot be reached, and settles what is open before its
+ * first `await`, as the session's `require` does: an image pasted just before
+ * that changed lands where it was pasted. `find` only reads, and opens
+ * nothing: with nothing open, or a drive that is not there, it finds nothing.
+ */
+export type Images = {
+  /** Stores an image and returns what a note links it by. */
+  save(bytes: Uint8Array, mime: string): Promise<string>;
+  /** The file a note's `images/<name>` is, or undefined. */
+  find(name: string): Promise<string | undefined>;
+};
 
 /**
  * Tells every window the fold's version, over `pages:changed`; each asks
@@ -45,8 +63,11 @@ function requirePlace(place: unknown): Place | undefined {
   };
 }
 
-/** Registers the pages channels, and the image scheme, against `session`. */
-export function registerPageIpc(session: PagesSession): void {
+/**
+ * Registers the pages channels against `session`, and the image channel and
+ * scheme against `images`.
+ */
+export function registerPageIpc(session: PagesSession, images: Images): void {
   ipcMain.handle(PAGE_CHANNELS.view, (_event, place: unknown, today: unknown) =>
     session.view(requirePlace(place), requireDay(today)),
   );
@@ -73,21 +94,21 @@ export function registerPageIpc(session: PagesSession): void {
       if (!(bytes instanceof Uint8Array)) {
         throw new TypeError("Expected bytes to be a Uint8Array");
       }
-      return session.addImage(bytes, requireString(mime, "mime"));
+      return images.save(bytes, requireString(mime, "mime"));
     },
   );
 
   /**
    * `pbnotes-image://images/<name>`: the image a note links as
    * `images/<name>`, out of whatever is open. The URL is built from note
-   * text, so the name is checked by `findImage` before it is anywhere near a
+   * text, so the name is checked by `find` before it is anywhere near a
    * path. The same name is the same bytes wherever it is kept — it is their
    * hash — so a URL that outlives a change of what is open cannot show the
    * wrong picture.
    */
   protocol.handle(IMAGE_SCHEME, async (request) => {
-    // Not decoded: a name that needed escaping is not one `findImage` takes.
-    const file = await session.findImage(
+    // Not decoded: a name that needed escaping is not one `find` takes.
+    const file = await images.find(
       new URL(request.url).pathname.slice(1),
     );
     return file
