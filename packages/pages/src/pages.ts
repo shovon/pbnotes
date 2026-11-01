@@ -7,9 +7,6 @@
  * No plumbing, and no import of any: not `@pbnotes/ledger`, and no `node:`
  * module, because the app's renderer bundles this too. A caller hands the
  * commands a view whose `dispatch` writes to its own log.
- *
- * What several machines writing at once does to a page is
- * `app/docs/block-sync.md`.
  */
 import { BLOCK_HANDLES, reduce } from "./blocks/blocks.ts";
 import type { BlockState, PageEvent } from "./blocks/blocks.ts";
