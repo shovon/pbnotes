@@ -63,12 +63,19 @@ export type PlaceView = {
   previews: [string, string | null][];
 };
 
+/** What `find` answers with: page titles, then blocks. */
+export type Matches = {
+  pages: string[];
+  blocks: { id: string; page: string; text: string }[];
+};
+
 export const PAGE_CHANNELS = {
   view: 'pages:view',
   /** Main to renderer: the fold's version, and nothing else. */
   changed: 'pages:changed',
   locate: 'pages:locate',
   search: 'pages:search',
+  find: 'pages:find',
   command: 'pages:command',
   addImage: 'pages:add-image',
   blockMenu: 'pages:block-menu',
@@ -109,9 +116,15 @@ export type PagesApi = {
   /**
    * The titles of the project's pages that contain `query`, ignoring case:
    * those starting with it first, then A to Z, a handful at most. What the
-   * `[[` autocomplete lists (#29); #28 will search block text through it too.
+   * `[[` autocomplete lists (#29); `find` lists them for the Cmd/Ctrl+K box (#28).
    */
   search(query: string): Promise<string[]>;
+  /**
+   * What the Cmd/Ctrl+K box lists for `query` (#28): the titles `search`
+   * gives, then the blocks whose text contains it, each with the page it is
+   * on and what it says with the markdown taken off.
+   */
+  find(query: string): Promise<Matches>;
   /**
    * How much of the project's log folder could be read, and what the fold
    * could not use.

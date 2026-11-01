@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BLOCK_HANDLES, indented, outdented, predict, reduce } from "./blocks.ts";
 import { NAMESPACE } from "../events/events.ts";
-import { getPage, getReferences, searchPages } from "../pages.ts";
+import { getPage, getReferences, read, searchBlocks, searchPages } from "../pages.ts";
 import type { Pages } from "../pages.ts";
 import type { Block, PageEvent } from "./blocks.ts";
 
@@ -309,4 +309,38 @@ test("a malformed block event is skipped whole, and nothing that reads the pages
   ]);
   assert.deepEqual(getPage(state, "undefined").blocks.map((it) => it.id), ["d"]);
   assert.doesNotThrow(() => searchPages(state, "x"));
+});
+
+/**
+ * #28: search finds a block on a named page, on a journal day and nested
+ * under another, ignoring case, by what it says rather than how it is
+ * written: link brackets and marks match nothing. Days come first, newest
+ * first, then named pages, and children after their parent.
+ */
+test("searchBlocks matches what a block says, on every page and at any depth", () => {
+  const created = (id: string, page: string, text: string) =>
+    event(`${NAMESPACE}block.created`, 1, { page, id, text });
+  const state = [
+    created("s1", "Shed", "Ask **Mira** about the door"),
+    created("o1", "2026-09-20", "nothing here"),
+    created("t1", TODAY, "Coffee"),
+    created("t2", TODAY, "with [[Mira]] and `mira()`"),
+    event(`${NAMESPACE}block.indented`, 1, { page: TODAY, id: "t2", parent: "t1" }),
+  ].reduce(reduce, empty());
+
+  assert.deepEqual(searchBlocks(state, "MIRA"), [
+    { id: "t2", page: TODAY, text: "with Mira and mira()" },
+    { id: "s1", page: "Shed", text: "Ask Mira about the door" },
+  ]);
+  assert.deepEqual(searchBlocks(state, "[["), []);
+  assert.deepEqual(searchBlocks(state, "**"), []);
+  assert.deepEqual(searchBlocks(state, "  "), []);
+  assert.deepEqual(searchBlocks(state, "mira", 1).map((it) => it.id), ["t2"]);
+});
+
+test("plain text keeps tags, aliases and paragraphs apart, and drops an empty ref", () => {
+  assert.equal(read("met #Mira").plain, "met #Mira");
+  assert.equal(read("[her]([[Mira]])").plain, "her");
+  assert.equal(read("one\n\ntwo").plain, "one two");
+  assert.equal(read("see ((abc123))").plain, "see");
 });

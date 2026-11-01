@@ -37,6 +37,7 @@ const pages: PagesApi = {
   },
   locate: (blockId) => ipcRenderer.invoke(PAGE_CHANNELS.locate, blockId),
   search: (query) => ipcRenderer.invoke(PAGE_CHANNELS.search, query),
+  find: (query) => ipcRenderer.invoke(PAGE_CHANNELS.find, query),
   status: () => ipcRenderer.invoke(PAGE_CHANNELS.status),
   run: (command) => ipcRenderer.invoke(PAGE_CHANNELS.command, command),
   addImage: (bytes, mime) =>

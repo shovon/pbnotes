@@ -80,6 +80,10 @@ export function registerPageIpc(session: PagesSession, images: Images): void {
     session.search(requireString(query, "query")),
   );
 
+  ipcMain.handle(PAGE_CHANNELS.find, (_event, query: unknown) =>
+    session.find(requireString(query, "query")),
+  );
+
   ipcMain.handle(PAGE_CHANNELS.status, () => session.status());
 
   // Every write, on one channel (#158): the command's shape is checked

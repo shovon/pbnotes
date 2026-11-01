@@ -36,12 +36,15 @@ type Reading = {
   refs: string[];
   /** What a ref to it shows; see `preview`. */
   preview: string;
+  /** What it says with the markdown taken off; see `plain`. */
+  plain: string;
 };
 
 const readings = new Map<string, Reading>();
 
 type Node = {
   type: string;
+  value?: string;
   data?: { hProperties?: { href?: string; dataBlockRef?: string } };
   position?: { start: { offset: number }; end: { offset: number } };
   children?: Node[];
@@ -70,6 +73,28 @@ function preview(text: string, root: Node): string {
   return from === undefined || to === undefined ? "" : text.slice(from, to);
 }
 
+/** Nodes whose children are blocks of their own, so their words are kept apart. */
+const BLOCKS = new Set(["root", "list", "listItem", "blockquote", "table", "tableRow"]);
+
+/**
+ * What a text says, as words: code and math as written, a link by its label,
+ * and a wikilink's label without the `[[ ]]` it shows with, so a search for
+ * `Mira` finds `[[Mira]]` and one for `[[` finds nothing. A ref with no label
+ * says nothing: the words it shows are another block's. One line, so it can
+ * be shown as one.
+ *
+ * Taken after the plugins run, so links are the nodes the renderer draws.
+ */
+function plain(root: Node): string {
+  const words = (node: Node): string => {
+    if (node.value !== undefined) return node.value;
+    if (node.type === "break") return " ";
+    const inner = (node.children ?? []).map(words).join(BLOCKS.has(node.type) ? " " : "");
+    return node.type === "wikilink" ? inner.replace(/^\[\[|\]\]$/g, "") : inner;
+  };
+  return words(root).replace(/\s+/g, " ").trim();
+}
+
 export function read(text: string): Reading {
   const memo = readings.get(text);
   if (memo) return memo;
@@ -78,6 +103,7 @@ export function read(text: string): Reading {
     links: [],
     refs: [],
     preview: preview(text, root as Node),
+    plain: "",
   };
   const walk = (node: Node): void => {
     const { href, dataBlockRef } = node.data?.hProperties ?? {};
@@ -87,7 +113,9 @@ export function read(text: string): Reading {
     }
     node.children?.forEach(walk);
   };
-  walk(md.runSync(root) as Node);
+  const tree = md.runSync(root) as Node;
+  walk(tree);
+  reading.plain = plain(tree);
   readings.set(text, reading);
   return reading;
 }
