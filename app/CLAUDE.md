@@ -24,7 +24,9 @@ The `projects` table and the `projects:*` IPC surface are **not** dead code, how
 
 Two stores, and they do not swap. SQLite holds the projects registry and config; the append-only event log in `@pbnotes/ledger` (`../packages/ledger/`) holds project content. Content is never moved into SQLite and the registry is never moved onto the log. A relational store as the system of record would fix the shape of the content forever, and the registry is bookkeeping that gains nothing from being event-sourced. See "The folder is the ledger" in `../DNA.md`.
 
-**Content is written in the user's project folder**, which is the ledger itself (`LEDGER`, `AGENTS.md` and one directory per writer at its top), never under `userData`. The folder is the point: notes back up, sync and move with it, and losing the app's support directory must never lose a word the user wrote. `userData` holds `notes.db` and nothing else that matters.
+A third store, the bench (`bench.db`), holds this machine's state that only means something to the product, such as recent pages. It is a convenience, never a record, and it is not `notes.db`: a table goes in `notes.db` only if it would exist whatever the product is. See "The bench" in `../DNA.md`.
+
+**Content is written in the user's project folder**, which is the ledger itself (`LEDGER`, `AGENTS.md` and one directory per writer at its top), never under `userData`. The folder is the point: notes back up, sync and move with it, and losing the app's support directory must never lose a word the user wrote. `userData` holds `notes.db` and nothing else that matters: `bench.db` is there too, and losing it costs only conveniences.
 
 ## Conventions
 

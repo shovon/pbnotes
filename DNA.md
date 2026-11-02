@@ -16,6 +16,7 @@ The app remembers which folders the user pointed it at: the `projects` table in 
 - A project's id is a UUID, not its path, so a folder can move and keep its id.
 - A folder that can't be reached is reported as `unknown`, never pruned. An unmounted drive and a deleted folder look the same.
 - Losing `userData` costs the user this list and nothing else. They pick the folders again and everything is still there.
+- `notes.db` holds only what would exist whatever the product is: the folder list, and where the window was. A table that only means something to one product, such as a list of page titles, goes on that product's bench (below), even if it's only a convenience. `notes.db`'s migrations are append-only and outlive every product, so a product's table there would stay in its schema forever.
 
 "Project" is this codebase's name for one entry in that list. Whatever the product becomes, there is a list of folders, and each one is a ledger.
 
@@ -67,8 +68,19 @@ Everything that gives events meaning, and everything that draws them:
 - The app's `graph:*` IPC, `Command`, `Place`, `PlaceView`.
 - The renderer, all of it.
 - The CLI's `pbnotes append`, which writes `block.created`.
+- The bench, and everything on it.
 
-These should be easy to change. Don't write rules for them as if they were permanent, and don't let them leak below the line: the ledger never imports `graph`, and the projects registry never imports anything a project contains.
+These should be easy to change. Don't write rules for them as if they were permanent, and don't let them leak below the line: the ledger never imports `graph`, and the projects registry never imports anything a project contains, nor stores it.
+
+### The bench
+
+Some state belongs to this machine and only means something to the product: the pages opened lately, whether the sidebar is collapsed, where a project was left. It isn't the ledger's, because it is view state and not something the user wrote, and it isn't `notes.db`'s, because it wouldn't exist under another product. It goes on the bench: the product's own store, in `bench.db` in `userData`. The ledger is the book; the bench is what's left lying beside it while you work with it on this machine.
+
+- **Nothing on the bench is needed to show what the user wrote.** Losing `bench.db` costs conveniences and nothing else. Anything that should be shared with other writers or devices, or kept as a record, is an event on the ledger.
+- The product owns it: its own migrations, kept with the product's code, not in `db.ts`.
+- It is keyed by project id, the registry's UUID. That is the only thing it knows about the registry, and the registry knows nothing about it. Rows for a project that has been removed are harmless and can be ignored or swept up; there is no foreign key across the two files.
+- `index.ts` hands it in, the way it hands the graph its ledger, so nothing on the bench asks which project is open.
+- A pivot leaves the old `bench.db` behind, never migrated into the new product's, and the new product starts a bench of its own under a name of its own.
 
 ### What a pivot can't undo
 
