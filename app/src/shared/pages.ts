@@ -51,9 +51,21 @@ export type PlaceView = {
    * Each with what links to it, cut down to the blocks that do; none under a
    * zoom, where what links to one block is not what links to its page. And
    * each with its properties, in every mode: whether to draw them is the
-   * view's.
+   * view's. And how many times the page has been deleted: a window on it
+   * that sees this go up knows it was deleted, not merely emptied.
+   *
+   * `refsTo` is how many blocks on other pages hold a `((id))` to a block
+   * on this one: what deleting it would leave showing as missing. Only on a
+   * page's own view; 0 on the journal and under a zoom, where no delete is
+   * offered and the walk would be paid for nothing.
    */
-  showing: { page: Page; references: Page[]; properties: Property[] }[];
+  showing: {
+    page: Page;
+    references: Page[];
+    properties: Property[];
+    deletions: number;
+    refsTo: number;
+  }[];
   /**
    * What each `((id))` in the project shows: the id and the Markdown of that
    * block's first paragraph, or null for an id the project does not have.
@@ -79,6 +91,7 @@ export const PAGE_CHANNELS = {
   command: 'pages:command',
   addImage: 'pages:add-image',
   blockMenu: 'pages:block-menu',
+  pageMenu: 'pages:page-menu',
   status: 'pages:status',
 } as const;
 
@@ -160,7 +173,26 @@ export type PagesApi = {
    * dismissed, or copied.
    */
   blockMenu(blockId: string, offer?: BlockMenuOffer): Promise<BlockMenuPick | null>;
+  /**
+   * Pops the native menu for the page on show, its top-left corner at `at`
+   * in the window. Main knows nothing of which page: it draws what `offer`
+   * says and answers the pick back, as `blockMenu` does. Resolves once the
+   * menu closes, to the pick, or null when nothing was picked.
+   */
+  pageMenu(at: { x: number; y: number }, offer?: PageMenuOffer): Promise<PageMenuPick | null>;
 };
+
+/**
+ * What the page menu offers. Delete Page… is always listed, so the action is
+ * there to be found; it is enabled only when `delete` is true, since a page
+ * with nothing on it has nothing to delete.
+ */
+export type PageMenuOffer = {
+  delete?: boolean;
+};
+
+/** An item of the page menu the user picked. */
+export type PageMenuPick = 'delete';
 
 /** What a block's menu offers beyond copying its reference. */
 export type BlockMenuOffer = {
@@ -243,4 +275,10 @@ export type Command =
    * renames in that order. Main refuses a `to` the page already has, rather
    * than overwrite it, and a `from` it does not have.
    */
-  | { type: 'renameProperty'; title: string; from: string; to: string };
+  | { type: 'renameProperty'; title: string; from: string; to: string }
+  /**
+   * Appends a `page.deleted` event: the page's blocks and properties are
+   * gone from the fold, and stay on disk. A page with nothing on it resolves
+   * with nothing written, since the delete would change nothing.
+   */
+  | { type: 'deletePage'; title: string };

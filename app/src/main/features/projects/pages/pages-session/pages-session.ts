@@ -10,6 +10,7 @@
 import {
   addBlock,
   deleteBlock,
+  deletePage,
   editBlock,
   indentBlock,
   locateBlock,
@@ -161,6 +162,8 @@ function apply(view: PagesView, command: Command): Promise<unknown> {
       return removeProperty(view, command.title, command.key);
     case "renameProperty":
       return renameProperty(view, command.title, command.from, command.to);
+    case "deletePage":
+      return deletePage(view, command.title);
     default: {
       // Does not compile once `Command` has a case this switch lacks.
       const unhandled: never = command;

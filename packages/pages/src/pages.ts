@@ -17,6 +17,8 @@ import {
   reduce as reduceProperties,
 } from "./properties/properties.ts";
 import type { PropertyEvent, PropertyState } from "./properties/properties.ts";
+import { DELETE_HANDLES, reduce as reduceDeletes } from "./deletes/deletes.ts";
+import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
 import { search } from "./search/search.ts";
 import { titleOf } from "./titles/titles.ts";
 
@@ -71,6 +73,14 @@ export type {
 } from "./properties/properties.ts";
 export { removeProperty, renameProperty, setProperty } from "./properties/commands.ts";
 export {
+  deletePage,
+  getDeletions,
+  getRefsTo,
+  hasContent,
+  pageDeleted,
+} from "./deletes/deletes.ts";
+export type { DeleteEvent, PageDeleted } from "./deletes/deletes.ts";
+export {
   addBlock,
   blockCreated,
   blockDeleted,
@@ -86,21 +96,25 @@ export { inCode, read } from "./reading/reading.ts";
 export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
 
 /**
- * Every page, by `canonicalize`: the blocks on it, its properties, and the
- * first spelling the fold saw for it.
+ * Every page, by `canonicalize`: the blocks on it, its properties, the first
+ * spelling the fold saw for it, and how many times it has been deleted.
  *
  * `Map` throughout, so a title of `__proto__` is an ordinary key (#62), and
  * it survives the structured clone to the renderer (#146).
  */
-export type Pages = BlockState & PropertyState;
+export type Pages = BlockState & PropertyState & DeleteState;
 
 /**
  * Event type → the payload `v` this build folds and writes. Public contract
  * with `NAMESPACE`; see the README.
  */
-export const HANDLES: Record<PageEvent["type"] | PropertyEvent["type"], number> = {
+export const HANDLES: Record<
+  PageEvent["type"] | PropertyEvent["type"] | DeleteEvent["type"],
+  number
+> = {
   ...BLOCK_HANDLES,
   ...PROPERTY_HANDLES,
+  ...DELETE_HANDLES,
 };
 
 /**
@@ -116,9 +130,14 @@ export const pagesFold = {
   reduce: (state: Pages, event: { type: string; v: number; payload: unknown }): Pages =>
     Object.hasOwn(HANDLES, event.type) &&
     event.v <= HANDLES[event.type as keyof typeof HANDLES]
-      ? reduceProperties(reduce(state, event), event)
+      ? reduceDeletes(reduceProperties(reduce(state, event), event), event)
       : state,
-  initial: { blocks: new Map(), titles: new Map(), properties: new Map() } as Pages,
+  initial: {
+    blocks: new Map(),
+    titles: new Map(),
+    properties: new Map(),
+    deletions: new Map(),
+  } as Pages,
 };
 
 /**

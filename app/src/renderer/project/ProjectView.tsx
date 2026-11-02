@@ -7,11 +7,13 @@ import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
 import type { PageViewPages } from './PageView/PageView';
 import { imageTarget, placeNew } from './placement/placement';
-import { back, go, rezoom } from './trail/trail';
+import { back, go, leave, rezoom } from './trail/trail';
 import { samePlace } from './held/held';
 import type { Held } from './held/held';
 import { createFetcher } from './fetcher/fetcher';
 import Finder from './Finder/Finder';
+import PageMenu from './PageMenu/PageMenu';
+import { deletedSince } from './deleted/deleted';
 import { opensFinder } from './Finder/shortcut/shortcut';
 
 /**
@@ -26,6 +28,7 @@ export type ProjectViewPages = PageViewPages &
     | 'locate'
     | 'find'
     | 'addImage'
+    | 'pageMenu'
   >;
 
 /**
@@ -79,6 +82,25 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
   latest.current = place;
 
   /**
+   * The view last drawn, to tell the next one against: a page deleted while
+   * the window is on it (`deleted/`). Read where the answer lands, not in an
+   * effect, so the step off the page is taken in the same render as the
+   * answer, before anything else reacts to what is now missing from it.
+   */
+  const shown = useRef<Held | null>(null);
+  /** Pages this window is deleting itself: it has left them already. */
+  const deleting = useRef(new Set<string>());
+  /** What to do about a page deleted elsewhere; rebound each render. */
+  const deletedElsewhere = useRef<(title: string) => void>(() => undefined);
+  deletedElsewhere.current = (gone) => {
+    if (deleting.current.has(canonicalize(gone))) return;
+    setTrail((trail) => leave(trail, gone));
+    act(async () => {
+      throw new Error(`“${gone}” was deleted in another window or on another device.`);
+    });
+  };
+
+  /**
    * When to ask main what shows here, and which answer to draw (`fetcher/`).
    * A failure goes through `act`, so a project that cannot be reached still
    * says so; the fetch itself does not, since it is not a gesture and runs
@@ -88,7 +110,12 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
     createFetcher({
       view: (at) => pages.view(at, today(now())),
       where: () => latest.current,
-      onAnswer: setHeld,
+      onAnswer: (next) => {
+        const gone = deletedSince(shown.current, next);
+        shown.current = next;
+        setHeld(next);
+        if (gone !== undefined) deletedElsewhere.current(gone);
+      },
       onError: (error) => act(() => Promise.reject(error)),
     }),
   );
@@ -216,6 +243,30 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
       throw new Error('That block no longer exists.');
     });
   }, [zoom, zoomed]);
+
+  /**
+   * The ⋯ menu's delete, once confirmed. Off the page first, back past every
+   * stop on it (`leave`), then the write: the view this window asks for next
+   * is wherever it landed, never the page that is going.
+   */
+  const deletePage = (gone: string) =>
+    act(async () => {
+      const key = canonicalize(gone);
+      deleting.current.add(key);
+      setTrail((trail) => leave(trail, gone));
+      try {
+        await bridge.run({ type: 'deletePage', title: gone });
+      } finally {
+        // The notice of it reaches this window before the reply does.
+        deleting.current.delete(key);
+      }
+    });
+
+  /** The page on show, for its ⋯ menu: its own view, not under a zoom. */
+  const own =
+    held?.place && !held.place.block && samePlace(held.place, place)
+      ? held.view.showing[0]
+      : undefined;
 
   /**
    * Every wikilink in every block lands here, in the capture phase, before
@@ -419,6 +470,20 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
             </button>,
             titlebar,
           )}
+
+        {own && (
+          <PageMenu
+            title={own.page.title}
+            canDelete={own.page.blocks.length > 0 || own.properties.length > 0}
+            impact={{
+              links: own.references.reduce((sum, it) => sum + it.blocks.length, 0),
+              refs: own.refsTo,
+            }}
+            pages={pages}
+            onDelete={() => deletePage(own.page.title)}
+            act={act}
+          />
+        )}
 
         <Previews value={previews}>
           {held === null ? (

@@ -35,3 +35,15 @@ export function rezoom(trail: Place[], block?: string): Place[] {
   const next = { page: trail.at(-1)?.page ?? "", block };
   return same(rest.at(-1), next) ? rest : [...rest, next];
 }
+
+/**
+ * Off a page that was just deleted: back past every stop at the end of the
+ * trail that is on it, the page itself and any zoom into one of its blocks,
+ * to the first that is somewhere else. With nothing left, the journal.
+ */
+export function leave(trail: Place[], page: string): Place[] {
+  const key = canonicalize(page);
+  let end = trail.length;
+  while (end > 0 && canonicalize(trail[end - 1].page) === key) end--;
+  return trail.slice(0, end);
+}

@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blockCreated, pagesFold, propertySet } from "@pbnotes/pages";
+import { blockCreated, pageDeleted, pagesFold, propertySet } from "@pbnotes/pages";
 import type { Pages } from "@pbnotes/pages";
 import { getView } from "./place-view.ts";
 
@@ -71,4 +71,20 @@ test("every page in the view carries its properties, whether or not it has block
   // Under a zoom too: drawing them or not is the window's call.
   const zoomed = getView(view, { page: TODAY, block: "b1" }, TOMORROW);
   assert.deepEqual(zoomed.showing[0].properties, [{ key: "Weather", value: "rain" }]);
+});
+
+test("every page in the view carries how many times it has been deleted", () => {
+  const view = folded(
+    blockCreated("Mira", "one", undefined, "b1"),
+    pageDeleted("Mira"),
+    blockCreated("Mira", "two", undefined, "b2"),
+    pageDeleted("mira"),
+    blockCreated(TODAY, "today", undefined, "b3"),
+  );
+  assert.equal(getView(view, { page: "Mira" }, TODAY).showing[0].deletions, 2);
+  assert.equal(getView(view, { page: "Mira", block: "b2" }, TODAY).showing[0].deletions, 2);
+  assert.deepEqual(
+    getView(view, undefined, TODAY).showing.map((shown) => shown.deletions),
+    [0],
+  );
 });

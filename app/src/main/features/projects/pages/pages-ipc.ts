@@ -9,9 +9,10 @@ import {
 import type { MenuItemConstructorOptions } from "electron";
 import { pathToFileURL } from "node:url";
 import { IMAGE_SCHEME, PAGE_CHANNELS } from "../../../../shared/pages";
-import type { BlockMenuPick, Place } from "../../../../shared/pages";
+import type { BlockMenuPick, PageMenuPick, Place } from "../../../../shared/pages";
 import { requireString } from "../../../ipc";
 import { readOffer } from "./block-menu/block-menu";
+import { readOffer as readPageOffer, readPoint } from "./page-menu/page-menu";
 import { requireCommand, requireDay, requireTitle } from "./command/command";
 import type { PagesSession } from "./pages-session/pages-session";
 
@@ -159,6 +160,31 @@ export function registerPageIpc(session: PagesSession, images: Images): void {
         }
         Menu.buildFromTemplate(items).popup({
           window,
+          callback: () => setTimeout(() => resolve(null), 100),
+        });
+      });
+    },
+  );
+
+  // The page's menu, from its ⋯ button. Everything on it is answered back
+  // for the window to do, and settles the way the block menu's does: on the
+  // first of a `click` and the close, with the close a moment late.
+  ipcMain.handle(
+    PAGE_CHANNELS.pageMenu,
+    (event, at: unknown, offer: unknown) => {
+      const point = readPoint(at);
+      const offered = readPageOffer(offer);
+      const window = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+      return new Promise<PageMenuPick | null>((resolve) => {
+        Menu.buildFromTemplate([
+          {
+            label: "Delete Page…",
+            enabled: offered.delete === true,
+            click: () => resolve("delete"),
+          },
+        ]).popup({
+          window,
+          ...point,
           callback: () => setTimeout(() => resolve(null), 100),
         });
       });

@@ -17,6 +17,7 @@ test("each command passes with the fields it reads", () => {
     { type: "setProperty", title: "Mira", key: "Status", value: "" },
     { type: "removeProperty", title: "Mira", key: "Status" },
     { type: "renameProperty", title: "Mira", from: "Owner", to: "Author" },
+    { type: "deletePage", title: "Mira" },
   ];
   for (const command of good) assert.deepEqual(requireCommand(command), command);
 });
@@ -43,6 +44,10 @@ test("a missing or wrong-typed field is refused", () => {
     { type: "removeProperty", title: "Mira", key: 1 },
     { type: "renameProperty", title: "Mira", from: "Owner" },
     { type: "renameProperty", title: "Mira", from: "Owner", to: "Author " },
+    { type: "deletePage" },
+    { type: "deletePage", title: 3 },
+    { type: "deletePage", title: "" },
+    { type: "deletePage", title: " Mira" },
   ];
   for (const command of bad) {
     assert.throws(() => requireCommand(command), TypeError, JSON.stringify(command));

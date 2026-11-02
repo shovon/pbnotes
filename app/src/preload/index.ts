@@ -44,6 +44,7 @@ const pages: PagesApi = {
     ipcRenderer.invoke(PAGE_CHANNELS.addImage, bytes, mime),
   blockMenu: (blockId, offer) =>
     ipcRenderer.invoke(PAGE_CHANNELS.blockMenu, blockId, offer),
+  pageMenu: (at, offer) => ipcRenderer.invoke(PAGE_CHANNELS.pageMenu, at, offer),
 };
 
 // Only this explicit surface crosses the context bridge; the renderer never
