@@ -1,4 +1,5 @@
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync } from 'node:sqlite';
+import { openMigrated } from './sqlite.ts';
 
 /**
  * Ordered schema migrations. Append only, never edit an entry that has
@@ -74,40 +75,7 @@ const MIGRATIONS: string[] = [
    DROP TABLE device;`,
 ];
 
-/**
- * Opens and migrates the database at `file`. No handle is kept here: the
- * caller owns what this returns, hands it to whatever needs it, and closes it.
- * `':memory:'` gives a test a fresh, migrated database.
- */
+/** Opens and migrates `notes.db` at `file`; `':memory:'` for a test. */
 export function openDatabase(file: string): DatabaseSync {
-  const db = new DatabaseSync(file);
-
-  // WAL keeps reads from blocking writes and survives a hard kill far better
-  // than the default rollback journal.
-  db.exec('PRAGMA journal_mode = WAL');
-  db.exec('PRAGMA foreign_keys = ON');
-
-  migrate(db);
-  return db;
-}
-
-function migrate(database: DatabaseSync): void {
-  const row = database.prepare('PRAGMA user_version').get() as {
-    user_version: number;
-  };
-  const applied = row.user_version;
-
-  for (let version = applied; version < MIGRATIONS.length; version++) {
-    database.exec('BEGIN');
-    try {
-      database.exec(MIGRATIONS[version]);
-      // PRAGMA does not accept bound parameters, hence the interpolation. The
-      // value is a loop index, never user input.
-      database.exec(`PRAGMA user_version = ${version + 1}`);
-      database.exec('COMMIT');
-    } catch (error) {
-      database.exec('ROLLBACK');
-      throw error;
-    }
-  }
+  return openMigrated(file, MIGRATIONS);
 }
