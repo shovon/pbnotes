@@ -8,8 +8,8 @@
  * flight folded over it — so the rules run under `node --test`. The reasons
  * behind each rule are on the handler in `PageView.tsx` that applies it.
  */
-import { lastLeaf, locate } from '@pbnotes/pages';
-import type { Block } from '@pbnotes/pages';
+import { lastLeaf, locate } from '@pbnotes/graph';
+import type { Block } from '@pbnotes/graph';
 import { placeNew } from '../../placement/placement.ts';
 
 /** A box opened on a block, with the caret this far into its text. */

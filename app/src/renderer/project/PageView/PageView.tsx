@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { locate, predict, predictProperties } from '@pbnotes/pages';
-import type { Block as BlockType, Page, Property } from '@pbnotes/pages';
-import type { PagesApi } from '../../../shared/pages';
+import { locate, predict, predictProperties } from '@pbnotes/graph';
+import type { Block as BlockType, Page, Property } from '@pbnotes/graph';
+import type { GraphApi } from '../../../shared/graph';
 import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
@@ -17,7 +17,7 @@ import {
   renameProperty,
   setProperty,
 } from './steps/steps';
-import type { Step, StepsPages } from './steps/steps';
+import type { Step, StepsGraph } from './steps/steps';
 import {
   afterCancel,
   afterDelete,
@@ -42,10 +42,10 @@ type Writing = { after?: string } | null;
  * steps it writes through call. A cut under the page is another `PageView`,
  * so `LinkedReferences` needs no more than this.
  */
-export type PageViewPages = StepsPages & Pick<PagesApi, 'search' | 'blockMenu'>;
+export type PageViewGraph = StepsGraph & Pick<GraphApi, 'search' | 'blockMenu'>;
 
 type Props = {
-  pages: PageViewPages;
+  graph: PageViewGraph;
   /** The page as main last showed it. */
   page: Page;
   /**
@@ -103,7 +103,7 @@ type Props = {
  * named page, and a page the same component as a cut of one.
  */
 export default function PageView({
-  pages,
+  graph,
   page: sent,
   version,
   references,
@@ -179,7 +179,7 @@ export default function PageView({
     id: string,
     by: 1 | -1,
   ): Step | undefined =>
-    by === 1 ? indent(pages, blocks, id) : outdent(pages, blocks, id);
+    by === 1 ? indent(graph, blocks, id) : outdent(graph, blocks, id);
   const title = page.title;
   const rooted = zoom ? locate(page.blocks, zoom) : undefined;
   const root = rooted?.siblings[rooted.at];
@@ -220,7 +220,7 @@ export default function PageView({
   const commitEdit = (block: BlockType, text: string) => {
     setEditingId(null);
     if (text === block.text) return;
-    act(() => write(edit(pages, block.id, text)));
+    act(() => write(edit(graph, block.id, text)));
   };
 
   /**
@@ -270,8 +270,8 @@ export default function PageView({
     // as drawn, the view would show the whole page until the zoom has moved.
     act(() =>
       next.unzoom
-        ? pages.run({ type: 'deleteBlock', blockId: block.id })
-        : write(remove(pages, block.id)),
+        ? graph.run({ type: 'deleteBlock', blockId: block.id })
+        : write(remove(graph, block.id)),
     );
   };
 
@@ -288,7 +288,7 @@ export default function PageView({
    */
   const openMenu = (block: BlockType) =>
     act(async () => {
-      const pick = await pages.blockMenu(block.id, { delete: true });
+      const pick = await graph.blockMenu(block.id, { delete: true });
       if (pick !== 'delete') return;
       const now = latest.current;
       const next = afterRemove(now.blocks, block.id, {
@@ -304,8 +304,8 @@ export default function PageView({
       // Not predicted when the zoom moves, for the reason `commitDelete`
       // gives.
       await (next.unzoom
-        ? pages.run({ type: 'deleteBlock', blockId: block.id })
-        : write(remove(pages, block.id)));
+        ? graph.run({ type: 'deleteBlock', blockId: block.id })
+        : write(remove(graph, block.id)));
     });
 
   /**
@@ -342,7 +342,7 @@ export default function PageView({
     setCaret(at);
     act(() =>
       write(
-        ...(text === block.text ? [] : [edit(pages, block.id, text)]),
+        ...(text === block.text ? [] : [edit(graph, block.id, text)]),
         moved,
       ),
     );
@@ -398,7 +398,7 @@ export default function PageView({
     // Named here, so the block is drawn — and the next box opened beneath
     // it, or this one reopened on it — before main has heard of it.
     const id = crypto.randomUUID();
-    const create = add(pages, id, title, text, plan.after);
+    const create = add(graph, id, title, text, plan.after);
     const steps: Step[] = [create];
     // Each move resolved on the page as the steps before it leave it. One
     // with nowhere to go — the first block of an empty page going in, a
@@ -453,20 +453,20 @@ export default function PageView({
   const commitProperties = (writes: Write[]) => {
     const steps = writes.flatMap((it) =>
       it.kind === 'set'
-        ? [setProperty(pages, title, it.key, it.value)]
-        : renameProperty(pages, title, it.from, it.to, it.value),
+        ? [setProperty(graph, title, it.key, it.value)]
+        : renameProperty(graph, title, it.from, it.to, it.value),
     );
     act(() => write(...steps));
   };
 
   /** The × on a row. */
-  const removeRow = (key: string) => act(() => write(removeProperty(pages, title, key)));
+  const removeRow = (key: string) => act(() => write(removeProperty(graph, title, key)));
 
   /** The box for a block that does not exist yet. */
   const newBlockEditor = (
     <BlockEditor
       placeholder="Write something…"
-      findPages={pages.search}
+      findPages={graph.search}
       onCancel={() => setWriting(null)}
       onBackspace={cancelNew}
       onCommit={(text) => commitNew(text, { then: 'stop' })}
@@ -492,7 +492,7 @@ export default function PageView({
       <BlockEditor
         initial={block.text}
         caret={caret}
-        findPages={pages.search}
+        findPages={graph.search}
         onCancel={() => setEditingId(null)}
         onCommit={(text) => commitEdit(block, text)}
         onBackspace={() => commitDelete(block)}
@@ -608,7 +608,7 @@ export default function PageView({
       {properties && !reference && !root && (!linked || properties.length > 0) && (
         <Properties
           rows={properties}
-          findKeys={pages.search}
+          findKeys={graph.search}
           onCommit={commitProperties}
           onRemove={removeRow}
         />
@@ -659,10 +659,10 @@ export default function PageView({
       </div>
 
       {/* After the page, not in it: the blank space in the page is
-          click-to-write, and these are other pages' blocks. */}
+          click-to-write, and these are other graph' blocks. */}
       {references && (
         <LinkedReferences
-          pages={pages}
+          graph={graph}
           references={references}
           version={version}
           act={act}

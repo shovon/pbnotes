@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { PagesApi } from '../../../shared/pages';
+import type { GraphApi } from '../../../shared/graph';
 import type { Act } from '../../ui';
 import DeletePage from './DeletePage/DeletePage';
 import type { DeleteImpact } from './DeletePage/wording/wording';
@@ -15,7 +15,7 @@ export type PageMenuProps = {
    */
   impact: DeleteImpact;
   /** The part of the bridge the menu calls. */
-  pages: Pick<PagesApi, 'pageMenu'>;
+  graph: Pick<GraphApi, 'pageMenu'>;
   /** The delete was confirmed. */
   onDelete: () => void;
   act: Act;
@@ -31,14 +31,14 @@ export type PageMenuProps = {
  * Page… is always listed, and disabled for a page with nothing on it.
  * Choosing it always confirms, saying what the delete would leave behind.
  */
-export default function PageMenu({ title, canDelete, impact, pages, onDelete, act }: PageMenuProps) {
+export default function PageMenu({ title, canDelete, impact, graph, onDelete, act }: PageMenuProps) {
   const button = useRef<HTMLButtonElement>(null);
   const [confirming, setConfirming] = useState(false);
 
   const open = () =>
     act(async () => {
       const rect = button.current?.getBoundingClientRect();
-      const pick = await pages.pageMenu(
+      const pick = await graph.pageMenu(
         { x: rect?.left ?? 0, y: rect?.bottom ?? 0 },
         { delete: canDelete },
       );

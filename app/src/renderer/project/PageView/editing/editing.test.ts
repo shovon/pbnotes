@@ -1,8 +1,8 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { locate } from '@pbnotes/pages';
-import type { Block } from '@pbnotes/pages';
+import { locate } from '@pbnotes/graph';
+import type { Block } from '@pbnotes/graph';
 import {
   afterCancel,
   afterDelete,

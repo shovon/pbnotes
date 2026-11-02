@@ -1,7 +1,7 @@
-import type { Page } from '@pbnotes/pages';
+import type { Page } from '@pbnotes/graph';
 import type { Act } from '../../../ui';
 import PageView from '../PageView';
-import type { PageViewPages } from '../PageView';
+import type { PageViewGraph } from '../PageView';
 
 /**
  * What links to the page above, under it: each page that names this one,
@@ -13,13 +13,13 @@ import type { PageViewPages } from '../PageView';
  * and an empty heading under each would be noise.
  */
 export default function LinkedReferences({
-  pages,
+  graph,
   references,
   version,
   act,
 }: {
   /** Handed on whole to each cut, which is a `PageView`. */
-  pages: PageViewPages;
+  graph: PageViewGraph;
   references: Page[];
   /** The fold version the cuts were read at, handed on to each. */
   version: number;
@@ -37,7 +37,7 @@ export default function LinkedReferences({
       {references.map((page) => (
         <PageView
           key={page.title}
-          pages={pages}
+          graph={graph}
           page={page}
           version={version}
           act={act}

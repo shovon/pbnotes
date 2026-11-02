@@ -1,7 +1,7 @@
 /**
  * Run with: npm test
  *
- * The integration suite: `ledgers.ts` and the `@pbnotes/pages` fold and
+ * The integration suite: `ledgers.ts` and the `@pbnotes/graph` fold and
  * commands over a real folder on disk, closed and opened again to stand in for
  * a restart. `ledgers.test.ts` is the unit test, over ledgers of its own.
  *
@@ -16,15 +16,15 @@ import { mkdtemp, readFile, readdir, rename, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import * as pages from "@pbnotes/pages";
-import { lastLeaf, locate, NAMESPACE } from "@pbnotes/pages";
-import type { Block, Pages } from "@pbnotes/pages";
+import * as graph from "@pbnotes/graph";
+import { lastLeaf, locate, NAMESPACE } from "@pbnotes/graph";
+import type { Block, Graph } from "@pbnotes/graph";
 import { createLedgers } from "./ledgers.ts";
 import type { LedgerRef, LedgerView } from "./ledgers.ts";
 
 // This file's own set of ledgers. Closing it stands in for a restart: the
-// next `pagesOf` opens the folder again, as a fresh process would.
-const { pagesOf, onChange, close: closeLedgers } = createLedgers();
+// next `graphOf` opens the folder again, as a fresh process would.
+const { graphOf, onChange, close: closeLedgers } = createLedgers();
 
 /**
  * The glue, as `index.ts` is for the app: a command is handed a view, and
@@ -35,13 +35,13 @@ const { pagesOf, onChange, close: closeLedgers } = createLedgers();
 const on =
   <A extends unknown[], R>(run: (view: LedgerView, ...args: A) => R) =>
   async (project: LedgerRef, ...args: A): Promise<Awaited<R>> =>
-    await run(await pagesOf(project), ...args);
+    await run(await graphOf(project), ...args);
 
-/** `on`, for a query: what it reads is the pages, not the whole view. */
+/** `on`, for a query: what it reads is the graph, not the whole view. */
 const query =
-  <A extends unknown[], R>(run: (state: Pages, ...args: A) => R) =>
+  <A extends unknown[], R>(run: (state: Graph, ...args: A) => R) =>
   async (project: LedgerRef, ...args: A): Promise<Awaited<R>> =>
-    await run((await pagesOf(project)).state, ...args);
+    await run((await graphOf(project)).state, ...args);
 
 // The domain makes no ids of its own; this file is the composition root here,
 // so it picks the randomness, for the calls that do not name a block.
@@ -51,15 +51,15 @@ const addBlock = (
   text: string,
   after?: string,
   id: string = randomUUID(),
-) => on(pages.addBlock)(project, title, text, after, id);
-const deleteBlock = on(pages.deleteBlock);
-const editBlock = on(pages.editBlock);
-const getPage = query(pages.getPage);
-const getPages = query(pages.getPages);
-const getPreviews = query(pages.getPreviews);
-const getReferences = query(pages.getReferences);
-const indentBlock = on(pages.indentBlock);
-const outdentBlock = on(pages.outdentBlock);
+) => on(graph.addBlock)(project, title, text, after, id);
+const deleteBlock = on(graph.deleteBlock);
+const editBlock = on(graph.editBlock);
+const getPage = query(graph.getPage);
+const getPages = query(graph.getPages);
+const getPreviews = query(graph.getPreviews);
+const getReferences = query(graph.getReferences);
+const indentBlock = on(graph.indentBlock);
+const outdentBlock = on(graph.outdentBlock);
 
 const TODAY = "2026-09-21";
 const TOMORROW = "2026-09-22";

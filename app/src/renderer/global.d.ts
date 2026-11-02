@@ -1,11 +1,11 @@
 import type { ProjectsApi } from '../shared/projects';
-import type { PagesApi } from '../shared/pages';
+import type { GraphApi } from '../shared/graph';
 
 declare global {
   interface Window {
     pbnotes: {
       projects: ProjectsApi;
-      pages: PagesApi;
+      graph: GraphApi;
     };
   }
 }

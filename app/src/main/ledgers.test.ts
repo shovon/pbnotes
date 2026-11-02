@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Cadence, Event, Fold } from "@pbnotes/ledger";
-import * as pages from "@pbnotes/pages";
+import * as graph from "@pbnotes/graph";
 import { createLedgers } from "./ledgers.ts";
 import type { LedgerPort, LedgerRef, Ledgers, Paces } from "./ledgers.ts";
 
@@ -39,13 +39,13 @@ async function project(): Promise<LedgerRef> {
 async function writeFromElsewhere(project: LedgerRef, text: string): Promise<void> {
   const other = createLedgers();
   try {
-    await pages.addBlock(await other.pagesOf(project), "Elsewhere", text, undefined, randomUUID());
+    await graph.addBlock(await other.graphOf(project), "Elsewhere", text, undefined, randomUUID());
   } finally {
     await other.close();
   }
 }
 
-/** Counts each time `project`'s pages are announced as having moved. */
+/** Counts each time `project`'s graph is announced as having moved. */
 function listen(ledgers: Ledgers, project: LedgerRef): { count: number } {
   const heard = { count: 0 };
   ledgers.onChange((id) => {
@@ -61,7 +61,7 @@ async function until(ok: () => boolean): Promise<void> {
 test("gaining focus reads the folder on screen at once", { timeout: 5000 }, async (t) => {
   const ledgers = make(t, { focused: NEVER, background: NEVER });
   const p = await project();
-  await ledgers.pagesOf(p);
+  await ledgers.graphOf(p);
   const heard = listen(ledgers, p);
 
   await writeFromElsewhere(p, "one");
@@ -75,8 +75,8 @@ test("gaining focus reads the folder on screen at once", { timeout: 5000 }, asyn
 test("gaining focus reads only the project on screen in full", { timeout: 5000 }, async (t) => {
   const ledgers = make(t, { focused: NEVER, background: NEVER });
   const [shown, hidden] = [await project(), await project()];
-  await ledgers.pagesOf(shown);
-  await ledgers.pagesOf(hidden);
+  await ledgers.graphOf(shown);
+  await ledgers.graphOf(hidden);
   const moved: string[] = [];
   ledgers.onChange((id) => moved.push(id));
 
@@ -91,7 +91,7 @@ test("gaining focus reads only the project on screen in full", { timeout: 5000 }
 test("losing focus slows the reads, and gaining it brings them back", { timeout: 5000 }, async (t) => {
   const ledgers = make(t, { focused: OFTEN, background: NEVER });
   const p = await project();
-  await ledgers.pagesOf(p);
+  await ledgers.graphOf(p);
   const heard = listen(ledgers, p);
 
   await writeFromElsewhere(p, "focused");
@@ -113,7 +113,7 @@ test("a ledger opened in the background opens at the background pace", { timeout
   const ledgers = make(t, { focused: OFTEN, background: NEVER });
   ledgers.setFocused(false);
   const p = await project();
-  await ledgers.pagesOf(p);
+  await ledgers.graphOf(p);
   const heard = listen(ledgers, p);
 
   await writeFromElsewhere(p, "one");
@@ -127,39 +127,39 @@ test("a ledger opened in the background opens at the background pace", { timeout
 test("a write of ours and an arrival both move the version, and both are announced", { timeout: 5000 }, async (t) => {
   const ledgers = make(t, { focused: NEVER, background: NEVER });
   const p = await project();
-  const view = await ledgers.pagesOf(p);
+  const view = await ledgers.graphOf(p);
   const heard = listen(ledgers, p);
   const start = view.version;
 
   // Ours: moved and announced before the write resolves, and the state read
   // beside the new version already holds it. The fold catching up with it
   // may announce once more; a second notice only costs a window a fetch.
-  await pages.addBlock(view, "Mira", "ours", undefined, randomUUID());
+  await graph.addBlock(view, "Mira", "ours", undefined, randomUUID());
   assert.ok(view.version > start);
   assert.ok(heard.count >= 1);
   const ours = heard.count;
   assert.deepEqual(
-    pages.getPage(view.state, "Mira").blocks.map((block) => block.text),
+    graph.getPage(view.state, "Mira").blocks.map((block) => block.text),
     ["ours"],
   );
 
   const afterOurs = view.version;
   await writeFromElsewhere(p, "theirs");
   ledgers.setFocused(true, p.id);
-  await until(() => pages.getPage(view.state, "Elsewhere").blocks.length === 1);
+  await until(() => graph.getPage(view.state, "Elsewhere").blocks.length === 1);
   assert.ok(view.version > afterOurs);
   assert.ok(heard.count > ours);
 });
 
 test("the version never goes back, across projects", { timeout: 5000 }, async (t) => {
   const ledgers = make(t, { focused: NEVER, background: NEVER });
-  const a = await ledgers.pagesOf(await project());
-  await pages.addBlock(a, "Mira", "one", undefined, randomUUID());
-  const b = await ledgers.pagesOf(await project());
+  const a = await ledgers.graphOf(await project());
+  await graph.addBlock(a, "Mira", "one", undefined, randomUUID());
+  const b = await ledgers.graphOf(await project());
   assert.ok(b.version > a.version);
 });
 
-type Pages = typeof pages.pagesFold.initial;
+type Graph = typeof graph.graphFold.initial;
 
 /** A post the fake ledger is holding: the event it will hand back, and how to land it at a reach. */
 type Held = { event: Event; land: (reach: number) => void };
@@ -169,8 +169,8 @@ type Held = { event: Event; land: (reach: number) => void };
  * land when the test says, at the reach it says: the order the races in #170
  * need, which a real ledger only shows now and then.
  */
-function fakeLedger(first: Fold<Pages>) {
-  const folds: Fold<Pages>[] = [first];
+function fakeLedger(first: Fold<Graph>) {
+  const folds: Fold<Graph>[] = [first];
   let wake: () => void = () => undefined;
   const reaches = new WeakMap<Event, number>();
   const posts: Held[] = [];
@@ -199,7 +199,7 @@ function fakeLedger(first: Fold<Pages>) {
   return {
     ledger,
     posts,
-    fold(next: Fold<Pages>) {
+    fold(next: Fold<Graph>) {
       folds.push(next);
       wake();
     },
@@ -209,14 +209,14 @@ function fakeLedger(first: Fold<Pages>) {
 /** Lets the fold loop take whatever was handed to it. */
 const settle = () => new Promise<void>((r) => setImmediate(r));
 
-const texts = (state: Pages, title: string) => pages.getPage(state, title).blocks.map((block) => block.text);
+const texts = (state: Graph, title: string) => graph.getPage(state, title).blocks.map((block) => block.text);
 
 test("a fold that was short of our write when it ran is skipped, so no version drops the write", async () => {
-  const fake = fakeLedger({ state: pages.pagesFold.initial, reached: 10 });
+  const fake = fakeLedger({ state: graph.graphFold.initial, reached: 10 });
   const ledgers = createLedgers(undefined, async () => fake.ledger);
-  const view = await ledgers.pagesOf({ id: "p", path: "/fake" });
+  const view = await ledgers.graphOf({ id: "p", path: "/fake" });
 
-  const write = pages.addBlock(view, "Mira", "ours", undefined, randomUUID());
+  const write = graph.addBlock(view, "Mira", "ours", undefined, randomUUID());
   await until(() => fake.posts.length === 1);
   // An arrival made the log 11 before our post ingested its event at 12.
   fake.posts[0].land(12);
@@ -225,28 +225,28 @@ test("a fold that was short of our write when it ran is skipped, so no version d
   assert.deepEqual(texts(view.state, "Mira"), ["ours"]);
 
   // The fold computed at 11, with the arrival and without ours, is only now taken up.
-  const stale: Pages = { ...pages.pagesFold.initial };
+  const stale: Graph = { ...graph.graphFold.initial };
   fake.fold({ state: stale, reached: 11 });
   await settle();
   assert.equal(view.version, replied, "the stale fold moved the version");
   assert.deepEqual(texts(view.state, "Mira"), ["ours"], "the stale fold dropped our write");
 
   // The fold that reaches our write is the truth.
-  const both = pages.pagesFold.reduce(stale, fake.posts[0].event);
+  const both = graph.graphFold.reduce(stale, fake.posts[0].event);
   fake.fold({ state: both, reached: 12 });
   await until(() => view.state === both);
   assert.ok(view.version > replied);
 });
 
 test("a write the fold took up first is not folded in again", async () => {
-  const fake = fakeLedger({ state: pages.pagesFold.initial, reached: 10 });
+  const fake = fakeLedger({ state: graph.graphFold.initial, reached: 10 });
   const ledgers = createLedgers(undefined, async () => fake.ledger);
-  const view = await ledgers.pagesOf({ id: "p", path: "/fake" });
+  const view = await ledgers.graphOf({ id: "p", path: "/fake" });
 
-  const write = pages.addBlock(view, "Mira", "ours", undefined, randomUUID());
+  const write = graph.addBlock(view, "Mira", "ours", undefined, randomUUID());
   await until(() => fake.posts.length === 1);
   // The post ingested its event at 11, and the fold took it up before the post handed it back.
-  const withOurs = pages.pagesFold.reduce(pages.pagesFold.initial, fake.posts[0].event);
+  const withOurs = graph.graphFold.reduce(graph.graphFold.initial, fake.posts[0].event);
   fake.fold({ state: withOurs, reached: 11 });
   await until(() => view.state === withOurs);
   const taken = view.version;

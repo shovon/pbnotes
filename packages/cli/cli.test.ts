@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { openOrCreate } from "@pbnotes/ledger";
-import { getPages, pagesFold, today } from "@pbnotes/pages";
+import { getPages, graphFold, today } from "@pbnotes/graph";
 
 const run = promisify(execFile);
 const CLI = join(import.meta.dirname, "cli.ts");
@@ -25,7 +25,7 @@ async function ledger(): Promise<string> {
 
 async function journal(dir: string): Promise<string[]> {
   const l = await openOrCreate(dir);
-  const it = l.onEvent(pagesFold.initial, pagesFold.reduce)[Symbol.asyncIterator]();
+  const it = l.onEvent(graphFold.initial, graphFold.reduce)[Symbol.asyncIterator]();
   const state = (await it.next()).value!;
   await l.close();
   const page = getPages(state).find((p) => p.title === today(new Date()));

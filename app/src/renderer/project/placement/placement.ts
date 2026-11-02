@@ -6,8 +6,8 @@
  * Pure, over the blocks as drawn, so the rules run under `node --test` with
  * nothing around them. The views make the id, ask main to write, and draw.
  */
-import { locate, canonicalize } from '@pbnotes/pages';
-import type { Block, Page } from '@pbnotes/pages';
+import { locate, canonicalize } from '@pbnotes/graph';
+import type { Block, Page } from '@pbnotes/graph';
 
 /**
  * Where a block goes, and whether it takes a second step to get there.

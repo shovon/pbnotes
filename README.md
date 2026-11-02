@@ -54,6 +54,6 @@ npm run lint
 npm run make   # build distributables
 ```
 
-`packages/ledger/` (`@pbnotes/ledger`, the event log), `packages/files/` (`@pbnotes/files`, hash-named files beside it) and `packages/pages/` (`@pbnotes/pages`, what the events mean, for the app and for any other program that reads a folder) are packages the app depends on through the workspace. The first two have no dependencies of their own, and `pages` depends only on the Markdown parser it reads links with. `npm test` in any of these folders runs its tests.
+`packages/ledger/` (`@pbnotes/ledger`, the event log), `packages/files/` (`@pbnotes/files`, hash-named files beside it) and `packages/graph/` (`@pbnotes/graph`, what the events mean, for the app and for any other program that reads a folder) are packages the app depends on through the workspace. The first two have no dependencies of their own, and `graph` depends only on the Markdown parser it reads links with. `npm test` in any of these folders runs its tests.
 
 What stays the same whatever the product becomes is in [DNA.md](DNA.md). The folder format is [packages/ledger/multi-writer.md](packages/ledger/multi-writer.md).

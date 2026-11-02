@@ -3,8 +3,8 @@
  * so the three of them run under `node --test` with nothing around them;
  * `ProjectView` holds the trail these are applied to.
  */
-import { canonicalize } from "@pbnotes/pages";
-import type { Place } from "../../../shared/pages.ts";
+import { canonicalize } from "@pbnotes/graph";
+import type { Place } from "../../../shared/graph.ts";
 
 /** By `canonicalize`: `[[mira]]` followed from `Mira` is the page already showing. */
 const same = (a: Place | undefined, b: Place) =>

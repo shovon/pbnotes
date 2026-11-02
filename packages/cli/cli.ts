@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 import { text as readAll } from "node:stream/consumers";
 import { openWriter } from "@pbnotes/ledger";
-import { blockCreated, today } from "@pbnotes/pages";
+import { blockCreated, today } from "@pbnotes/graph";
 
 const [command, folder, ...rest] = process.argv.slice(2);
 if (command !== "append" || !folder) {

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import type { Property } from '@pbnotes/pages';
+import type { Property } from '@pbnotes/graph';
 import Properties from './Properties';
 
 /**

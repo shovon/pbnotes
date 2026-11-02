@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@pbnotes/ledger": "*",
-    "@pbnotes/pages": "*"
+    "@pbnotes/graph": "*"
   },
   "license": "MIT"
 }

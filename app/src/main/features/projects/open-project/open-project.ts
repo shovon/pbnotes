@@ -3,7 +3,7 @@
  *
  * The renderer says which once, on `projects:open`, and after that no call
  * names a project: `index.ts` hands `requireProject` and `currentProject` to
- * `pages` as what is open, and pages never learn what it is.
+ * `graph` as what is open, and the graph never learns what it is.
  *
  * Free of `electron` imports, so it runs under `node --test`; `projects-ipc.ts`
  * is only the channels in front of it.

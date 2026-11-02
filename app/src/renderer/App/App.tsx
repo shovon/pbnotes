@@ -2,19 +2,19 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Project, ProjectsApi } from '../../shared/projects';
 import ProjectPicker from '../ProjectPicker/ProjectPicker';
 import ProjectView from '../project/ProjectView';
-import type { ProjectViewPages } from '../project/ProjectView';
+import type { ProjectViewGraph } from '../project/ProjectView';
 import Welcome from '../Welcome/Welcome';
 import type { Act } from '../ui';
 
 /**
  * Handed in by the composition root (`index.tsx`), never read off `window`.
- * Only the project calls this view makes; `pages` is passed on to the
+ * Only the project calls this view makes; `graph` is passed on to the
  * project that is open.
  */
 type Props = {
   projects: Pick<ProjectsApi, 'list' | 'current' | 'open' | 'pick'>;
   /** Only what the project that is open calls. */
-  pages: ProjectViewPages;
+  graph: ProjectViewGraph;
   /** The clock, passed on to the project that is open. */
   now: () => Date;
   /** Whether this is macOS, passed on to the project that is open. */
@@ -34,7 +34,7 @@ function humanize(error: unknown): string {
   );
 }
 
-export default function App({ projects: api, pages, now, mac }: Props) {
+export default function App({ projects: api, graph, now, mac }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
@@ -203,7 +203,7 @@ export default function App({ projects: api, pages, now, mac }: Props) {
             // all the view is told about which project that is.
             key={project.id}
             act={act}
-            pages={pages}
+            graph={graph}
             now={now}
             mac={mac}
           />

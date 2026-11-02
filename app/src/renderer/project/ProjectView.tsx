@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { locate, canonicalize, today } from '@pbnotes/pages';
-import type { PagesApi, Place } from '../../shared/pages';
+import { locate, canonicalize, today } from '@pbnotes/graph';
+import type { GraphApi, Place } from '../../shared/graph';
 import type { Act } from '../ui';
 import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
-import type { PageViewPages } from './PageView/PageView';
+import type { PageViewGraph } from './PageView/PageView';
 import { imageTarget, placeNew } from './placement/placement';
 import { back, go, leave, rezoom } from './trail/trail';
 import { samePlace } from './held/held';
@@ -20,9 +20,9 @@ import { opensFinder } from './Finder/shortcut/shortcut';
  * The part of the bridge a project calls: what it calls itself, and what each
  * page it shows does.
  */
-export type ProjectViewPages = PageViewPages &
+export type ProjectViewGraph = PageViewGraph &
   Pick<
-    PagesApi,
+    GraphApi,
     | 'onChanged'
     | 'view'
     | 'locate'
@@ -38,7 +38,7 @@ export type ProjectViewPages = PageViewPages &
  *
  * Where the window is looking is this view's own: the trail of places
  * followed, stepped here and never sent anywhere. What shows at the end of
- * it is main's — the pages and what links to them — and this view asks for
+ * it is main's — the graph: pages and what links to them — and this view asks for
  * it whenever it moves, and whenever main says the fold has. It keeps the
  * one answer it is drawing and nothing to hold in step. A project change
  * remounts it (`App` keys it by project), so the trail starts over at the
@@ -54,14 +54,14 @@ const images = (data: DataTransfer): File[] =>
 type Props = {
   act: Act;
   /** The bridge to main, handed down from `index.tsx`, and on to each page. */
-  pages: ProjectViewPages;
+  graph: ProjectViewGraph;
   /** The clock, for which day a drop with no page lands on. */
   now: () => Date;
   /** Whether this is macOS: Cmd+K opens the finder there, Ctrl+K elsewhere. */
   mac: boolean;
 };
 
-export default function ProjectView({ act, pages, now, mac }: Props) {
+export default function ProjectView({ act, graph, now, mac }: Props) {
   /** Where the window is, as how it got there. Empty is the journal. */
   const [trail, setTrail] = useState<Place[]>([]);
   const place = trail.at(-1);
@@ -108,7 +108,7 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
    */
   const [fetcher] = useState(() =>
     createFetcher({
-      view: (at) => pages.view(at, today(now())),
+      view: (at) => graph.view(at, today(now())),
       where: () => latest.current,
       onAnswer: (next) => {
         const gone = deletedSince(shown.current, next);
@@ -130,7 +130,7 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
   useEffect(() => {
     // A notice and a write's reply take one path, so this window's writes
     // reach the screen the way every other change does.
-    const off = pages.onChanged(fetcher.heard);
+    const off = graph.onChanged(fetcher.heard);
     // A stubbed bridge — Storybook's — answers with something that is not an
     // unsubscribe, and a cleanup that is not a function throws.
     return () => {
@@ -139,16 +139,16 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
   }, []);
 
   /** The bridge handed to each page: a write's reply is heard here too. */
-  const bridge = useMemo<ProjectViewPages>(
+  const bridge = useMemo<ProjectViewGraph>(
     () => ({
-      ...pages,
+      ...graph,
       run: async (command) => {
-        const v = await pages.run(command);
+        const v = await graph.run(command);
         if (typeof v === 'number') fetcher.heard(v);
         return v;
       },
     }),
-    [pages],
+    [graph],
   );
 
   const previews = useMemo(() => new Map(held?.view.previews), [held?.view.previews]);
@@ -183,7 +183,7 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
    */
   const goToBlock = (id: string) =>
     act(async () => {
-      const found = await pages.locate(id);
+      const found = await graph.locate(id);
       if (!found) throw new Error('That block no longer exists.');
       setTrail((trail) => go(trail, { page: found.page }));
       setTarget(id);
@@ -196,7 +196,7 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
    */
   const zoomTo = (id: string) =>
     act(async () => {
-      const found = await pages.locate(id);
+      const found = await graph.locate(id);
       if (!found) throw new Error('That block no longer exists.');
       setTrail((trail) => go(trail, { page: found.page, block: id }));
     });
@@ -352,7 +352,7 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
     let last: string | undefined;
     act(async () => {
       for (const file of files) {
-        const link = await pages.addImage(
+        const link = await graph.addImage(
           new Uint8Array(await file.arrayBuffer()),
           file.type,
         );
@@ -422,7 +422,7 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
       ?.getAttribute('data-block-ref');
     if (!ref) return;
     event.preventDefault();
-    void pages.blockMenu(ref);
+    void graph.blockMenu(ref);
   };
 
   return (
@@ -431,7 +431,7 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
           and a paste into it is text rather than an image for the page. */}
       {finding && (
         <Finder
-          find={pages.find}
+          find={graph.find}
           onOpen={(hit) => {
             setFinding(false);
             if ('block' in hit) goToBlock(hit.block);
@@ -479,7 +479,7 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
               links: own.references.reduce((sum, it) => sum + it.blocks.length, 0),
               refs: own.refsTo,
             }}
-            pages={pages}
+            graph={graph}
             onDelete={() => deletePage(own.page.title)}
             act={act}
           />
@@ -496,7 +496,7 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
               // everything the page shows, for a drop to read; it has no box.
               <div key={page.title} data-page={page.title} className="contents">
                 <PageView
-                  pages={bridge}
+                  graph={bridge}
                   page={page}
                   version={version}
                   // Not under a zoom: what links to one block is #2's.

@@ -3,7 +3,7 @@
  * it. Kept apart from the textarea, like `brackets`, so the rules can be
  * tested without a DOM.
  */
-import { inCode } from '@pbnotes/pages';
+import { inCode } from '@pbnotes/graph';
 import type { Edit } from '../brackets/brackets';
 
 /**

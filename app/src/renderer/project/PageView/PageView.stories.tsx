@@ -1,14 +1,14 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import type { Block, Page } from '@pbnotes/pages';
+import type { Block, Page } from '@pbnotes/graph';
 import PageView from './PageView';
-import type { PageViewPages } from './PageView';
+import type { PageViewGraph } from './PageView';
 
 /**
  * Writes go nowhere and search finds nothing. A plain object, not a Proxy:
  * Storybook calls `String(pages)` for the source snippet, and a Proxy that
  * answers every key answers `toString` with a Promise (#162).
  */
-const pages: PageViewPages = {
+const graph: PageViewGraph = {
   run: async () => undefined,
   search: async () => [],
   blockMenu: async () => null,
@@ -30,7 +30,7 @@ const page = (title: string, blocks: Block[]): Page => ({ title, blocks });
 const meta = {
   component: PageView,
   args: {
-    pages,
+    graph,
     version: 0,
     references: [] as Page[],
     act: () => undefined,
@@ -62,7 +62,7 @@ export const Empty: Story = { args: { page: page('2026-09-24', []) } };
 
 /** A page a link named. Nothing about it is a day: the heading is whatever
     the link called it, and it holds blocks the same way. The links in it go
-    on to other pages — including back to a day, by its date. Under its own
+    on to other graph — including back to a day, by its date. Under its own
     blocks, what links here: the days that mention her, cut down to the
     blocks that do — each a page in its own right, headed by a link to it,
     and edited in place like the page above. */
