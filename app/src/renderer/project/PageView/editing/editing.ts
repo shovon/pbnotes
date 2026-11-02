@@ -62,6 +62,47 @@ export function afterDelete(
 }
 
 /**
+ * Delete Block from a block's menu: the block goes, and every block under it
+ * with it, which is what the fold does with a delete. Unlike Backspace it is
+ * not typed, so nothing opens in its place; what it changes is what was
+ * pointing into what went:
+ * - `closeEditing`: the open box is on one of the blocks that went.
+ * - `closeNew`: the box for a new block is waiting beneath one of them.
+ * - `unzoom`: the zoomed root went, itself or under an ancestor picked from
+ *   the breadcrumb. The zoom moves out first, to what the deleted block hung
+ *   under or, with `to` absent, to the whole page.
+ *
+ * Undefined for a block the page does not have. Read off the page before the
+ * delete lands.
+ */
+export function afterRemove(
+  blocks: Block[],
+  id: string,
+  {
+    root,
+    editing,
+    writingAfter,
+  }: { root?: Block; editing?: string | null; writingAfter?: string },
+):
+  | { closeEditing: boolean; closeNew: boolean; unzoom?: { to?: string } }
+  | undefined {
+  const found = locate(blocks, id);
+  if (!found) return undefined;
+  const going = new Set(ids(found.siblings[found.at]));
+  const gone = (it: string | null | undefined) => it != null && going.has(it);
+  return {
+    closeEditing: gone(editing),
+    closeNew: gone(writingAfter),
+    unzoom: gone(root?.id) ? { to: found.parent?.id } : undefined,
+  };
+}
+
+/** The ids of `block` and every block under it. */
+function ids(block: Block): string[] {
+  return [block.id, ...block.children.flatMap(ids)];
+}
+
+/**
  * Backspace in the empty box for a block that does not exist yet: the box
  * closes on the block directly above it on screen, caret at its end — the
  * deepest last child of what the box sits under, of the zoomed root, or of

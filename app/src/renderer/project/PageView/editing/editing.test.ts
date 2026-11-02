@@ -3,7 +3,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { locate } from '@pbnotes/pages';
 import type { Block } from '@pbnotes/pages';
-import { afterCancel, afterDelete, movable, newBlock } from './editing.ts';
+import {
+  afterCancel,
+  afterDelete,
+  afterRemove,
+  movable,
+  newBlock,
+} from './editing.ts';
 
 const block = (id: string, children: Block[] = []): Block => ({
   id,
@@ -179,4 +185,38 @@ test('a block may move, except out of the view a zoom shows', () => {
   assert.equal(movable(page, 'a2', -1, root), false);
   assert.equal(movable(page, 'a2', 1, root), true);
   assert.equal(movable(page, 'a2x', -1, root), true);
+});
+
+// Delete Block, from the menu.
+
+test('a menu delete leaves boxes and the zoom alone when they are elsewhere', () => {
+  assert.deepEqual(
+    afterRemove(page, 'b', { root: at('a'), editing: 'a1', writingAfter: 'a2' }),
+    { closeEditing: false, closeNew: false, unzoom: undefined },
+  );
+});
+
+test('a menu delete closes a box open anywhere in what goes', () => {
+  assert.deepEqual(afterRemove(page, 'a', { editing: 'a2x' }), {
+    closeEditing: true,
+    closeNew: false,
+    unzoom: undefined,
+  });
+  assert.equal(afterRemove(page, 'a2', { writingAfter: 'a2x' })?.closeNew, true);
+  assert.equal(afterRemove(page, 'a2', { writingAfter: 'a1' })?.closeNew, false);
+});
+
+test('deleting the zoomed root zooms out to what it hung under', () => {
+  assert.deepEqual(afterRemove(page, 'a2', { root: at('a2') })?.unzoom, { to: 'a' });
+  assert.deepEqual(afterRemove(page, 'a', { root: at('a') })?.unzoom, { to: undefined });
+});
+
+test('deleting an ancestor of the zoomed root zooms out past it', () => {
+  // A crumb above the root: `a` goes, and `a2x` with it.
+  assert.deepEqual(afterRemove(page, 'a', { root: at('a2x') })?.unzoom, { to: undefined });
+  assert.deepEqual(afterRemove(page, 'a2', { root: at('a2x') })?.unzoom, { to: 'a' });
+});
+
+test('a block the page does not have is nothing to delete', () => {
+  assert.equal(afterRemove(page, 'zz', {}), undefined);
 });

@@ -186,12 +186,18 @@ export function Block({
   id,
   text,
   onActivate,
+  onMenu,
 }: {
   /** Put on the element as `data-block-id`, so a view can scroll to it. */
   id?: string;
   text: string;
   /** The offset the click landed on, when it could be worked out. */
   onActivate: (caret?: number) => void;
+  /**
+   * A right-click on the dot, in place of the browser's menu. Without one
+   * the right-click is left to whatever is listening above.
+   */
+  onMenu?: () => void;
 }) {
   /**
    * Parsed once per text, not once per render. `Markdown` parses in render,
@@ -249,6 +255,13 @@ export function Block({
         data-block-ref={id}
         aria-label="Zoom into block"
         className="absolute top-0 left-0 h-7 w-indent cursor-pointer"
+        onContextMenu={
+          onMenu &&
+          ((event) => {
+            event.preventDefault();
+            onMenu();
+          })
+        }
       />
     </div>
   );

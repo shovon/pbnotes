@@ -6,10 +6,12 @@ import {
   net,
   protocol,
 } from "electron";
+import type { MenuItemConstructorOptions } from "electron";
 import { pathToFileURL } from "node:url";
 import { IMAGE_SCHEME, PAGE_CHANNELS } from "../../../../shared/pages";
-import type { Place } from "../../../../shared/pages";
+import type { BlockMenuPick, Place } from "../../../../shared/pages";
 import { requireString } from "../../../ipc";
+import { readOffer } from "./block-menu/block-menu";
 import { requireCommand, requireDay, requireTitle } from "./command/command";
 import type { PagesSession } from "./pages-session/pages-session";
 
@@ -122,15 +124,44 @@ export function registerPageIpc(session: PagesSession, images: Images): void {
 
   // Native rather than drawn: placement at the screen edge, keyboard and
   // dismissal come with it. More items go in the template.
-  ipcMain.handle(PAGE_CHANNELS.blockMenu, (event, blockId: unknown) => {
-    const id = requireString(blockId, "blockId");
-    Menu.buildFromTemplate([
-      {
-        label: "Copy Block Reference",
-        click: () => clipboard.writeText(`((${id}))`),
-      },
-    ]).popup({
-      window: BrowserWindow.fromWebContents(event.sender) ?? undefined,
-    });
-  });
+  //
+  // Copying is done here; anything else is answered back for the window to
+  // do. The reply settles on the first of an item's `click` and the menu
+  // closing. Which of the two the platform reports first is not promised,
+  // so the close waits a moment before it answers that nothing was picked:
+  // nothing is waiting on that answer, and a pick is never lost to it.
+  ipcMain.handle(
+    PAGE_CHANNELS.blockMenu,
+    (event, blockId: unknown, offer: unknown) => {
+      const id = requireString(blockId, "blockId");
+      const offered = readOffer(offer);
+      const window = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+      return new Promise<BlockMenuPick | null>((resolve) => {
+        const items: MenuItemConstructorOptions[] = [
+          {
+            label: "Copy Block Reference",
+            click: () => {
+              clipboard.writeText(`((${id}))`);
+              resolve(null);
+            },
+          },
+        ];
+        if (offered.delete) {
+          items.push(
+            // Apart from copying: one leaves the notes as they were, and
+            // this one does not.
+            { type: "separator" },
+            {
+              label: "Delete Block",
+              click: () => resolve("delete"),
+            },
+          );
+        }
+        Menu.buildFromTemplate(items).popup({
+          window,
+          callback: () => setTimeout(() => resolve(null), 100),
+        });
+      });
+    },
+  );
 }

@@ -8,7 +8,11 @@ import type { PageViewPages } from './PageView';
  * Storybook calls `String(pages)` for the source snippet, and a Proxy that
  * answers every key answers `toString` with a Promise (#162).
  */
-const pages: PageViewPages = { run: async () => undefined, search: async () => [] };
+const pages: PageViewPages = {
+  run: async () => undefined,
+  search: async () => [],
+  blockMenu: async () => null,
+};
 
 const block = (id: string, text: string, children: Block[] = []): Block => ({
   id,
