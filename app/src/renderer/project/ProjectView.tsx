@@ -26,7 +26,6 @@ export type ProjectViewPages = PageViewPages &
     | 'locate'
     | 'find'
     | 'addImage'
-    | 'blockMenu'
   >;
 
 /**
@@ -355,11 +354,18 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
   };
 
   /**
-   * Right-click on a dot opens its menu instead of the browser's. Anywhere
-   * else is left alone, so text keeps its cut/copy/paste. A right-click never
-   * fires `click`, so `follow` stays out of it on its own.
+   * Right-click on a block ref opens its menu instead of the browser's.
+   * Anywhere else is left alone, so text keeps its cut/copy/paste. A
+   * right-click never fires `click`, so `follow` stays out of it on its own.
+   *
+   * Bubbling, not capture: a dot or a crumb is its page's to answer, since
+   * the page is what can delete a block, and it has already taken the event
+   * by the time it gets here. What reaches this is a rendered `((id))`,
+   * which only copies — deleting through a ref would delete a block from
+   * wherever it is, out of sight.
    */
   const blockMenu = (event: React.MouseEvent) => {
+    if (event.defaultPrevented) return;
     const ref = (event.target as Element)
       .closest('[data-block-ref]')
       ?.getAttribute('data-block-ref');
@@ -386,7 +392,7 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
       <div
         ref={wrapper}
         onClickCapture={follow}
-        onContextMenuCapture={blockMenu}
+        onContextMenu={blockMenu}
         // A drop is only offered where `dragover` was refused its default.
         onDragOver={(event) => {
           if (event.dataTransfer.types.includes('Files')) event.preventDefault();

@@ -152,12 +152,24 @@ export type PagesApi = {
    */
   addImage(bytes: Uint8Array, mime: string): Promise<string>;
   /**
-   * Pops the native menu for a block's dot at the pointer. Its one item puts
-   * `((blockId))` on the clipboard. Resolves once the menu is shown, not when
-   * it closes; whatever the item does happens in main.
+   * Pops the native menu for a block at the pointer. Copy Block Reference is
+   * always there, and puts `((blockId))` on the clipboard in main. What else
+   * it offers is `offer`'s, and what is picked from that comes back for the
+   * window to do: it knows what is open and where it is, and main does not.
+   * Resolves once the menu closes, to the pick, or null for anything else —
+   * dismissed, or copied.
    */
-  blockMenu(blockId: string): Promise<void>;
+  blockMenu(blockId: string, offer?: BlockMenuOffer): Promise<BlockMenuPick | null>;
 };
+
+/** What a block's menu offers beyond copying its reference. */
+export type BlockMenuOffer = {
+  /** Delete Block, which takes the block and every block under it. */
+  delete?: boolean;
+};
+
+/** An item of `BlockMenuOffer` the user picked. */
+export type BlockMenuPick = 'delete';
 
 /**
  * Every write the window can ask main to record, tagged by `type`. Each runs

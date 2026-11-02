@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { locate, predict, predictProperties } from '@pbnotes/pages';
 import type { Block as BlockType, Page, Property } from '@pbnotes/pages';
 import type { PagesApi } from '../../../shared/pages';
@@ -18,7 +18,13 @@ import {
   setProperty,
 } from './steps/steps';
 import type { Step, StepsPages } from './steps/steps';
-import { afterCancel, afterDelete, movable, newBlock } from './editing/editing';
+import {
+  afterCancel,
+  afterDelete,
+  afterRemove,
+  movable,
+  newBlock,
+} from './editing/editing';
 import type { Caret, Then } from './editing/editing';
 import { drawn, recorded, refused, unseen } from './pending/pending';
 import type { Pending } from './pending/pending';
@@ -36,7 +42,7 @@ type Writing = { after?: string } | null;
  * steps it writes through call. A cut under the page is another `PageView`,
  * so `LinkedReferences` needs no more than this.
  */
-export type PageViewPages = StepsPages & Pick<PagesApi, 'search'>;
+export type PageViewPages = StepsPages & Pick<PagesApi, 'search' | 'blockMenu'>;
 
 type Props = {
   pages: PageViewPages;
@@ -188,6 +194,14 @@ export default function PageView({
   // click to read a position from — keyboard activation, or a new block.
   const [caret, setCaret] = useState<number | undefined>(undefined);
 
+  /**
+   * What the page is as last drawn, for a gesture that waits on something —
+   * the block menu — and has to act on the page as it is when the wait ends,
+   * not as it was when it began.
+   */
+  const latest = useRef({ blocks: page.blocks, root, editingId, writing, onZoom });
+  latest.current = { blocks: page.blocks, root, editingId, writing, onZoom };
+
   /** Opens the box `to` says, or closes the one open with nowhere to go. */
   const reopen = (to: Caret | null) => {
     setCaret(to?.at ?? 0);
@@ -260,6 +274,39 @@ export default function PageView({
         : write(remove(pages, block.id)),
     );
   };
+
+  /**
+   * Right-click on a block's dot, or on a crumb above the zoomed one: its
+   * menu, which main draws. Copying is main's; a delete is answered back
+   * here, where what is open and where the view is are known.
+   *
+   * Delete Block takes the block and everything under it, which Backspace
+   * never does, and without asking. Nothing opens in its place, since nothing was being typed; a box open in what
+   * went closes, and a zoom into it moves out first, as Backspace's does.
+   * Read off the page as it is once the menu closes: the menu can sit open
+   * while the page moves.
+   */
+  const openMenu = (block: BlockType) =>
+    act(async () => {
+      const pick = await pages.blockMenu(block.id, { delete: true });
+      if (pick !== 'delete') return;
+      const now = latest.current;
+      const next = afterRemove(now.blocks, block.id, {
+        root: now.root,
+        editing: now.editingId,
+        writingAfter: now.writing?.after,
+      });
+      // Gone while the menu was open: nothing left to delete.
+      if (!next) return;
+      if (next.closeEditing) setEditingId(null);
+      if (next.closeNew) setWriting(null);
+      if (next.unzoom) now.onZoom?.(next.unzoom.to);
+      // Not predicted when the zoom moves, for the reason `commitDelete`
+      // gives.
+      await (next.unzoom
+        ? pages.run({ type: 'deleteBlock', blockId: block.id })
+        : write(remove(pages, block.id)));
+    });
 
   /**
    * Tab and Shift+Tab. Files the block under the sibling above it, or brings
@@ -471,6 +518,7 @@ export default function PageView({
           setCaret(at);
           setEditingId(block.id);
         }}
+        onMenu={() => openMenu(block)}
       />
     );
 
@@ -527,6 +575,10 @@ export default function PageView({
                 href="#"
                 data-block-ref={ancestor.id}
                 className="max-w-48 truncate hover:text-accent"
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  openMenu(ancestor);
+                }}
               >
                 {ancestor.text.split('\n')[0] || '…'}
               </a>
