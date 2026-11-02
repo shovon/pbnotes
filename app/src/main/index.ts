@@ -13,6 +13,9 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import started from "electron-squirrel-startup";
 import { openDatabase } from "./db";
+import { benchOfOpenProject, createBench } from "./features/bench/bench";
+import { registerBenchIpc } from "./features/bench/bench-ipc";
+import { createSlotStore, openBenchDatabase } from "./features/bench/bench-store";
 import { rendererSource } from "./renderer-source/renderer-source";
 import { mainWindowOptions, windowColors } from "./window-options/window-options";
 import { createDisk } from "./features/projects/disk/disk";
@@ -162,6 +165,22 @@ app.on("ready", () => {
   const projects = createOpenProject(store, disk.probe, () => undefined);
   registerProjectIpc(store, projects);
 
+  // The bench: this machine's state that only means something to the
+  // product, kept apart from `notes.db` (DNA.md, "The bench"). Every value is
+  // one project's, and no call reaches another's. It is told the
+  // open project by `currentProject`, not `requireProject`: it lives in
+  // `userData`, so a project whose folder can't be reached still has its
+  // bench. No slots yet; the product declares each one here.
+  const benchDb = openBenchDatabase(
+    path.join(app.getPath("userData"), "bench.db"),
+  );
+  registerBenchIpc(
+    benchOfOpenProject(
+      createBench(createSlotStore(benchDb), new Map()),
+      () => projects.currentProject()?.id,
+    ),
+  );
+
   // The graph is handed its view of what is open, and the images beside it,
   // and never ask what that is. This is the one place that says it is the
   // open project's, and the one place that turns a project into a path.
@@ -225,6 +244,7 @@ app.on("ready", () => {
 
   app.on("will-quit", () => {
     db.close();
+    benchDb.close();
     // Best effort, and that is enough: every append is fsynced before it is
     // acknowledged, so a log left unclosed has already lost nothing.
     void ledgers.close();
