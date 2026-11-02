@@ -1,16 +1,21 @@
 import { useRef, useState } from 'react';
-import type { DeleteImpact } from '@pbnotes/pages';
 import type { PagesApi } from '../../../shared/pages';
 import type { Act } from '../../ui';
 import DeletePage from './DeletePage/DeletePage';
+import type { DeleteImpact } from './DeletePage/wording/wording';
 
 export type PageMenuProps = {
   /** The page on show, as it shows. */
   title: string;
   /** Whether anything is on it to delete. */
   canDelete: boolean;
+  /**
+   * What a delete would leave pointing at it, from the view on show. Read
+   * live, so an open confirmation follows the page as it changes.
+   */
+  impact: DeleteImpact;
   /** The part of the bridge the menu calls. */
-  pages: Pick<PagesApi, 'pageMenu' | 'deleteImpact'>;
+  pages: Pick<PagesApi, 'pageMenu'>;
   /** The delete was confirmed. */
   onDelete: () => void;
   act: Act;
@@ -24,13 +29,11 @@ export type PageMenuProps = {
  *
  * The menu is native and main draws it; the pick comes back here. Delete
  * Page… is always listed, and disabled for a page with nothing on it.
- * Choosing it asks main what the delete would leave behind, then always
- * confirms.
+ * Choosing it always confirms, saying what the delete would leave behind.
  */
-export default function PageMenu({ title, canDelete, pages, onDelete, act }: PageMenuProps) {
+export default function PageMenu({ title, canDelete, impact, pages, onDelete, act }: PageMenuProps) {
   const button = useRef<HTMLButtonElement>(null);
-  /** What the open confirmation says, or null with none open. */
-  const [confirming, setConfirming] = useState<DeleteImpact | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   const open = () =>
     act(async () => {
@@ -39,8 +42,7 @@ export default function PageMenu({ title, canDelete, pages, onDelete, act }: Pag
         { x: rect?.left ?? 0, y: rect?.bottom ?? 0 },
         { delete: canDelete },
       );
-      if (pick !== 'delete') return;
-      setConfirming(await pages.deleteImpact(title));
+      if (pick === 'delete') setConfirming(true);
     });
 
   return (
@@ -57,12 +59,12 @@ export default function PageMenu({ title, canDelete, pages, onDelete, act }: Pag
       {confirming && (
         <DeletePage
           title={title}
-          impact={confirming}
+          impact={impact}
           onConfirm={() => {
-            setConfirming(null);
+            setConfirming(false);
             onDelete();
           }}
-          onCancel={() => setConfirming(null)}
+          onCancel={() => setConfirming(false)}
         />
       )}
     </>

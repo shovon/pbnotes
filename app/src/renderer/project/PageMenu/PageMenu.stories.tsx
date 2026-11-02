@@ -7,18 +7,18 @@ import PageMenu from './PageMenu';
  * A stand-in for main. Storybook has no native menu, so the menu picks
  * Delete Page… straight away when it is enabled, and nothing when it is not.
  */
-const pages = (impact = { links: 3, refs: 1 }) => ({
+const pages = {
   pageMenu: async (_at: { x: number; y: number }, offer?: { delete?: boolean }) =>
     offer?.delete ? ('delete' as const) : null,
-  deleteImpact: async () => impact,
-});
+};
 
 const meta = {
   component: PageMenu,
   args: {
     title: 'Project Atlas',
     canDelete: true,
-    pages: pages(),
+    impact: { links: 3, refs: 1 },
+    pages,
     onDelete: fn(),
     act: (action: () => Promise<unknown>) => void action(),
   },

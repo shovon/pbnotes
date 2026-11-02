@@ -12,7 +12,6 @@ import {
   deleteBlock,
   deletePage,
   editBlock,
-  getDeleteImpact,
   indentBlock,
   locateBlock,
   outdentBlock,
@@ -22,7 +21,7 @@ import {
   searchPages,
   setProperty,
 } from "@pbnotes/pages";
-import type { DeleteImpact, PagesView as Base } from "@pbnotes/pages";
+import type { PagesView as Base } from "@pbnotes/pages";
 import type { Command, Matches, Place, PlaceView } from "../../../../../shared/pages.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
 import { getView } from "../place-view/place-view.ts";
@@ -130,8 +129,6 @@ export function createPagesSession(
       return { pages: searchPages(state, query), blocks: searchBlocks(state, query) };
     },
     status: async (): Promise<LogStatus> => (await open.require()).status,
-    deleteImpact: async (title: string): Promise<DeleteImpact> =>
-      getDeleteImpact((await open.require()).state, title),
 
     /**
      * Records `command`, checked by `requireCommand` before it gets here, as

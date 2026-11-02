@@ -9,7 +9,7 @@ const at = (place: Place | undefined, deletions: number, title = place?.page ?? 
   place,
   view: {
     version: 1,
-    showing: [{ page: { title, blocks: [] }, references: [], properties: [], deletions }],
+    showing: [{ page: { title, blocks: [] }, references: [], properties: [], deletions, refsTo: 0 }],
     previews: [],
   },
 });

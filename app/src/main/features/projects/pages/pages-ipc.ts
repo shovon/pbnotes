@@ -89,10 +89,6 @@ export function registerPageIpc(session: PagesSession, images: Images): void {
 
   ipcMain.handle(PAGE_CHANNELS.status, () => session.status());
 
-  ipcMain.handle(PAGE_CHANNELS.deleteImpact, (_event, title: unknown) =>
-    session.deleteImpact(requireTitle(title)),
-  );
-
   // Every write, on one channel (#158): the command's shape is checked
   // here, and the session runs the package command it names.
   ipcMain.handle(PAGE_CHANNELS.command, (_event, command: unknown) =>

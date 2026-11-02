@@ -17,7 +17,6 @@ import type { Named } from "../events/events.ts";
 import { read } from "../reading/reading.ts";
 import { blocksOn } from "../blocks/blocks.ts";
 import type { Block, BlockState } from "../blocks/blocks.ts";
-import { getReferences } from "../blocks/queries.ts";
 import type { PropertyState } from "../properties/properties.ts";
 
 /**
@@ -103,14 +102,6 @@ export function hasContent(state: BlockState & PropertyState, page: string): boo
   return (state.blocks.get(key)?.length ?? 0) > 0 || (state.properties.get(key)?.size ?? 0) > 0;
 }
 
-/** What deleting a page leaves pointing at it, counted in blocks on other pages. */
-export type DeleteImpact = {
-  /** Blocks that link to the page by title. They keep it alive, empty. */
-  links: number;
-  /** Blocks that hold a `((id))` to a block on the page. Those show as missing. */
-  refs: number;
-};
-
 /** Every block in a tree, depth first. */
 function* every(blocks: Block[]): Generator<Block> {
   for (const block of blocks) {
@@ -120,13 +111,17 @@ function* every(blocks: Block[]): Generator<Block> {
 }
 
 /**
- * What a delete of `page` would leave behind on other pages. A block that
- * links is counted once with its subtree, as the page's references list it.
- * Nothing on the page itself counts: it goes with the delete.
+ * How many blocks on other pages hold a `((id))` to a block on `page`: what
+ * a delete would leave showing as missing. Refs on the page itself go with
+ * it, so they do not count. What links to the page by title is
+ * `getReferences`.
+ *
+ * ponytail: walks every block per call, with `read` memoised. Ask it for one
+ * page at a time.
  */
-export function getDeleteImpact(state: BlockState, page: string): DeleteImpact {
-  const links = getReferences(state, page).reduce((sum, it) => sum + it.blocks.length, 0);
+export function getRefsTo(state: BlockState, page: string): number {
   const on = new Set([...every(blocksOn(state, page))].map((block) => block.id));
+  if (on.size === 0) return 0;
   const key = canonicalize(page);
   let refs = 0;
   for (const [other, blocks] of state.blocks) {
@@ -135,7 +130,7 @@ export function getDeleteImpact(state: BlockState, page: string): DeleteImpact {
       if (read(block.text).refs.some((id) => on.has(id))) refs++;
     }
   }
-  return { links, refs };
+  return refs;
 }
 
 // ── The command ─────────────────────────────────────────────────────────────

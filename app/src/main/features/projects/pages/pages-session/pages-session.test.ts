@@ -266,11 +266,16 @@ test("deleting a page with nothing on it writes nothing", async () => {
   assert.equal(await pages.run({ type: "deletePage", title: "Mira" }), before);
 });
 
-test("the delete impact counts what other pages hold pointing at the page", async () => {
+test("a page's own view counts the refs other pages hold to its blocks", async () => {
   const { view } = ledger();
   const { pages } = session(view);
   await pages.run({ type: "addBlock", id: "a1", title: "Mira", text: "here" });
   await pages.run({ type: "addBlock", id: "a2", title: TODAY, text: "[[Mira]] ((a1))" });
   await pages.run({ type: "addBlock", id: "a3", title: TODAY, text: "((a1))" });
-  assert.deepEqual(await pages.deleteImpact("Mira"), { links: 1, refs: 2 });
+  const own = (await pages.view({ page: "Mira" }, TODAY)).showing[0];
+  assert.equal(own.refsTo, 2);
+  assert.equal(own.references[0].blocks.length, 1);
+  // Not walked where no delete is offered.
+  assert.equal((await pages.view({ page: "Mira", block: "a1" }, TODAY)).showing[0].refsTo, 0);
+  assert.ok((await pages.view(undefined, TODAY)).showing.every((it) => it.refsTo === 0));
 });

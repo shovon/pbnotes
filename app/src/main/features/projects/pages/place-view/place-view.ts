@@ -11,6 +11,7 @@ import {
   getPreviews,
   getProperties,
   getReferences,
+  getRefsTo,
 } from "@pbnotes/pages";
 import type { Page, Pages } from "@pbnotes/pages";
 import type { Place, PlaceView } from "../../../../../shared/pages.ts";
@@ -60,6 +61,7 @@ export function getView(
       references: at?.block ? [] : getReferences(state, page.title),
       properties: getProperties(state, page.title),
       deletions: getDeletions(state, page.title),
+      refsTo: at && !at.block ? getRefsTo(state, page.title) : 0,
     })),
     previews: getPreviews(state),
   };

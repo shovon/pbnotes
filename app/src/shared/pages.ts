@@ -14,7 +14,7 @@
  * records what the user did, and looking at a page is not something they did.
  */
 
-import type { DeleteImpact, Page, Property } from '@pbnotes/pages';
+import type { Page, Property } from '@pbnotes/pages';
 import type { LogStatus } from './log';
 
 /**
@@ -53,12 +53,18 @@ export type PlaceView = {
    * each with its properties, in every mode: whether to draw them is the
    * view's. And how many times the page has been deleted: a window on it
    * that sees this go up knows it was deleted, not merely emptied.
+   *
+   * `refsTo` is how many blocks on other pages hold a `((id))` to a block
+   * on this one: what deleting it would leave showing as missing. Only on a
+   * page's own view; 0 on the journal and under a zoom, where no delete is
+   * offered and the walk would be paid for nothing.
    */
   showing: {
     page: Page;
     references: Page[];
     properties: Property[];
     deletions: number;
+    refsTo: number;
   }[];
   /**
    * What each `((id))` in the project shows: the id and the Markdown of that
@@ -86,7 +92,6 @@ export const PAGE_CHANNELS = {
   addImage: 'pages:add-image',
   blockMenu: 'pages:block-menu',
   pageMenu: 'pages:page-menu',
-  deleteImpact: 'pages:delete-impact',
   status: 'pages:status',
 } as const;
 
@@ -175,11 +180,6 @@ export type PagesApi = {
    * menu closes, to the pick, or null when nothing was picked.
    */
   pageMenu(at: { x: number; y: number }, offer?: PageMenuOffer): Promise<PageMenuPick | null>;
-  /**
-   * What deleting `title` would leave pointing at it from other pages, for
-   * the confirmation to say. A read: nothing is written.
-   */
-  deleteImpact(title: string): Promise<DeleteImpact>;
 };
 
 /**

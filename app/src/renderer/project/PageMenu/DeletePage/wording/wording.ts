@@ -4,7 +4,13 @@
  *
  * Pure, so the wording runs under `node --test`; `DeletePage` draws it.
  */
-import type { DeleteImpact } from '@pbnotes/pages';
+/** What a delete leaves pointing at the page, in blocks on other pages. */
+export type DeleteImpact = {
+  /** Blocks that link to it by title. They keep it alive, empty. */
+  links: number;
+  /** Blocks that hold a `((id))` to a block on it. Those show as missing. */
+  refs: number;
+};
 
 /** `n` blocks, said the way a sentence needs it. */
 const blocks = (n: number) => (n === 1 ? '1 block on another page' : `${n} blocks on other pages`);

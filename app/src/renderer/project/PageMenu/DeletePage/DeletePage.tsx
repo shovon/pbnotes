@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import type { DeleteImpact } from '@pbnotes/pages';
 import { wording } from './wording/wording';
+import type { DeleteImpact } from './wording/wording';
 
 export type DeletePageProps = {
   /** The page, as it shows. */

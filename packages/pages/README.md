@@ -22,7 +22,7 @@ A page is deleted with `deletePage`, whose builder is `pageDeleted`.
 
 A view that draws its writes before they are recorded folds them with `predict` for blocks and `predictProperties` for a page's properties. Each passes over events that are not its own, so a view can hand both everything it has in flight.
 
-The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperties`, `getDeletions`, `getDeleteImpact`, `hasContent`, `searchPages` and `locateBlock`) take the folded pages alone, since they never write.
+The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperties`, `getDeletions`, `getRefsTo`, `hasContent`, `searchPages` and `locateBlock`) take the folded pages alone, since they never write.
 
 ## What it does not depend on
 
@@ -78,4 +78,4 @@ A page has properties: each a key and a string value. A key is a page title, com
 - **Whether the page still exists is not stored.** A page that only a link names exists while the link does, so a page another page links to stays in search, empty, under the spelling it had, until the last link goes. Links on the deleted page itself go with it.
 - **Each delete is counted per page** (`getDeletions`), so a reader can tell that a page was deleted from a page that merely went empty.
 - **Malformed is skipped whole:** a payload that is not an object, or a `page` that is not a string or is blank once trimmed.
-- **`deletePage(view, page)`** writes nothing for a page with nothing on it (`hasContent`): the delete would change nothing. **`getDeleteImpact(pages, page)`** counts what a delete leaves pointing at the page from other pages: blocks that link to it by title, and blocks that hold a `((id))` to a block on it.
+- **`deletePage(view, page)`** writes nothing for a page with nothing on it (`hasContent`): the delete would change nothing. **`getRefsTo(pages, page)`** counts the blocks on other pages that hold a `((id))` to a block on it: what a delete would leave showing as missing. What links to it by title is `getReferences`.

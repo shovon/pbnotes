@@ -11,8 +11,8 @@ import {
   blockEdited,
   deletePage,
   editBlock,
-  getDeleteImpact,
   getDeletions,
+  getRefsTo,
   getPage,
   getProperties,
   indentBlock,
@@ -162,7 +162,7 @@ test("each delete counts once, per page, by `canonicalize`", async () => {
   assert.equal(getDeletions(view.state, "Bar"), 0);
 });
 
-test("the impact counts title links and block refs from other pages only", async () => {
+test("refs to the page's blocks are counted from other pages only, once per block", async () => {
   const view = memory();
   const { parent, child } = await foo(view);
   await addBlock(view, "Foo", `[[Foo]] ((${child}))`, undefined, id());
@@ -174,8 +174,8 @@ test("the impact counts title links and block refs from other pages only", async
   await addBlock(view, "Bar", `((${parent})) and ((${child}))`, undefined, id());
   await addBlock(view, "Baz", `#Foo ((${child}))`, undefined, id());
   await addBlock(view, "Baz", `((${crypto.randomUUID()}))`, undefined, id());
-  // The nested one is under a block that links, so it counts with its parent.
-  assert.deepEqual(getDeleteImpact(view.state, "Foo"), { links: 2, refs: 2 });
+  assert.equal(getRefsTo(view.state, "foo"), 2);
+  assert.equal(getRefsTo(view.state, "Nowhere"), 0);
 });
 
 test("a malformed delete is skipped whole", () => {

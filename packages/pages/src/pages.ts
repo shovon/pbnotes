@@ -74,12 +74,12 @@ export type {
 export { removeProperty, renameProperty, setProperty } from "./properties/commands.ts";
 export {
   deletePage,
-  getDeleteImpact,
   getDeletions,
+  getRefsTo,
   hasContent,
   pageDeleted,
 } from "./deletes/deletes.ts";
-export type { DeleteImpact, DeleteEvent, PageDeleted } from "./deletes/deletes.ts";
+export type { DeleteEvent, PageDeleted } from "./deletes/deletes.ts";
 export {
   addBlock,
   blockCreated,

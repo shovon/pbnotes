@@ -29,7 +29,6 @@ export type ProjectViewPages = PageViewPages &
     | 'find'
     | 'addImage'
     | 'pageMenu'
-    | 'deleteImpact'
   >;
 
 /**
@@ -476,6 +475,10 @@ export default function ProjectView({ act, pages, now, mac }: Props) {
           <PageMenu
             title={own.page.title}
             canDelete={own.page.blocks.length > 0 || own.properties.length > 0}
+            impact={{
+              links: own.references.reduce((sum, it) => sum + it.blocks.length, 0),
+              refs: own.refsTo,
+            }}
             pages={pages}
             onDelete={() => deletePage(own.page.title)}
             act={act}
