@@ -18,9 +18,11 @@ Each of those writes one event, and each event has a pure builder: `blockCreated
 
 Page properties have commands too, `setProperty`, `removeProperty` and `renameProperty`, and builders, `propertySet` and `propertyRemoved`.
 
+A page is deleted with `deletePage`, whose builder is `pageDeleted`.
+
 A view that draws its writes before they are recorded folds them with `predict` for blocks and `predictProperties` for a page's properties. Each passes over events that are not its own, so a view can hand both everything it has in flight.
 
-The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperties`, `searchPages` and `locateBlock`) take the folded pages alone, since they never write.
+The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperties`, `getDeletions`, `getDeleteImpact`, `hasContent`, `searchPages` and `locateBlock`) take the folded pages alone, since they never write.
 
 ## What it does not depend on
 
@@ -63,3 +65,17 @@ A page has properties: each a key and a string value. A key is a page title, com
 - **Malformed is skipped whole:** a payload that is not an object, a `page`, `key` or `value` that is not a string, or a `page` or `key` that is blank once trimmed. Any other field in a payload is ignored, not an error.
 - **`getProperties(pages, page)`** lists a page's properties as `{ key, value }`, each key in the spelling it shows, ordered by `canonicalize(key)`.
 - **The commands** refuse what the fold would skip (a blank page or key) and write nothing for a change that changes nothing: setting the value a key has, or removing a key the page lacks. `renameProperty(view, page, from, to)` writes a `set` of `to` with `from`'s value, then a `removed` of `from`, so a stop between them leaves both keys and never neither. It refuses a `from` the page lacks and a `to` it already has, and writes nothing for a `to` that is `from` once canonicalized: a key's spelling is its page's, so a rename cannot change it.
+
+## Deleting a page is a contract
+
+| Type | `v` | Payload | Meaning |
+|---|---|---|---|
+| `page.deleted` | 1 | `{ page }` | The user was done with `page`: its blocks and its properties. |
+
+- **One event for the whole page.** No `block.deleted` per block and no `property.removed` per key, so a crash or a sync still arriving can never leave a page half deleted.
+- **It applies to the page as it stands at that point in fold order.** A block or property that sorts before it goes with it, however late it arrived. One that sorts after it is a later fact and stands. An edit that sorts after it, to a block it removed, changes nothing, like any edit to a block the fold does not have.
+- **Nothing leaves the disk.** Every block and property the page held stays in the log.
+- **Whether the page still exists is not stored.** A page that only a link names exists while the link does, so a page another page links to stays in search, empty, under the spelling it had, until the last link goes. Links on the deleted page itself go with it.
+- **Each delete is counted per page** (`getDeletions`), so a reader can tell that a page was deleted from a page that merely went empty.
+- **Malformed is skipped whole:** a payload that is not an object, or a `page` that is not a string or is blank once trimmed.
+- **`deletePage(view, page)`** writes nothing for a page with nothing on it (`hasContent`): the delete would change nothing. **`getDeleteImpact(pages, page)`** counts what a delete leaves pointing at the page from other pages: blocks that link to it by title, and blocks that hold a `((id))` to a block on it.

@@ -118,6 +118,10 @@ const CHECKERS: {
     from: requireTitle(own(raw, "from")),
     to: requireTitle(own(raw, "to")),
   }),
+  deletePage: (raw) => ({
+    type: "deletePage",
+    title: requireTitle(own(raw, "title")),
+  }),
 };
 
 /**

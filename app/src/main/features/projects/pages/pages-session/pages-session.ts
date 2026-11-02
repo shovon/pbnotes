@@ -10,7 +10,9 @@
 import {
   addBlock,
   deleteBlock,
+  deletePage,
   editBlock,
+  getDeleteImpact,
   indentBlock,
   locateBlock,
   outdentBlock,
@@ -20,7 +22,7 @@ import {
   searchPages,
   setProperty,
 } from "@pbnotes/pages";
-import type { PagesView as Base } from "@pbnotes/pages";
+import type { DeleteImpact, PagesView as Base } from "@pbnotes/pages";
 import type { Command, Matches, Place, PlaceView } from "../../../../../shared/pages.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
 import { getView } from "../place-view/place-view.ts";
@@ -128,6 +130,8 @@ export function createPagesSession(
       return { pages: searchPages(state, query), blocks: searchBlocks(state, query) };
     },
     status: async (): Promise<LogStatus> => (await open.require()).status,
+    deleteImpact: async (title: string): Promise<DeleteImpact> =>
+      getDeleteImpact((await open.require()).state, title),
 
     /**
      * Records `command`, checked by `requireCommand` before it gets here, as
@@ -161,6 +165,8 @@ function apply(view: PagesView, command: Command): Promise<unknown> {
       return removeProperty(view, command.title, command.key);
     case "renameProperty":
       return renameProperty(view, command.title, command.from, command.to);
+    case "deletePage":
+      return deletePage(view, command.title);
     default: {
       // Does not compile once `Command` has a case this switch lacks.
       const unhandled: never = command;

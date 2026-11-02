@@ -240,3 +240,37 @@ test("find lists the matching titles, then the matching blocks with their page",
     blocks: [{ id: "d1", page: TODAY, text: "Call Mira" }],
   });
 });
+
+test("a page delete is recorded in order with the writes around it", async () => {
+  const { view, hold } = ledger();
+  const { pages } = session(view);
+  const release = hold();
+  const writes = [
+    pages.run({ type: "addBlock", id: "a1", title: "Mira", text: "gone" }),
+    pages.run({ type: "setProperty", title: "Mira", key: "Owner", value: "Sal" }),
+    pages.run({ type: "deletePage", title: "mira" }),
+    pages.run({ type: "addBlock", id: "a2", title: "Mira", text: "after" }),
+  ];
+  release();
+  await Promise.all(writes);
+  const seen = await pages.view({ page: "Mira" }, TODAY);
+  assert.deepEqual(shown(seen), ["after"]);
+  assert.deepEqual(seen.showing[0].properties, []);
+  assert.equal(seen.showing[0].deletions, 1);
+});
+
+test("deleting a page with nothing on it writes nothing", async () => {
+  const { view } = ledger();
+  const { pages } = session(view);
+  const before = view.version;
+  assert.equal(await pages.run({ type: "deletePage", title: "Mira" }), before);
+});
+
+test("the delete impact counts what other pages hold pointing at the page", async () => {
+  const { view } = ledger();
+  const { pages } = session(view);
+  await pages.run({ type: "addBlock", id: "a1", title: "Mira", text: "here" });
+  await pages.run({ type: "addBlock", id: "a2", title: TODAY, text: "[[Mira]] ((a1))" });
+  await pages.run({ type: "addBlock", id: "a3", title: TODAY, text: "((a1))" });
+  assert.deepEqual(await pages.deleteImpact("Mira"), { links: 1, refs: 2 });
+});

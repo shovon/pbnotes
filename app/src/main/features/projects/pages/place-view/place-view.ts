@@ -4,7 +4,14 @@
  *
  * Pure: it reads the fold it is handed and holds nothing.
  */
-import { getPage, getPages, getPreviews, getProperties, getReferences } from "@pbnotes/pages";
+import {
+  getDeletions,
+  getPage,
+  getPages,
+  getPreviews,
+  getProperties,
+  getReferences,
+} from "@pbnotes/pages";
 import type { Page, Pages } from "@pbnotes/pages";
 import type { Place, PlaceView } from "../../../../../shared/pages.ts";
 
@@ -52,6 +59,7 @@ export function getView(
       page,
       references: at?.block ? [] : getReferences(state, page.title),
       properties: getProperties(state, page.title),
+      deletions: getDeletions(state, page.title),
     })),
     previews: getPreviews(state),
   };
