@@ -9,7 +9,7 @@ export default defineConfig({
   // cached under a hash of the lockfile, so an edit to it never reaches the
   // window. What it imports is still bundled, since some of that is CommonJS.
   optimizeDeps: {
-    exclude: ['@pbnotes/pages'],
+    exclude: ['@pbnotes/graph'],
     include: ['unified', 'remark-parse', 'remark-math'],
   },
 });

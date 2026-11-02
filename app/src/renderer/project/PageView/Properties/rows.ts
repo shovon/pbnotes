@@ -6,8 +6,8 @@
  * Pure, over the rows as drawn (main's properties with this view's writes in
  * flight folded over them), so the rules run under `node --test`.
  */
-import { canonicalize } from '@pbnotes/pages';
-import type { Property } from '@pbnotes/pages';
+import { canonicalize } from '@pbnotes/graph';
+import type { Property } from '@pbnotes/graph';
 
 /**
  * The one row open for editing: what its cells hold now, and `from`, the row

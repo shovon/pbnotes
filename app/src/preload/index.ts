@@ -4,8 +4,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
 import { PROJECT_CHANNELS } from '../shared/projects';
 import type { ProjectsApi } from '../shared/projects';
-import { PAGE_CHANNELS } from '../shared/pages';
-import type { PagesApi } from '../shared/pages';
+import { GRAPH_CHANNELS } from '../shared/graph';
+import type { GraphApi } from '../shared/graph';
 
 const projects: ProjectsApi = {
   list: () => ipcRenderer.invoke(PROJECT_CHANNELS.list),
@@ -22,31 +22,31 @@ const projects: ProjectsApi = {
   reveal: (id) => ipcRenderer.invoke(PROJECT_CHANNELS.reveal, id),
 };
 
-const pages: PagesApi = {
-  view: (place, today) => ipcRenderer.invoke(PAGE_CHANNELS.view, place, today),
+const graph: GraphApi = {
+  view: (place, today) => ipcRenderer.invoke(GRAPH_CHANNELS.view, place, today),
   // Hands each version on without the event: the first argument of an IPC
   // event carries `sender`, and the whole point of the bridge is that the
   // renderer never gets that.
   onChanged: (listener) => {
     const heard = (_event: IpcRendererEvent, version: number) =>
       listener(version);
-    ipcRenderer.on(PAGE_CHANNELS.changed, heard);
+    ipcRenderer.on(GRAPH_CHANNELS.changed, heard);
     return () => {
-      ipcRenderer.off(PAGE_CHANNELS.changed, heard);
+      ipcRenderer.off(GRAPH_CHANNELS.changed, heard);
     };
   },
-  locate: (blockId) => ipcRenderer.invoke(PAGE_CHANNELS.locate, blockId),
-  search: (query) => ipcRenderer.invoke(PAGE_CHANNELS.search, query),
-  find: (query) => ipcRenderer.invoke(PAGE_CHANNELS.find, query),
-  status: () => ipcRenderer.invoke(PAGE_CHANNELS.status),
-  run: (command) => ipcRenderer.invoke(PAGE_CHANNELS.command, command),
+  locate: (blockId) => ipcRenderer.invoke(GRAPH_CHANNELS.locate, blockId),
+  search: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.search, query),
+  find: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.find, query),
+  status: () => ipcRenderer.invoke(GRAPH_CHANNELS.status),
+  run: (command) => ipcRenderer.invoke(GRAPH_CHANNELS.command, command),
   addImage: (bytes, mime) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.addImage, bytes, mime),
+    ipcRenderer.invoke(GRAPH_CHANNELS.addImage, bytes, mime),
   blockMenu: (blockId, offer) =>
-    ipcRenderer.invoke(PAGE_CHANNELS.blockMenu, blockId, offer),
-  pageMenu: (at, offer) => ipcRenderer.invoke(PAGE_CHANNELS.pageMenu, at, offer),
+    ipcRenderer.invoke(GRAPH_CHANNELS.blockMenu, blockId, offer),
+  pageMenu: (at, offer) => ipcRenderer.invoke(GRAPH_CHANNELS.pageMenu, at, offer),
 };
 
 // Only this explicit surface crosses the context bridge; the renderer never
 // sees `ipcRenderer` itself.
-contextBridge.exposeInMainWorld('pbnotes', { projects, pages });
+contextBridge.exposeInMainWorld('pbnotes', { projects, graph });

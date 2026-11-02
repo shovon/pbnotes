@@ -5,7 +5,7 @@
  *
  * Pure, so the rule runs under `node --test`; `ProjectView` holds the view.
  */
-import type { Place, PlaceView } from '../../../shared/pages.ts';
+import type { Place, PlaceView } from '../../../shared/graph.ts';
 
 /** A view, and the place it was asked for: none is the journal. */
 export type Held = { place: Place | undefined; view: PlaceView };

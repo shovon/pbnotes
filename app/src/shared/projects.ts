@@ -67,8 +67,8 @@ export type ProjectsApi = {
   setPinned(id: string, pinned: boolean): Promise<Project | null>;
   /**
    * Makes this the project main has open, and records when, for ordering the
-   * list. The one call that names which project the pages are about: every
-   * `pages` call after it is about this one.
+   * list. The one call that names which project the graph is about: every
+   * `graph` call after it is about this one.
    */
   open(id: string): Promise<void>;
   /**

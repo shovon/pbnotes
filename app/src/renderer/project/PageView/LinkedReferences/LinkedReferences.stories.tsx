@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import type { Block, Page } from '@pbnotes/pages';
-import type { PageViewPages } from '../PageView';
+import type { Block, Page } from '@pbnotes/graph';
+import type { PageViewGraph } from '../PageView';
 import LinkedReferences from './LinkedReferences';
 
 /**
@@ -8,7 +8,7 @@ import LinkedReferences from './LinkedReferences';
  * Storybook calls `String(pages)` for the source snippet, and a Proxy that
  * answers every key answers `toString` with a Promise (#162).
  */
-const pages: PageViewPages = {
+const graph: PageViewGraph = {
   run: async () => undefined,
   search: async () => [],
   blockMenu: async () => null,
@@ -28,7 +28,7 @@ const page = (title: string, blocks: Block[]): Page => ({ title, blocks });
  */
 const meta = {
   component: LinkedReferences,
-  args: { pages, version: 0, act: () => undefined },
+  args: { graph, version: 0, act: () => undefined },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: '36rem' }}>

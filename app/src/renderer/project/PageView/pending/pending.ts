@@ -11,7 +11,7 @@
  *
  * Pure, so the rules run under `node --test`; `PageView` holds the list.
  */
-import type { PageEvent, PropertyEvent } from '@pbnotes/pages';
+import type { PageEvent, PropertyEvent } from '@pbnotes/graph';
 
 /** Any event a page draws ahead of main: a block's, or a property's. */
 type Drawn = PageEvent | PropertyEvent;

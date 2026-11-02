@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { FocusEvent, KeyboardEvent, MouseEvent } from 'react';
-import { canonicalize } from '@pbnotes/pages';
-import type { Property } from '@pbnotes/pages';
+import { canonicalize } from '@pbnotes/graph';
+import type { Property } from '@pbnotes/graph';
 import { commit, draft, editable, keyless, shown, suggested } from './rows';
 import type { Open, Write } from './rows';
 

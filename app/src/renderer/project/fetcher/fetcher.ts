@@ -7,7 +7,7 @@
  * whose answers arrive late, out of order, or not at all. `ProjectView`
  * binds the bridge and the clock, and wires the rest.
  */
-import type { Place, PlaceView } from '../../../shared/pages.ts';
+import type { Place, PlaceView } from '../../../shared/graph.ts';
 import { keep, samePlace } from '../held/held.ts';
 import type { Held } from '../held/held.ts';
 

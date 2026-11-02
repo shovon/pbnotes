@@ -1,6 +1,6 @@
 /**
  * Marks drawn over a block's words: `~~struck~~`, `==highlighted==` and
- * `^^highlighted^^`. Rendering only — nothing in `@pbnotes/pages` reads
+ * `^^highlighted^^`. Rendering only — nothing in `@pbnotes/graph` reads
  * them, so they ride alongside its plugins here instead of inside them.
  */
 import type { RootContent } from 'mdast';

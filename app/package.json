@@ -61,7 +61,7 @@
   "dependencies": {
     "@pbnotes/files": "*",
     "@pbnotes/ledger": "*",
-    "@pbnotes/pages": "*",
+    "@pbnotes/graph": "*",
     "electron-squirrel-startup": "^1.0.1",
     "katex": "^0.16.47",
     "mdast-util-gfm-strikethrough": "^2.0.1",

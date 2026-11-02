@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Block, Page } from '@pbnotes/pages';
+import type { Block, Page } from '@pbnotes/graph';
 import { imageTarget, placeNew } from './placement.ts';
 
 const block = (id: string, children: Block[] = []): Block => ({

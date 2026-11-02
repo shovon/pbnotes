@@ -7,7 +7,7 @@ import PageMenu from './PageMenu';
  * A stand-in for main. Storybook has no native menu, so the menu picks
  * Delete Page… straight away when it is enabled, and nothing when it is not.
  */
-const pages = {
+const graph = {
   pageMenu: async (_at: { x: number; y: number }, offer?: { delete?: boolean }) =>
     offer?.delete ? ('delete' as const) : null,
 };
@@ -18,7 +18,7 @@ const meta = {
     title: 'Project Atlas',
     canDelete: true,
     impact: { links: 3, refs: 1 },
-    pages,
+    graph,
     onDelete: fn(),
     act: (action: () => Promise<unknown>) => void action(),
   },

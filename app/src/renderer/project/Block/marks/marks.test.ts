@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
-import { remarkPlugins } from '@pbnotes/pages';
+import { remarkPlugins } from '@pbnotes/graph';
 import { remarkHighlight, remarkStrikethrough } from './marks.ts';
 
 type Node = {

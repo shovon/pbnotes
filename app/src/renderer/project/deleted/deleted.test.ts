@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Place } from '../../../shared/pages.ts';
+import type { Place } from '../../../shared/graph.ts';
 import type { Held } from '../held/held.ts';
 import { deletedSince } from './deleted.ts';
 

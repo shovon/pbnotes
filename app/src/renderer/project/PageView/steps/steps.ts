@@ -16,9 +16,9 @@ import {
   outdented,
   propertyRemoved,
   propertySet,
-} from '@pbnotes/pages';
-import type { Block, PageEvent, PropertyEvent } from '@pbnotes/pages';
-import type { Command } from '../../../../shared/pages';
+} from '@pbnotes/graph';
+import type { Block, PageEvent, PropertyEvent } from '@pbnotes/graph';
+import type { Command } from '../../../../shared/graph';
 
 /** An event to draw, and the call that asks main to record it. */
 export type Step = [PageEvent | PropertyEvent, () => Promise<unknown>];
@@ -29,11 +29,11 @@ export type Step = [PageEvent | PropertyEvent, () => Promise<unknown>];
  * and a stub that answers nothing only means the prediction is dropped at
  * once.
  */
-export type StepsPages = { run(command: Command): Promise<unknown> };
+export type StepsGraph = { run(command: Command): Promise<unknown> };
 
 /** A new block, named by the caller, at the end of the page or beneath `after`. */
 export function add(
-  pages: StepsPages,
+  graph: StepsGraph,
   id: string,
   title: string,
   text: string,
@@ -42,19 +42,19 @@ export function add(
   return [
     blockCreated(title, text, after, id),
     () =>
-      pages.run({ type: 'addBlock', id, title, text, ...(after ? { after } : {}) }),
+      graph.run({ type: 'addBlock', id, title, text, ...(after ? { after } : {}) }),
   ];
 }
 
-export function edit(pages: StepsPages, id: string, text: string): Step {
+export function edit(graph: StepsGraph, id: string, text: string): Step {
   return [
     blockEdited(id, text),
-    () => pages.run({ type: 'editBlock', blockId: id, text }),
+    () => graph.run({ type: 'editBlock', blockId: id, text }),
   ];
 }
 
-export function remove(pages: StepsPages, id: string): Step {
-  return [blockDeleted(id), () => pages.run({ type: 'deleteBlock', blockId: id })];
+export function remove(graph: StepsGraph, id: string): Step {
+  return [blockDeleted(id), () => graph.run({ type: 'deleteBlock', blockId: id })];
 }
 
 /**
@@ -63,7 +63,7 @@ export function remove(pages: StepsPages, id: string): Step {
  * nothing is sent.
  */
 export function indent(
-  pages: StepsPages,
+  graph: StepsGraph,
   blocks: Block[],
   id: string,
 ): Step | undefined {
@@ -71,14 +71,14 @@ export function indent(
   return (
     payload && [
       blockIndented(payload),
-      () => pages.run({ type: 'indentBlock', blockId: id }),
+      () => graph.run({ type: 'indentBlock', blockId: id }),
     ]
   );
 }
 
 /** Shift+Tab on a block. Undefined at the top level, like `indent` at the top. */
 export function outdent(
-  pages: StepsPages,
+  graph: StepsGraph,
   blocks: Block[],
   id: string,
 ): Step | undefined {
@@ -86,29 +86,29 @@ export function outdent(
   return (
     payload && [
       blockOutdented(payload),
-      () => pages.run({ type: 'outdentBlock', blockId: id }),
+      () => graph.run({ type: 'outdentBlock', blockId: id }),
     ]
   );
 }
 
 /** `title`'s `key` is now `value`. */
 export function setProperty(
-  pages: StepsPages,
+  graph: StepsGraph,
   title: string,
   key: string,
   value: string,
 ): Step {
   return [
     propertySet(title, key, value),
-    () => pages.run({ type: 'setProperty', title, key, value }),
+    () => graph.run({ type: 'setProperty', title, key, value }),
   ];
 }
 
 /** `title` no longer has `key`. */
-export function removeProperty(pages: StepsPages, title: string, key: string): Step {
+export function removeProperty(graph: StepsGraph, title: string, key: string): Step {
   return [
     propertyRemoved(title, key),
-    () => pages.run({ type: 'removeProperty', title, key }),
+    () => graph.run({ type: 'removeProperty', title, key }),
   ];
 }
 
@@ -119,14 +119,14 @@ export function removeProperty(pages: StepsPages, title: string, key: string): S
  * so its answer is the answer for both.
  */
 export function renameProperty(
-  pages: StepsPages,
+  graph: StepsGraph,
   title: string,
   from: string,
   to: string,
   value: string,
 ): Step[] {
   let sent: Promise<unknown> | undefined;
-  const send = () => (sent ??= pages.run({ type: 'renameProperty', title, from, to }));
+  const send = () => (sent ??= graph.run({ type: 'renameProperty', title, from, to }));
   return [
     [propertySet(title, to, value), send],
     [propertyRemoved(title, from), send],

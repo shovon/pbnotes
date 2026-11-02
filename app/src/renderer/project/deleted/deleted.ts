@@ -7,7 +7,7 @@
  *
  * Pure, so the rule runs under `node --test`; `ProjectView` acts on it.
  */
-import { canonicalize } from '@pbnotes/pages';
+import { canonicalize } from '@pbnotes/graph';
 import type { Held } from '../held/held.ts';
 
 /**

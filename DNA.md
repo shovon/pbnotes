@@ -63,12 +63,12 @@ This is what makes a pivot cheap. A new product is a new fold over the same fold
 
 Everything that gives events meaning, and everything that draws them:
 
-- `@pbnotes/pages`: the `block.*` and `property.*` events, the fold, its queries and commands, `predict`, the journal and the link syntax.
-- The app's `pages:*` IPC, `Command`, `Place`, `PlaceView`.
+- `@pbnotes/graph`: the `block.*` and `property.*` events, the fold, its queries and commands, `predict`, the journal and the link syntax.
+- The app's `graph:*` IPC, `Command`, `Place`, `PlaceView`.
 - The renderer, all of it.
 - The CLI's `pbnotes append`, which writes `block.created`.
 
-These should be easy to change. Don't write rules for them as if they were permanent, and don't let them leak below the line: the ledger never imports `pages`, and the projects registry never imports anything a project contains.
+These should be easy to change. Don't write rules for them as if they were permanent, and don't let them leak below the line: the ledger never imports `graph`, and the projects registry never imports anything a project contains.
 
 ### What a pivot can't undo
 

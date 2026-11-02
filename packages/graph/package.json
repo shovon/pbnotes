@@ -1,0 +1,23 @@
+{
+  "name": "@pbnotes/graph",
+  "version": "0.1.0",
+  "description": "What pbnotes events mean: the graph fold, the queries over it, and the commands that write it.",
+  "private": true,
+  "type": "module",
+  "main": "./src/graph.ts",
+  "exports": "./src/graph.ts",
+  "scripts": {
+    "test": "node --test '**/*.test.ts'"
+  },
+  "dependencies": {
+    "mdast-util-gfm-autolink-literal": "^2.0.1",
+    "micromark-extension-gfm-autolink-literal": "^2.1.0",
+    "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/mdast": "^4.0.4"
+  },
+  "license": "MIT"
+}

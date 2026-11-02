@@ -12,15 +12,15 @@ import type { ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
-import { IMAGE_SCHEME } from '../../../shared/pages';
-import { remarkPlugins as reading } from '@pbnotes/pages';
+import { IMAGE_SCHEME } from '../../../shared/graph';
+import { remarkPlugins as reading } from '@pbnotes/graph';
 import { remarkHighlight, remarkStrikethrough } from './marks/marks';
 import { bracketEdit } from './brackets/brackets';
 import type { Edit } from './brackets/brackets';
 import { completeLink, linkQuery } from './linkQuery/linkQuery';
 import type { LinkQuery } from './linkQuery/linkQuery';
 
-/** Read the way `@pbnotes/pages` reads a block, plus marks that only draw. */
+/** Read the way `@pbnotes/graph` reads a block, plus marks that only draw. */
 const remarkPlugins = [...reading, remarkStrikethrough, remarkHighlight];
 
 /**

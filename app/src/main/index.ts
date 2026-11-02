@@ -24,12 +24,12 @@ import { registerProjectIpc } from "./features/projects/projects-ipc";
 import { createOpenProject } from "./features/projects/open-project/open-project";
 import { createLedgers } from "./ledgers";
 import {
-  broadcastPages,
-  registerPageIpc,
-} from "./features/projects/pages/pages-ipc";
-import { createPagesSession } from "./features/projects/pages/pages-session/pages-session";
-import { findImage, saveImage } from "./features/projects/pages/images/images";
-import { IMAGE_SCHEME } from "../shared/pages";
+  broadcastGraph,
+  registerGraphIpc,
+} from "./features/projects/graph/graph-ipc";
+import { createGraphSession } from "./features/projects/graph/graph-session/graph-session";
+import { findImage, saveImage } from "./features/projects/graph/images/images";
+import { IMAGE_SCHEME } from "../shared/graph";
 import {
   MIN_SIZE,
   createWindowState,
@@ -51,7 +51,7 @@ if (!app.commandLine.hasSwitch("user-data-dir")) {
 }
 
 // Before the app is ready, or it is too late. `standard` gives the URL a
-// host, which is always `images`; the handler is in `pages-ipc`.
+// host, which is always `images`; the handler is in `graph-ipc`.
 protocol.registerSchemesAsPrivileged([
   { scheme: IMAGE_SCHEME, privileges: { standard: true, secure: true } },
 ]);
@@ -162,19 +162,19 @@ app.on("ready", () => {
   const projects = createOpenProject(store, disk.probe, () => undefined);
   registerProjectIpc(store, projects);
 
-  // Pages are handed their view of what is open, and the images beside it,
+  // The graph is handed its view of what is open, and the images beside it,
   // and never ask what that is. This is the one place that says it is the
   // open project's, and the one place that turns a project into a path.
   //
   // `requireProject` settles which project before its first `await`, and is
   // the first thing a read, a write or a stored image calls: one sent just
   // before the project changed lands where it was sent.
-  const pages = createPagesSession(
-    { require: async () => ledgers.pagesOf(await projects.requireProject()) },
-    // Every window of the app, over `pages:changed`.
-    broadcastPages,
+  const graph = createGraphSession(
+    { require: async () => ledgers.graphOf(await projects.requireProject()) },
+    // Every window of the app, over `graph:changed`.
+    broadcastGraph,
   );
-  registerPageIpc(pages, {
+  registerGraphIpc(graph, {
     save: async (bytes, mime) => {
       const project = await projects.requireProject();
       return saveImage(
@@ -193,7 +193,7 @@ app.on("ready", () => {
     },
   });
 
-  // A project's pages moved: a write of ours, another session's events
+  // A project's graph moved: a write of ours, another session's events
   // landing in its folder, or the fold catching up with a write of ours. Every
   // fold has taken them in by now, so nothing is fed to a feature here: each
   // one is only told to tell the windows, and only when the project is the one on screen — which is settled
@@ -201,7 +201,7 @@ app.on("ready", () => {
   // is it — a new feature adds its line here.
   ledgers.onChange((projectId) => {
     if (projects.currentProject()?.id !== projectId) return;
-    pages.refreshPages();
+    graph.refreshGraph();
   });
 
   // The folders are read less often while no window of the app has focus,

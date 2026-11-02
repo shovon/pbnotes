@@ -1,9 +1,9 @@
 /**
- * Each project's ledger, opened once, and the pages fold running over it.
+ * Each project's ledger, opened once, and the graph fold running over it.
  *
  * `@pbnotes/ledger` opens one folder and folds it; which folders are
  * open, what happens when one moves, and how a write reaches the view before
- * its reply does are the app's, and live here. Shell, not a feature: `pages/`
+ * its reply does are the app's, and live here. Shell, not a feature: `graph/`
  * is handed the view this builds and never sees a ledger or a path.
  *
  * Deliberately free of `electron` imports, so `ledgers.test.ts` and
@@ -12,8 +12,8 @@
 import path from "node:path";
 import { DEFAULT_CADENCE, openOrCreate } from "@pbnotes/ledger";
 import type { Cadence, Fold, Ledger } from "@pbnotes/ledger";
-import { pagesFold } from "@pbnotes/pages";
-import type { Pages, PagesView } from "@pbnotes/pages";
+import { graphFold } from "@pbnotes/graph";
+import type { Graph, GraphView } from "@pbnotes/graph";
 
 /** Enough to find a ledger: what to remember it by, and the folder it is. */
 export type LedgerRef = { id: string; path: string };
@@ -25,12 +25,12 @@ export type LedgerPort = Pick<Ledger, "onFold" | "reachOf" | "writer" | "status"
 export type OpenLedger = (path: string, cadence: Cadence) => Promise<LedgerPort>;
 
 /**
- * What `pagesOf` hands out: the package's view of the pages fold, and what
- * only the log knows. Whoever takes it declares the part it reads (`PagesView`
- * in `pages-session.ts`); this does not import that, and `index.ts`, where the
+ * What `graphOf` hands out: the package's view of the graph fold, and what
+ * only the log knows. Whoever takes it declares the part it reads (`GraphView`
+ * in `graph-session.ts`); this does not import that, and `index.ts`, where the
  * two meet, is where the compiler checks one is the other.
  */
-export type LedgerView = PagesView & {
+export type LedgerView = GraphView & {
   /** How much of the folder could be read, and what in it was skipped. */
   readonly status: Ledger["status"];
   /**
@@ -74,15 +74,15 @@ async function release(entry: Entry): Promise<void> {
 }
 
 /**
- * One set of open ledgers, and the one listener told when a project's pages
- * move. The composition root makes one and closes it; a test makes its own,
+ * One set of open ledgers, and the one listener told when a project's graph
+ * moves. The composition root makes one and closes it; a test makes its own,
  * and may pace it its own way, or open its own ledgers.
  */
 export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = openOrCreate) {
   const entries = new Map<string, Entry>();
 
   /**
-   * Told which project's pages changed: a write of ours, an arrival from
+   * Told which project's graph changed: a write of ours, an arrival from
    * another session, or a fold that caught up with a write of our own. One listener; a second call
    * replaces the first. Left unset, nobody is told, which is what a test wants.
    */
@@ -93,7 +93,7 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
   }
 
   /**
-   * The fold's version: one more every time any ledger's pages change, a
+   * The fold's version: one more every time any ledger's graph changes, a
    * write of ours and an arrival alike. One counter for every ledger, so it
    * never goes back, even when a project's ledger is reopened at a new path.
    * A view reads it beside the state it labels, with no `await` between them,
@@ -133,11 +133,11 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
     // `openOrCreate` is the app's policy already: a missing or empty folder is
     // made a ledger, and anything else that is not one is refused.
     const ledger = await openLedger(project.path, pace);
-    const fold = ledger.onFold(pagesFold.initial, pagesFold.reduce);
+    const fold = ledger.onFold(graphFold.initial, graphFold.reduce);
     const folds = fold[Symbol.asyncIterator]();
     // The first yield is the catch-up, so the view has every page before it is
     // handed out.
-    const first = (await folds.next()).value as Fold<Pages>;
+    const first = (await folds.next()).value as Fold<Graph>;
     let state = first.state;
     let at = ++version;
     /** How far the last yield taken reached. */
@@ -145,8 +145,8 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
     /** The reach of the last write `dispatch` folded in itself: a yield short of it lacks that write. */
     let need = 0;
 
-    /** The pages moved: a new version, and the windows are told. */
-    const moved = (next: Pages): void => {
+    /** The graph moved: a new version, and the windows are told. */
+    const moved = (next: Graph): void => {
       state = next;
       at = ++version;
       announce?.(project.id);
@@ -192,7 +192,7 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
         // No reach is a post a scan read and then failed on; the next scan
         // ingests it, and a yield short of it can still drop it until then.
         if (reach !== undefined) need = Math.max(need, reach);
-        moved(pagesFold.reduce(state, event));
+        moved(graphFold.reduce(state, event));
       },
     };
     return { ledger, view };
@@ -213,7 +213,7 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
     return entry.opened;
   }
 
-  async function pagesOf(project: LedgerRef): Promise<LedgerView> {
+  async function graphOf(project: LedgerRef): Promise<LedgerView> {
     return (await opened(project)).view;
   }
 
@@ -232,7 +232,7 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
     await Promise.all(open.map(release));
   }
 
-  return { pagesOf, writerOf, onChange, setFocused, close: closeLedgers };
+  return { graphOf, writerOf, onChange, setFocused, close: closeLedgers };
 }
 
 export type Ledgers = ReturnType<typeof createLedgers>;

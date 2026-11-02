@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blockEdited } from '@pbnotes/pages';
+import { blockEdited } from '@pbnotes/graph';
 import { drawn, recorded, refused, unseen } from './pending.ts';
 
 const a = blockEdited('b1', 'one');
