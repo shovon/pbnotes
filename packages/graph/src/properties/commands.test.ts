@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getProperties, graphFold } from "../graph.ts";
+import { getProperties, graphFold, NAMESPACE } from "../graph.ts";
 import type { Graph, GraphView } from "../graph.ts";
 import { removeProperty, renameProperty, setProperty } from "./commands.ts";
 
@@ -54,7 +54,7 @@ test("removeProperty removes, and removing a key the page lacks writes nothing",
   assert.deepEqual(view.written.map((it) => it.type), ["property.set", "property.removed"]);
 });
 
-test("renameProperty sets the new key before it removes the old, keeping the value", async () => {
+test("renameProperty writes one batch: the set of the new key, then the removed of the old", async () => {
   const view = memory();
   await setProperty(view, "Foo", "Owner", "Mira");
   view.written.length = 0;
@@ -62,25 +62,30 @@ test("renameProperty sets the new key before it removes the old, keeping the val
     { key: "Author", value: "Mira" },
   ]);
   assert.deepEqual(view.written, [
-    { type: "property.set", payload: { page: "Foo", key: "Author", value: "Mira" } },
-    { type: "property.removed", payload: { page: "Foo", key: "Owner" } },
+    {
+      type: "batch",
+      payload: {
+        events: [
+          {
+            type: `${NAMESPACE}property.set`,
+            v: 1,
+            payload: { page: "Foo", key: "Author", value: "Mira" },
+          },
+          { type: `${NAMESPACE}property.removed`, v: 1, payload: { page: "Foo", key: "Owner" } },
+        ],
+      },
+    },
   ]);
 });
 
-test("a rename that stops after its set leaves both keys", async () => {
+test("a rename whose write fails leaves the old key, never half a rename", async () => {
   const view = memory();
   await setProperty(view, "Foo", "Owner", "Mira");
-  const dispatch = view.dispatch;
-  let calls = 0;
-  view.dispatch = async (v, type, payload) => {
-    if (++calls > 1) throw new Error("crash");
-    return dispatch(v, type, payload);
+  view.dispatch = async () => {
+    throw new Error("crash");
   };
   await assert.rejects(renameProperty(view, "Foo", "Owner", "Author"));
-  assert.deepEqual(getProperties(view.state, "Foo"), [
-    { key: "Author", value: "Mira" },
-    { key: "Owner", value: "Mira" },
-  ]);
+  assert.deepEqual(getProperties(view.state, "Foo"), [{ key: "Owner", value: "Mira" }]);
 });
 
 test("renameProperty refuses a key the page already has, a missing key and a blank one", async () => {

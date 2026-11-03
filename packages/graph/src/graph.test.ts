@@ -8,6 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   addBlock,
+  batch,
   blockCreated,
   blockDeleted,
   blockEdited,
@@ -141,6 +142,7 @@ test("every builder writes the v its own gate reads, and there is one for every 
     aliasAdded("x", "y"),
     aliasRemoved("x", "y"),
     pageDeleted("x"),
+    batch([pageDeleted("x")]),
   ];
   for (const event of built) assert.equal(event.v, HANDLES[event.type], event.type);
   assert.deepEqual(

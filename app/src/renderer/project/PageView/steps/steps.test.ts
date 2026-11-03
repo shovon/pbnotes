@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  batch,
   blockCreated,
   blockDeleted,
   blockEdited,
@@ -86,7 +87,7 @@ test('a move with nowhere to go is no step at all', () => {
   assert.equal(indent(graph, blocks, 'nope'), undefined);
 });
 
-test('a rename draws both its events and sends its one command once', async () => {
+test('a rename draws the one batch main records it as, and sends its one command', async () => {
   const calls: Command[] = [];
   const graph = {
     run: async (command: Command) => {
@@ -94,13 +95,11 @@ test('a rename draws both its events and sends its one command once', async () =
       return 7;
     },
   };
-  const steps = renameProperty(graph, 'Mira', 'Owner', 'Author', 'Sal');
+  const [event, send] = renameProperty(graph, 'Mira', 'Owner', 'Author', 'Sal');
   assert.deepEqual(
-    steps.map(([event]) => event),
-    [propertySet('Mira', 'Author', 'Sal'), propertyRemoved('Mira', 'Owner')],
+    event,
+    batch([propertySet('Mira', 'Author', 'Sal'), propertyRemoved('Mira', 'Owner')]),
   );
-  const answers = [];
-  for (const [, send] of steps) answers.push(await send());
-  assert.deepEqual(answers, [7, 7]);
+  assert.equal(await send(), 7);
   assert.deepEqual(calls, [{ type: 'renameProperty', title: 'Mira', from: 'Owner', to: 'Author' }]);
 });

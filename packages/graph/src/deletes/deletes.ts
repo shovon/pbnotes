@@ -69,6 +69,14 @@ function parse(event: { type: string; payload: unknown }): string | undefined {
 }
 
 /**
+ * Whether `event` is a page delete this fold reads: one of its types, well formed.
+ * A batch asks it of every event it holds before it folds any (#225).
+ */
+export function reads(event: { type: string; payload: unknown }): boolean {
+  return parse(event) !== undefined;
+}
+
+/**
  * The delete fold: the page's blocks, properties, tags and aliases emptied at its key,
  * as the page stands at this point in fold order. A block, property or tag written
  * after it in fold order is a later fact, and stands.

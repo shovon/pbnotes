@@ -15,6 +15,7 @@
 
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { field, NAMESPACE, unnamed } from "../events/events.ts";
+import { each } from "../batch/batch.ts";
 import type { Named } from "../events/events.ts";
 import { read } from "../reading/reading.ts";
 import { spell } from "../titles/titles.ts";
@@ -380,6 +381,14 @@ function apply<S extends BlockState>(state: S, it: Bare): S {
 }
 
 /**
+ * Whether `event` is a block event this fold reads: one of its types, well formed.
+ * A batch asks it of every event it holds before it folds any (#225).
+ */
+export function reads(event: { type: string; payload: unknown }): boolean {
+  return parse(event) !== undefined;
+}
+
+/**
  * The block fold: one event in, the state out. Hands back `state` itself for
  * any event that is not a well-formed block event. Whatever else `state`
  * holds is carried through as it is.
@@ -464,7 +473,7 @@ export function predict(
     blocks: new Map([[key, page.blocks]]),
     titles: new Map([[key, page.title]]),
   };
-  for (const event of events) {
+  for (const event of each(events)) {
     if (!isBlockEvent(event)) continue;
     if (!landed(state, event)) state = reduce(state, event);
   }
