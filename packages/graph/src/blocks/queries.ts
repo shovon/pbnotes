@@ -142,6 +142,30 @@ export function* named(state: BlockState): Generator<string> {
   }
 }
 
+/**
+ * How many blocks link to each page by title, by `canonicalize`: what each
+ * page's references list, counted in one pass. A linking block counts once,
+ * and its children are not counted again for the same page, as `linking`
+ * takes it whole. A page is not a reference to itself.
+ */
+export function countLinks(state: BlockState): Map<string, number> {
+  const counts = new Map<string, number>();
+  const walk = (blocks: Block[], skip: ReadonlySet<string>) => {
+    for (const block of blocks) {
+      const fresh = new Set(read(block.text).links.map(canonicalize).filter((key) => !skip.has(key)));
+      for (const key of fresh) counts.set(key, (counts.get(key) ?? 0) + 1);
+      walk(block.children, fresh.size === 0 ? skip : new Set([...skip, ...fresh]));
+    }
+  };
+  for (const [key, blocks] of state.blocks) walk(blocks, new Set([key]));
+  return counts;
+}
+
+/** How many blocks are on `page`, at every depth. */
+export function countBlocks(state: BlockState, page: string): number {
+  return [...every(blocksOn(state, page))].length;
+}
+
 /** The page a block is on, or undefined for a block the ledger lacks. */
 export function locateBlock(state: BlockState, blockId: string): { page: string } | undefined {
   const found = find(state, blockId);

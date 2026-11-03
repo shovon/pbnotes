@@ -14,7 +14,7 @@
  * records what the user did, and looking at a page is not something they did.
  */
 
-import type { Page, Property } from '@pbnotes/graph';
+import type { Page, PageListing, Property } from '@pbnotes/graph';
 import type { LogStatus } from './log';
 
 /**
@@ -81,6 +81,15 @@ export type Matches = {
   blocks: { id: string; page: string; text: string }[];
 };
 
+/**
+ * Every page in the project, as the All pages view lists them (#200), and
+ * the fold version they were read at, so a window keeps the newest answer.
+ */
+export type PageList = {
+  version: number;
+  pages: PageListing[];
+};
+
 export const GRAPH_CHANNELS = {
   view: 'graph:view',
   /** Main to renderer: the fold's version, and nothing else. */
@@ -88,6 +97,7 @@ export const GRAPH_CHANNELS = {
   locate: 'graph:locate',
   search: 'graph:search',
   find: 'graph:find',
+  pages: 'graph:pages',
   command: 'graph:command',
   addImage: 'graph:add-image',
   blockMenu: 'graph:block-menu',
@@ -138,6 +148,12 @@ export type GraphApi = {
    * on and what it says with the markdown taken off.
    */
   find(query: string): Promise<Matches>;
+  /**
+   * Every page in the project, A to Z, journal days and pages only a link
+   * or a property names included, each with how many blocks are on it, how
+   * many blocks link to it and when it last changed (#200).
+   */
+  pages(): Promise<PageList>;
   /**
    * How much of the project's log folder could be read, and what the fold
    * could not use.

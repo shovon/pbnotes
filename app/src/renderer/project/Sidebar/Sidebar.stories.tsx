@@ -8,7 +8,9 @@ const meta = {
   args: {
     recent: ['Mira', 'Reading list', '2026-10-28', 'Project Atlas'],
     showing: 'Mira',
+    browsing: false,
     onJournal: fn(),
+    onAllPages: fn(),
     onOpen: fn(),
   },
 } satisfies Meta<typeof Sidebar>;
@@ -21,6 +23,9 @@ export const Open: Story = {};
 
 /** On the journal: the Journal entry is highlighted, and no page is. */
 export const OnJournal: Story = { args: { showing: undefined } };
+
+/** On the list of every page: All pages is highlighted, and nothing else is. */
+export const OnAllPages: Story = { args: { showing: undefined, browsing: true } };
 
 /** Nothing opened yet in this project. */
 export const Empty: Story = { args: { recent: [], showing: undefined } };

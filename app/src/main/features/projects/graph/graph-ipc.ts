@@ -87,6 +87,8 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
     session.find(requireString(query, "query")),
   );
 
+  ipcMain.handle(GRAPH_CHANNELS.pages, () => session.pages());
+
   ipcMain.handle(GRAPH_CHANNELS.status, () => session.status());
 
   // Every write, on one channel (#158): the command's shape is checked

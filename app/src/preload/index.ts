@@ -40,6 +40,7 @@ const graph: GraphApi = {
   locate: (blockId) => ipcRenderer.invoke(GRAPH_CHANNELS.locate, blockId),
   search: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.search, query),
   find: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.find, query),
+  pages: () => ipcRenderer.invoke(GRAPH_CHANNELS.pages),
   status: () => ipcRenderer.invoke(GRAPH_CHANNELS.status),
   run: (command) => ipcRenderer.invoke(GRAPH_CHANNELS.command, command),
   addImage: (bytes, mime) =>

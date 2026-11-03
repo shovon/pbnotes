@@ -10,7 +10,7 @@
  */
 import { BLOCK_HANDLES, reduce } from "./blocks/blocks.ts";
 import type { BlockState, PageEvent } from "./blocks/blocks.ts";
-import { named as namedByBlocks } from "./blocks/queries.ts";
+import { countBlocks, countLinks, named as namedByBlocks } from "./blocks/queries.ts";
 import {
   named as namedByProperties,
   PROPERTY_HANDLES,
@@ -19,8 +19,11 @@ import {
 import type { PropertyEvent, PropertyState } from "./properties/properties.ts";
 import { DELETE_HANDLES, reduce as reduceDeletes } from "./deletes/deletes.ts";
 import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
+import { reduce as reduceEdited } from "./edited/edited.ts";
+import type { EditedState } from "./edited/edited.ts";
 import { search } from "./search/search.ts";
 import { titleOf } from "./titles/titles.ts";
+import { canonicalize } from "./canonicalize/canonicalize.ts";
 
 export { canonicalize } from "./canonicalize/canonicalize.ts";
 export { NAMESPACE } from "./events/events.ts";
@@ -92,17 +95,20 @@ export {
   indentBlock,
   outdentBlock,
 } from "./blocks/commands.ts";
+export { getEdited } from "./edited/edited.ts";
+export { countBlocks, countLinks } from "./blocks/queries.ts";
 export { inCode, read } from "./reading/reading.ts";
 export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
 
 /**
  * The graph: every page, by `canonicalize`: the blocks on it, its properties, the first
- * spelling the fold saw for it, and how many times it has been deleted.
+ * spelling the fold saw for it, how many times it has been deleted, and when
+ * it last changed.
  *
  * `Map` throughout, so a title of `__proto__` is an ordinary key (#62), and
  * it survives the structured clone to the renderer (#146).
  */
-export type Graph = BlockState & PropertyState & DeleteState;
+export type Graph = BlockState & PropertyState & DeleteState & EditedState;
 
 /**
  * Event type → the payload `v` this build folds and writes. Public contract
@@ -124,19 +130,24 @@ export const HANDLES: Record<
  * The gate is here: a type this build does not have, or a `v` newer than it
  * reads, leaves the graph as it was. Behind it, each slice's fold in turn.
  * Each hands back what it was given for an event that is not its own, so the
- * order between them does not matter.
+ * order between them does not matter. Last, when each page changed, read off
+ * what the others did with the event.
  */
 export const graphFold = {
-  reduce: (state: Graph, event: { type: string; v: number; payload: unknown }): Graph =>
+  reduce: (
+    state: Graph,
+    event: { type: string; v: number; at?: unknown; payload: unknown },
+  ): Graph =>
     Object.hasOwn(HANDLES, event.type) &&
     event.v <= HANDLES[event.type as keyof typeof HANDLES]
-      ? reduceDeletes(reduceProperties(reduce(state, event), event), event)
+      ? reduceEdited(state, reduceDeletes(reduceProperties(reduce(state, event), event), event), event)
       : state,
   initial: {
     blocks: new Map(),
     titles: new Map(),
     properties: new Map(),
     deletions: new Map(),
+    edited: new Map(),
   } as Graph,
 };
 
@@ -153,6 +164,39 @@ export function searchPages(state: Graph, query: string, limit = 10): string[] {
     query,
     limit,
   );
+}
+
+/** One page as the list of every page shows it. */
+export type PageListing = {
+  /** In the spelling it shows. */
+  title: string;
+  /** Blocks on it, at every depth. 0 for a page only a link or a property names. */
+  blocks: number;
+  /** Blocks on other pages that link to it by title (`countLinks`). */
+  references: number;
+  /** When it last changed, in ms since the epoch; undefined if nothing ever did. */
+  edited?: number;
+};
+
+/**
+ * Every page, as `searchPages` counts one, journal days included, each once
+ * in the spelling it shows, A to Z. With what is on it, what links to it and
+ * when it last changed.
+ */
+export function listPages(state: Graph): PageListing[] {
+  const links = countLinks(state);
+  const keys = new Set([...namedByBlocks(state), ...namedByProperties(state)].map(canonicalize));
+  return [...keys]
+    .map((key) => {
+      const edited = state.edited.get(key);
+      return {
+        title: titleOf(state, key),
+        blocks: countBlocks(state, key),
+        references: links.get(key) ?? 0,
+        ...(edited === undefined ? {} : { edited }),
+      };
+    })
+    .sort((a, b) => a.title.localeCompare(b.title));
 }
 
 /**
