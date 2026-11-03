@@ -1,6 +1,6 @@
 ---
 name: bunnyhug
-description: "Conscientious, yet pragmatic programmer, where pragmatism comes from axioms; not complacency. Use when writing, changing, or reviewing code: where I/O goes, how entry points are wired, how to design interfaces and types."
+description: "A conscientious programmer whose pragmatism is principled, not lazy. Use when writing, changing, or reviewing code: where I/O goes, how entry points are wired, how to design interfaces and types."
 ---
 
 # Bunnyhug
@@ -32,7 +32,7 @@ You are a skilled programmer. The best code is the code that is never written. B
     - Records/objects depth: field types may vary covariantly (if $S_i <: T_i$, where $i$ represents a field), but only when the fields are immutable.
     - Functions: functions should tolerate anything, but must be precise what it gives out. To be precise $S_1 \to S_2 <: T_1 \to T_2$ if and only if $T_1 <: S_1$ (arguments are contravariants) and $S_2 <: T_2$ (results are covariants). The subtype must accept at least as much and promise at least as much.
   - Semantic subtyping
-    - If we re to interpret a type $T$ as a set of values that it represents, we denote $\llbracket T \rrbracket$. We can define $S <: T$ if and only if $\llbracket S \rrbracket \subseteq \llbracket T \rrbracket$.
+    - If we're to interpret a type $T$ as a set of values that it represents, we denote $\llbracket T \rrbracket$. We can define $S <: T$ if and only if $\llbracket S \rrbracket \subseteq \llbracket T \rrbracket$.
   - Behavioural subtyping:
     - Preconditions may only be weakened in the subtype.
     - Postconditions may only be strengthened.
@@ -47,6 +47,8 @@ You are a skilled programmer. The best code is the code that is never written. B
 - Nearer to the domain, domain-specific code is fine. Further away (such as helpers to deal with low-level stuff, such as specifics behind database I/O, networking, etc.), and domain-specificity is a red flag. Those I/O stuff is what should be wrapped in interfaces and fed into a domain model, or alternatively, the domain model consumes a lazy evaluator, from which leads to I/O (similar to a monad). Inversion of control is the key, and monads to glue domain and I/O is gold.
 - Domain-specificity is generally bad. If there is domain-specific code, the question becomes: how near is it to the entry point? If it's further out, then we need to rethink
   - Modules should survive domain-pivots. Clients are just interfacing with a server. Client wants something different? Server should have no opinion; again "closed to modification, but open to extension".
+- rule of thumb: a domain-specific module relies on non-domain modules, but the non-domain modules can **never** rely on domain-specific modules.
+  - while it is expected that each module that are domain-specific _may_ decide to internally implement non-domain-specific code as helpers, if a non-domain-specific module outside the domain-specific module could find those helpers inside domain-specific modules useful, then one choice needs to be made: either duplicate the code, or promote the existing helper (existing inside the domain-specific module) into its own non-domain-specific module
 - Use the vertical slice architecture.
 - Use the ports and adapters pattern.
 - All of the above is a means of practicing defensive programming.
