@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { BenchApi } from '../../shared/bench';
 import type { Project, ProjectsApi } from '../../shared/projects';
+import { sidebarKept } from '../kept/kept';
 import ProjectPicker from '../ProjectPicker/ProjectPicker';
 import ProjectView from '../project/ProjectView';
 import type { ProjectViewGraph } from '../project/ProjectView';
@@ -15,6 +17,11 @@ type Props = {
   projects: Pick<ProjectsApi, 'list' | 'current' | 'open' | 'pick'>;
   /** Only what the project that is open calls. */
   graph: ProjectViewGraph;
+  /**
+   * Where the open project's sidebar is kept. Never handed down as it is:
+   * each mounted project gets its own `Kept` values over it (`kept/`).
+   */
+  bench: Pick<BenchApi, 'get' | 'set'>;
   /** The clock, passed on to the project that is open. */
   now: () => Date;
   /** Whether this is macOS, passed on to the project that is open. */
@@ -34,7 +41,7 @@ function humanize(error: unknown): string {
   );
 }
 
-export default function App({ projects: api, graph, now, mac }: Props) {
+export default function App({ projects: api, graph, bench, now, mac }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
@@ -103,6 +110,25 @@ export default function App({ projects: api, graph, now, mac }: Props) {
       }),
     [run, refresh],
   );
+
+  /**
+   * What the mounted project keeps, made for it alone and turned off when it
+   * goes. A save from a view that is unmounting, or a load that answers after
+   * the project changed, then reaches nothing, rather than the project now
+   * open: the bench keeps each value for whichever project is open when a
+   * call lands. Made in an effect, not during render, so StrictMode's second
+   * mount gets a pair that is on.
+   */
+  const projectId = project?.id;
+  const [kept, setKept] = useState<
+    (ReturnType<typeof sidebarKept> & { projectId: string }) | null
+  >(null);
+  useEffect(() => {
+    if (projectId === undefined) return;
+    const next = { ...sidebarKept(bench, (error) => console.error(error)), projectId };
+    setKept(next);
+    return () => next.off();
+  }, [projectId]);
 
   const openProject = useCallback(
     (id: string) => act(() => api.open(id)),
@@ -176,6 +202,10 @@ export default function App({ projects: api, graph, now, mac }: Props) {
         id="titlebar"
         className="app-region-drag fixed z-20 top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,5rem)] flex h-[env(titlebar-area-height,var(--spacing-titlebar))] w-[env(titlebar-area-width,calc(100%-5rem))] max-w-[calc(100%-env(titlebar-area-x,5rem))] items-center"
       >
+        {/* Where the open project puts its sidebar toggle: first, before the
+            picker. A portal adds to the end of what it is handed, so the
+            project is handed this rather than the header. */}
+        <div id="titlebar-start" className="contents" />
         {project && (
           <ProjectPicker
             projects={projects}
@@ -186,31 +216,40 @@ export default function App({ projects: api, graph, now, mac }: Props) {
         )}
       </header>
 
-      <main className="mx-auto box-content max-w-page px-6 pt-[calc(var(--spacing-titlebar)+--spacing(3))] pb-12">
-        {notice && (
-          <p
-            className="mb-4 cursor-pointer rounded-md bg-warn-bg px-3 py-2 text-sm text-warn-fg"
-            onClick={() => setNotice(null)}>
-            {notice}
-          </p>
-        )}
+      {/* While the sidebar is in the DOM (it is left out when collapsed),
+          the page is centred in the room beside it rather than in the
+          window, and narrows when there is less than its width. */}
+      <div className="has-[[data-sidebar]]:pl-sidebar">
+        <main className="mx-auto box-content max-w-page px-6 pt-[calc(var(--spacing-titlebar)+--spacing(3))] pb-12">
+          {notice && (
+            <p
+              className="mb-4 cursor-pointer rounded-md bg-warn-bg px-3 py-2 text-sm text-warn-fg"
+              onClick={() => setNotice(null)}>
+              {notice}
+            </p>
+          )}
 
-        {project ? (
-          <ProjectView
-            // Remounted per project, so nothing survives the switch: the
-            // state, the open editor and the block id it is editing all
-            // belong to the project that was showing a moment ago. The key is
-            // all the view is told about which project that is.
-            key={project.id}
-            act={act}
-            graph={graph}
-            now={now}
-            mac={mac}
-          />
-        ) : (
-          !loading && <Welcome onAdd={addProjects} />
-        )}
-      </main>
+          {project ? (
+            kept?.projectId === project.id && (
+              <ProjectView
+                // Remounted per project, so nothing survives the switch: the
+                // state, the open editor and the block id it is editing all
+                // belong to the project that was showing a moment ago. The key is
+                // all the view is told about which project that is.
+                key={project.id}
+                act={act}
+                graph={graph}
+                now={now}
+                mac={mac}
+                recentPages={kept.recentPages}
+                sidebar={kept.sidebar}
+              />
+            )
+          ) : (
+            !loading && <Welcome onAdd={addProjects} />
+          )}
+        </main>
+      </div>
     </>
   );
 }
