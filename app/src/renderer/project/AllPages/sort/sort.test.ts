@@ -5,10 +5,10 @@ import type { PageListing } from '@pbnotes/graph';
 import { INITIAL, sorted, toggle } from './sort.ts';
 
 const pages: PageListing[] = [
-  { title: 'mira', blocks: 3, references: 1, taggedBy: 0, edited: 200 },
+  { title: 'mira', blocks: 3, references: 1, taggedBy: 2, edited: 200 },
   { title: 'Oslo', blocks: 0, references: 4, taggedBy: 0 },
-  { title: 'Atlas', blocks: 3, references: 0, taggedBy: 0, edited: 300 },
-  { title: '2026-11-01', blocks: 1, references: 0, taggedBy: 0, edited: 100 },
+  { title: 'Atlas', blocks: 3, references: 0, taggedBy: 2, edited: 300 },
+  { title: '2026-11-01', blocks: 1, references: 0, taggedBy: 5, edited: 100 },
 ];
 
 const titles = (list: PageListing[]) => list.map((page) => page.title);
@@ -20,6 +20,7 @@ test('the list opens A to Z by title, ignoring case', () => {
 test('a count sorts most first, ties A to Z', () => {
   assert.deepEqual(titles(sorted(pages, toggle(INITIAL, 'blocks'))), ['Atlas', 'mira', '2026-11-01', 'Oslo']);
   assert.deepEqual(titles(sorted(pages, toggle(INITIAL, 'references'))), ['Oslo', 'mira', '2026-11-01', 'Atlas']);
+  assert.deepEqual(titles(sorted(pages, toggle(INITIAL, 'taggedBy'))), ['2026-11-01', 'Atlas', 'mira', 'Oslo']);
 });
 
 test('times sort newest first, and a page with none goes last either way', () => {

@@ -13,10 +13,12 @@ const day = (iso: string) => Date.parse(iso);
 const few: PageListing[] = [
   { title: '2026-11-01', blocks: 4, references: 0, taggedBy: 0, edited: day('2026-11-01T18:20:00Z') },
   { title: '2026-11-02', blocks: 2, references: 0, taggedBy: 0, edited: day('2026-11-02T09:05:00Z') },
-  { title: 'Mira', blocks: 7, references: 5, taggedBy: 0, edited: day('2026-10-30T14:00:00Z') },
+  { title: 'Mira', blocks: 7, references: 5, taggedBy: 2, edited: day('2026-10-30T14:00:00Z') },
   { title: 'Project Atlas', blocks: 12, references: 3, taggedBy: 0, edited: day('2026-11-02T11:40:00Z') },
   // Only a link names it: nothing on it, so no time either.
   { title: 'Oslo', blocks: 0, references: 2, taggedBy: 0 },
+  // Only tags name it: tagged by three pages, linked by none.
+  { title: 'Work', blocks: 0, references: 0, taggedBy: 3 },
   { title: 'status', blocks: 0, references: 0, taggedBy: 0 },
 ];
 
@@ -69,6 +71,9 @@ export const ByBlocks: Story = { args: { start: toggle(INITIAL, 'blocks') } };
 
 /** Most linked first. */
 export const ByReferences: Story = { args: { start: toggle(INITIAL, 'references') } };
+
+/** Most tagged first. Tags are their own count, never part of References. */
+export const ByTaggedBy: Story = { args: { start: toggle(INITIAL, 'taggedBy') } };
 
 /** Newest first; pages that never changed go last. */
 export const ByLastEdited: Story = { args: { start: toggle(INITIAL, 'edited') } };
