@@ -13,6 +13,7 @@
 
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { field, NAMESPACE, unnamed } from "../events/events.ts";
+import { each } from "../batch/batch.ts";
 import type { Named } from "../events/events.ts";
 import { spell, titleOf } from "../titles/titles.ts";
 import type { Titles } from "../titles/titles.ts";
@@ -122,6 +123,14 @@ function apply<S extends PropertyState>(state: S, it: Bare): S {
 }
 
 /**
+ * Whether `event` is a property event this fold reads: one of its types, well formed.
+ * A batch asks it of every event it holds before it folds any (#225).
+ */
+export function reads(event: { type: string; payload: unknown }): boolean {
+  return parse(event) !== undefined;
+}
+
+/**
  * The property fold: one event in, the state out. Hands back `state` itself
  * for any event that is not a well-formed property event.
  */
@@ -197,7 +206,7 @@ export function predictProperties(
       ...properties.map(({ key }): [string, string] => [canonicalize(key), key]),
     ]),
   };
-  for (const event of events) state = reduce(state, event);
+  for (const event of each(events)) state = reduce(state, event);
   return getProperties(state, page);
 }
 

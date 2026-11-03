@@ -459,13 +459,13 @@ export default function PageView({
 
   /**
    * A row of the properties table left with something to write: drawn at
-   * once, and sent in order. A rename is one command and two events; a value
-   * changed in the same edit is written after it, over the value it kept.
+   * once, and sent in order. A rename is one batch; a value changed in the
+   * same edit is written after it, over the value it kept.
    */
   const commitProperties = (writes: Write[]) => {
-    const steps = writes.flatMap((it) =>
+    const steps = writes.map((it) =>
       it.kind === 'set'
-        ? [setProperty(graph, title, it.key, it.value)]
+        ? setProperty(graph, title, it.key, it.value)
         : renameProperty(graph, title, it.from, it.to, it.value),
     );
     act(() => write(...steps));

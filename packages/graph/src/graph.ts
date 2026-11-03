@@ -8,7 +8,7 @@
  * module, because the app's renderer bundles this too. A caller hands the
  * commands a view whose `dispatch` writes to its own log.
  */
-import { BLOCK_HANDLES, reduce } from "./blocks/blocks.ts";
+import { BLOCK_HANDLES, reads as readsBlocks, reduce } from "./blocks/blocks.ts";
 import type { BlockState, PageEvent } from "./blocks/blocks.ts";
 import {
   countBlocks,
@@ -22,6 +22,7 @@ import {
   getProperties as getPropertiesOn,
   named as namedByProperties,
   PROPERTY_HANDLES,
+  reads as readsProperties,
   reduce as reduceProperties,
 } from "./properties/properties.ts";
 import type { Property, PropertyEvent, PropertyState } from "./properties/properties.ts";
@@ -31,14 +32,22 @@ import {
   getTags as getTagsOn,
   named as namedByTags,
   TAG_HANDLES,
+  reads as readsTags,
   reduce as reduceTags,
 } from "./tags/tags.ts";
 import type { TagEvent, TagState } from "./tags/tags.ts";
-import { ALIAS_HANDLES, named as namedByAliases, reduce as reduceAliases } from "./aliases/aliases.ts";
+import {
+  ALIAS_HANDLES,
+  named as namedByAliases,
+  reads as readsAliases,
+  reduce as reduceAliases,
+} from "./aliases/aliases.ts";
 import type { AliasEvent, AliasState } from "./aliases/aliases.ts";
 import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
-import { DELETE_HANDLES, reduce as reduceDeletes } from "./deletes/deletes.ts";
+import { DELETE_HANDLES, reads as readsDeletes, reduce as reduceDeletes } from "./deletes/deletes.ts";
+import { all, BATCH_HANDLES, unbatch } from "./batch/batch.ts";
+import type { BatchEvent } from "./batch/batch.ts";
 import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
 import type { EditedState } from "./edited/edited.ts";
@@ -48,6 +57,8 @@ import { canonicalize } from "./canonicalize/canonicalize.ts";
 
 export { canonicalize } from "./canonicalize/canonicalize.ts";
 export { NAMESPACE } from "./events/events.ts";
+export { batch, each } from "./batch/batch.ts";
+export type { BatchEvent, Batched } from "./batch/batch.ts";
 export { DATE_PATTERN, dateOf, namesOf, today } from "./journal/journal.ts";
 export { titleOf } from "./titles/titles.ts";
 export {
@@ -137,7 +148,8 @@ export const HANDLES: Record<
   | PropertyEvent["type"]
   | TagEvent["type"]
   | AliasEvent["type"]
-  | DeleteEvent["type"],
+  | DeleteEvent["type"]
+  | BatchEvent["type"],
   number
 > = {
   ...BLOCK_HANDLES,
@@ -145,6 +157,7 @@ export const HANDLES: Record<
   ...TAG_HANDLES,
   ...ALIAS_HANDLES,
   ...DELETE_HANDLES,
+  ...BATCH_HANDLES,
 };
 
 /**
@@ -156,16 +169,20 @@ export const HANDLES: Record<
  * Each hands back what it was given for an event that is not its own, so the
  * order between them does not matter. Last, when each page changed, read off
  * what the others did with the event.
+ *
+ * A batch is its events folded in order at its place, each with the batch's
+ * `at`, if every one passes the gate and is well formed for the slice it
+ * belongs to. Otherwise none of them is: half of a batch is what it exists
+ * to prevent.
  */
 export const graphFold = {
-  reduce: (
-    state: Graph,
-    event: { type: string; v: number; at?: unknown; payload: unknown },
-  ): Graph =>
-    Object.hasOwn(HANDLES, event.type) &&
-    event.v <= HANDLES[event.type as keyof typeof HANDLES]
-      ? reduceEdited(state, behindTheGate(state, event), event)
-      : state,
+  reduce: (state: Graph, event: Incoming): Graph => {
+    if (!gated(event)) return state;
+    const events = unbatch(event);
+    if (!events) return one(state, event);
+    const { at } = event;
+    return all(state, events.map((it) => ({ ...it, at })), readable, one);
+  },
   initial: {
     blocks: new Map(),
     titles: new Map(),
@@ -176,6 +193,32 @@ export const graphFold = {
     edited: new Map(),
   } as Graph,
 };
+
+/** An event as the fold is handed one. */
+type Incoming = { type: string; v: number; at?: unknown; payload: unknown };
+
+/** Whether this build has `event`'s type, at a `v` it reads. */
+function gated(event: Incoming): boolean {
+  return (
+    Object.hasOwn(HANDLES, event.type) &&
+    event.v <= HANDLES[event.type as keyof typeof HANDLES]
+  );
+}
+
+/** Through the gate, and well formed for the slice whose type it is. */
+function readable(event: Incoming): boolean {
+  return (
+    gated(event) &&
+    [readsBlocks, readsProperties, readsTags, readsAliases, readsDeletes].some((reads) =>
+      reads(event),
+    )
+  );
+}
+
+/** One event past the gate: every slice, then when its page changed. */
+function one(state: Graph, event: Incoming): Graph {
+  return reduceEdited(state, behindTheGate(state, event), event);
+}
 
 /** Each slice's fold in turn. The delete fold empties what the others hold. */
 function behindTheGate(state: Graph, event: { type: string; payload: unknown }): Graph {

@@ -7,6 +7,7 @@
  * Each takes only the call it makes: `run`, with the command for its write.
  */
 import {
+  batch,
   blockCreated,
   blockDeleted,
   blockEdited,
@@ -19,11 +20,11 @@ import {
   tagAdded,
   tagRemoved,
 } from '@pbnotes/graph';
-import type { Block, PageEvent, PropertyEvent, TagEvent } from '@pbnotes/graph';
+import type { BatchEvent, Block, PageEvent, PropertyEvent, TagEvent } from '@pbnotes/graph';
 import type { Command } from '../../../../shared/graph';
 
 /** An event to draw, and the call that asks main to record it. */
-export type Step = [PageEvent | PropertyEvent | TagEvent, () => Promise<unknown>];
+export type Step = [PageEvent | PropertyEvent | TagEvent | BatchEvent, () => Promise<unknown>];
 
 /**
  * The one call the steps here make, for a view that hands them its bridge.
@@ -126,9 +127,7 @@ export function removeTag(graph: StepsGraph, title: string, tag: string): Step {
 
 /**
  * `title`'s `from` becomes `to`, keeping `value`, the value `from` is drawn
- * with. One command and the two events main records for it, in its order:
- * both are drawn, and the call is made once, by whichever step is sent first,
- * so its answer is the answer for both.
+ * with: the one batch main records it as (#225).
  */
 export function renameProperty(
   graph: StepsGraph,
@@ -136,11 +135,9 @@ export function renameProperty(
   from: string,
   to: string,
   value: string,
-): Step[] {
-  let sent: Promise<unknown> | undefined;
-  const send = () => (sent ??= graph.run({ type: 'renameProperty', title, from, to }));
+): Step {
   return [
-    [propertySet(title, to, value), send],
-    [propertyRemoved(title, from), send],
+    batch([propertySet(title, to, value), propertyRemoved(title, from)]),
+    () => graph.run({ type: 'renameProperty', title, from, to }),
   ];
 }

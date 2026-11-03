@@ -13,6 +13,7 @@
 
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { field, NAMESPACE, unnamed } from "../events/events.ts";
+import { each } from "../batch/batch.ts";
 import type { Named } from "../events/events.ts";
 import { spell, titleOf } from "../titles/titles.ts";
 import type { Titles } from "../titles/titles.ts";
@@ -103,6 +104,14 @@ function apply<S extends TagState>(state: S, it: Bare): S {
   if (next.size === 0) tags.delete(at);
   else tags.set(at, next);
   return { ...state, titles, tags };
+}
+
+/**
+ * Whether `event` is a tag event this fold reads: one of its types, well formed.
+ * A batch asks it of every event it holds before it folds any (#225).
+ */
+export function reads(event: { type: string; payload: unknown }): boolean {
+  return parse(event) !== undefined;
 }
 
 /**
@@ -204,7 +213,7 @@ export function predictTags(
       ...tags.map((tag): [string, string] => [canonicalize(tag), tag]),
     ]),
   };
-  for (const event of events) state = reduce(state, event);
+  for (const event of each(events)) state = reduce(state, event);
   return getTags(state, page);
 }
 

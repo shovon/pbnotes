@@ -107,6 +107,14 @@ function apply<S extends AliasState>(state: S, it: Bare): S {
 }
 
 /**
+ * Whether `event` is an alias event this fold reads: one of its types, well formed.
+ * A batch asks it of every event it holds before it folds any (#225).
+ */
+export function reads(event: { type: string; payload: unknown }): boolean {
+  return parse(event) !== undefined;
+}
+
+/**
  * The alias fold: one event in, the state out. Hands back `state` itself for
  * any event that is not a well-formed alias event, or one that changes
  * nothing.

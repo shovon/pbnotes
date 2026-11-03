@@ -22,7 +22,9 @@ Page tags have `addTag` and `removeTag`, with builders `tagAdded` and `tagRemove
 
 A page is deleted with `deletePage`, whose builder is `pageDeleted`.
 
-A view that draws its writes before they are recorded folds them with `predict` for blocks and `predictProperties` for a page's properties. Each passes over events that are not its own, so a view can hand both everything it has in flight.
+Several events that must land together go in one `batch` (below), built from the other builders' results.
+
+A view that draws its writes before they are recorded folds them with `predict` for blocks, `predictProperties` for a page's properties and `predictTags` for its tags. Each passes over events that are not its own, and reads a batch as the events it holds, so a view can hand all three everything it has in flight.
 
 The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperties`, `getTags`, `getTaggedBy`, `getAliases`, `getAliasOf`, `resolve`, `getDeletions`, `getRefsTo`, `hasContent`, `searchPages`, `searchNames`, `listPages` and `locateBlock`) take the folded graph alone, since they never write. The ones that take a page's title resolve it first (see "What a name opens"), so `getPage(graph, "JS")` is the page `JS` opens.
 
@@ -142,3 +144,18 @@ A journal day answers to its date in words, with nothing written. A name, once `
 - **Each delete is counted per page** (`getDeletions`), so a reader can tell that a page was deleted from a page that merely went empty.
 - **Malformed is skipped whole:** a payload that is not an object, or a `page` that is not a string or is blank once trimmed.
 - **`deletePage(view, page)`** writes nothing for a page with nothing on it (`hasContent`): the delete would change nothing. **`getRefsTo(graph, page)`** counts the blocks on other pages that hold a `((id))` to a block on it: what a delete would leave showing as missing. What links to it by title is `getReferences`.
+
+## Batches are a contract
+
+Some things a user does take more than one event. Each event is its own record, so a crash or a sync that stops between two of them would leave the folder halfway through. A batch is several events written as one record, folded all together or not at all (#225).
+
+| Type | `v` | Payload | Meaning |
+|---|---|---|---|
+| `batch` | 1 | `{ events: [{ type, v, payload }, …] }` | These events, in this order, as one. |
+
+- **Folded in order, all or none, at the batch's place.** Each event goes through the same gate and slices as it would alone, one after another, with the batch's `at`. Nothing folds between them.
+- **One event this build cannot read skips the whole batch:** a type not in `HANDLES`, a `v` higher than `HANDLES` gives, or a payload its slice would skip as malformed. The state comes back as the same object. Folding the rest would be the half-done state a batch exists to prevent.
+- **Malformed is skipped whole:** a payload that is not an object, `events` that is not a list or is empty, an entry that is not `{ type: string, v: number, payload }`, or a batch inside the batch. Fields beyond these are ignored.
+- **An event in a batch means what it means alone.** An edit to a block the fold lacks changes nothing, in a batch or not.
+- **Why not in the ledger.** A batch could be one record holding several envelopes, below every fold. That changes the record format, so every older build would have to refuse the folder. As a graph event nothing on disk changes: an older build skips `batch` as a type it does not know, and so loses the whole action, never half of it.
+- **`batch(events)`** takes builder results and returns `{ v, type, payload }`. It throws for no events or a batch among them, which is a bug in the caller. `renameProperty` writes its `property.set` and `property.removed` as one batch.

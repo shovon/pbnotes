@@ -10,6 +10,8 @@
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { getProperties, propertyRemoved, propertySet } from "./properties.ts";
 import type { Property, PropertyEvent, PropertyState } from "./properties.ts";
+import { batch } from "../batch/batch.ts";
+import type { BatchEvent } from "../batch/batch.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of
@@ -18,12 +20,16 @@ import type { Property, PropertyEvent, PropertyState } from "./properties.ts";
 export type PropertiesView = {
   readonly state: PropertyState;
   /** Resolves once the event is durable and folded into `state`. */
-  dispatch(v: number, type: PropertyEvent["type"], payload: unknown): Promise<unknown>;
+  dispatch(
+    v: number,
+    type: PropertyEvent["type"] | BatchEvent["type"],
+    payload: unknown,
+  ): Promise<unknown>;
 };
 
 function append(
   view: PropertiesView,
-  event: ReturnType<typeof propertySet | typeof propertyRemoved>,
+  event: ReturnType<typeof propertySet | typeof propertyRemoved | typeof batch>,
 ): Promise<unknown> {
   return view.dispatch(event.v, event.type, event.payload);
 }
@@ -71,9 +77,9 @@ export async function removeProperty(
 }
 
 /**
- * `page`'s `from` becomes `to`, keeping its value: a `set` of `to`, then a
- * `removed` of `from`, in that order, so a stop between the two leaves both
- * keys and never neither.
+ * `page`'s `from` becomes `to`, keeping its value: a `set` of `to` and a
+ * `removed` of `from`, in one batch, so the rename either happened or it
+ * did not (#225).
  *
  * Refuses a `from` the page does not have, and a `to` it already has rather
  * than overwrite that property's value. A `to` that is `from` once
@@ -94,10 +100,7 @@ export async function renameProperty(
     if (valueOf(view.state, page, to) !== undefined) {
       throw new Error("That property already exists");
     }
-    // dispatch appends before it folds, so the `set` is on disk before the
-    // `removed` is written.
-    await append(view, propertySet(page, to, value));
-    await append(view, propertyRemoved(page, from));
+    await append(view, batch([propertySet(page, to, value), propertyRemoved(page, from)]));
   }
   return getProperties(view.state, page);
 }
