@@ -294,10 +294,10 @@ export type Command =
    */
   | { type: 'removeProperty'; title: string; key: string }
   /**
-   * `title`'s `from` becomes `to`, keeping its value: a `property.set` of
-   * `to`, then a `property.removed` of `from`, one command so every writer
-   * renames in that order. Main refuses a `to` the page already has, rather
-   * than overwrite it, and a `from` it does not have.
+   * `title`'s `from` becomes `to`, keeping its value: appends one `batch` of
+   * a `property.set` of `to` and a `property.removed` of `from`, so the
+   * rename lands whole or not at all (#225). Main refuses a `to` the page
+   * already has, rather than overwrite it, and a `from` it does not have.
    */
   | { type: 'renameProperty'; title: string; from: string; to: string }
   /**
