@@ -41,28 +41,38 @@ function* every(blocks: Block[]): Generator<Block> {
  * inside: its children are already on show under it.
  */
 export function linking(blocks: Block[], title: string): Block[] {
-  const key = canonicalize(title);
+  return linkingAny(blocks, new Set([canonicalize(title)]));
+}
+
+/** `linking`, for a link to any of `keys` (each `canonicalize`d). */
+function linkingAny(blocks: Block[], keys: ReadonlySet<string>): Block[] {
   return blocks.flatMap((block) =>
-    read(block.text).links.some((link) => canonicalize(link) === key)
+    read(block.text).links.some((link) => keys.has(canonicalize(link)))
       ? [block]
-      : linking(block.children, title),
+      : linkingAny(block.children, keys),
   );
 }
 
 /**
  * What links to a page, grouped by the page it was written on and cut down to
  * the blocks that do the linking. A page is not a reference to itself.
+ * `also`: other names a link may use for it, as an alias does (#221).
  *
  * Pages in the order they are listed (`shownOrder`).
  *
  * ponytail: one call per page shown. Fold this into a single reverse index if
  * a ledger ever has enough days for that to show.
  */
-export function getReferences(state: BlockState, title: string): Page[] {
+export function getReferences(
+  state: BlockState,
+  title: string,
+  also: Iterable<string> = [],
+): Page[] {
   const key = canonicalize(title);
+  const keys = new Set([key, ...[...also].map(canonicalize)]);
   return [...state.blocks]
     .filter(([page]) => page !== key)
-    .map(([page, on]) => ({ title: state.titles.get(page) ?? page, blocks: linking(on, title) }))
+    .map(([page, on]) => ({ title: state.titles.get(page) ?? page, blocks: linkingAny(on, keys) }))
     .filter((page) => page.blocks.length > 0)
     .sort((a, b) => shownOrder(a.title, b.title));
 }
@@ -147,17 +157,25 @@ export function* named(state: BlockState): Generator<string> {
  * page's references list, counted in one pass. A linking block counts once,
  * and its children are not counted again for the same page, as `linking`
  * takes it whole. A page is not a reference to itself.
+ *
+ * `to` takes a link's key to the key of the page it counts for, as resolving
+ * an alias does (#221); a block linking two names of one page counts once.
  */
-export function countLinks(state: BlockState): Map<string, number> {
+export function countLinks(
+  state: BlockState,
+  to: (key: string) => string = (key) => key,
+): Map<string, number> {
   const counts = new Map<string, number>();
   const walk = (blocks: Block[], skip: ReadonlySet<string>) => {
     for (const block of blocks) {
-      const fresh = new Set(read(block.text).links.map(canonicalize).filter((key) => !skip.has(key)));
+      const fresh = new Set(
+        read(block.text).links.map((link) => to(canonicalize(link))).filter((key) => !skip.has(key)),
+      );
       for (const key of fresh) counts.set(key, (counts.get(key) ?? 0) + 1);
       walk(block.children, fresh.size === 0 ? skip : new Set([...skip, ...fresh]));
     }
   };
-  for (const [key, blocks] of state.blocks) walk(blocks, new Set([key]));
+  for (const [key, blocks] of state.blocks) walk(blocks, new Set([to(key)]));
   return counts;
 }
 

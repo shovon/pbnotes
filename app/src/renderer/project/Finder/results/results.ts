@@ -7,24 +7,31 @@
 /** A block that matched: its id, the page it is on, and its text as shown. */
 export type FoundBlock = { id: string; page: string; text: string };
 
+/**
+ * A title that matched, and the page following it opens: another page for an
+ * alias or a date name (#221), else the title itself.
+ */
+export type FoundPage = { title: string; opens: string };
+
 /** What a search answers with: titles first, then blocks. */
-export type Found = { pages: readonly string[]; blocks: readonly FoundBlock[] };
+export type Found = { pages: readonly FoundPage[]; blocks: readonly FoundBlock[] };
 
 /** What picking a row opens: a page, or the block's page scrolled to it. */
 export type Hit = { page: string } | { block: string };
 
-export type Row = { kind: 'page'; title: string } | ({ kind: 'block' } & FoundBlock);
+export type Row = ({ kind: 'page' } & FoundPage) | ({ kind: 'block' } & FoundBlock);
 
 export const nothing: Found = { pages: [], blocks: [] };
 
 /** One list, in the order it is drawn and walked: pages, then blocks. */
 export function rows(found: Found): Row[] {
   return [
-    ...found.pages.map((title): Row => ({ kind: 'page', title })),
+    ...found.pages.map((page): Row => ({ kind: 'page', ...page })),
     ...found.blocks.map((block): Row => ({ kind: 'block', ...block })),
   ];
 }
 
+/** Picking a title follows it as a link would: the trail records what was picked. */
 export function hitOf(row: Row): Hit {
   return row.kind === 'page' ? { page: row.title } : { block: row.id };
 }

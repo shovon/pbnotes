@@ -1,8 +1,8 @@
 /**
  * Deleting a page: the event, its fold, its builder and the reads around it.
  *
- * Where the block, property and tag folds meet, because a page delete
- * empties all three. One event for the whole page, so a crash or a sync still
+ * Where the block, property, tag and alias folds meet, because a page delete
+ * empties all four. One event for the whole page, so a crash or a sync still
  * arriving can never leave it half deleted. Nothing leaves the disk: the
  * event records that the user was done with the page.
  *
@@ -19,6 +19,7 @@ import { blocksOn } from "../blocks/blocks.ts";
 import type { Block, BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { TagState } from "../tags/tags.ts";
+import type { AliasState } from "../aliases/aliases.ts";
 
 /**
  * How many times each page has been deleted, by `canonicalize`. A window on a
@@ -28,8 +29,8 @@ export type DeleteState = {
   readonly deletions: Map<string, number>;
 };
 
-/** What a delete folds over: the blocks, properties and tags it empties. */
-type Holds = BlockState & PropertyState & TagState & DeleteState;
+/** What a delete folds over: the blocks, properties, tags and aliases it empties. */
+type Holds = BlockState & PropertyState & TagState & AliasState & DeleteState;
 
 // ── The event ───────────────────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ function parse(event: { type: string; payload: unknown }): string | undefined {
 }
 
 /**
- * The delete fold: the page's blocks, properties and tags emptied at its key,
+ * The delete fold: the page's blocks, properties, tags and aliases emptied at its key,
  * as the page stands at this point in fold order. A block, property or tag written
  * after it in fold order is a later fact, and stands.
  *
@@ -89,8 +90,10 @@ export function reduce<S extends Holds>(
   properties.delete(key);
   const tags = new Map(state.tags);
   tags.delete(key);
+  const aliases = new Map(state.aliases);
+  aliases.delete(key);
   const deletions = new Map(state.deletions).set(key, (state.deletions.get(key) ?? 0) + 1);
-  return { ...state, blocks, properties, tags, deletions };
+  return { ...state, blocks, properties, tags, aliases, deletions };
 }
 
 // ── Reads ───────────────────────────────────────────────────────────────────
@@ -101,12 +104,16 @@ export function getDeletions(state: DeleteState, page: string): number {
 }
 
 /** Whether a delete of `page` would change anything: something is on it. */
-export function hasContent(state: BlockState & PropertyState & TagState, page: string): boolean {
+export function hasContent(
+  state: BlockState & PropertyState & TagState & AliasState,
+  page: string,
+): boolean {
   const key = canonicalize(page);
   return (
     (state.blocks.get(key)?.length ?? 0) > 0 ||
     (state.properties.get(key)?.size ?? 0) > 0 ||
-    (state.tags.get(key)?.size ?? 0) > 0
+    (state.tags.get(key)?.size ?? 0) > 0 ||
+    (state.aliases.get(key)?.size ?? 0) > 0
   );
 }
 
@@ -148,13 +155,13 @@ export function getRefsTo(state: BlockState, page: string): number {
  * event. `GraphView` is one.
  */
 export type DeletesView = {
-  readonly state: BlockState & PropertyState & TagState;
+  readonly state: BlockState & PropertyState & TagState & AliasState;
   /** Resolves once the event is durable and folded into `state`. */
   dispatch(v: number, type: DeleteEvent["type"], payload: unknown): Promise<unknown>;
 };
 
 /**
- * Deletes `page`'s blocks, properties and tags, as one event. A page with nothing
+ * Deletes `page`'s blocks, properties, tags and aliases, as one event. A page with nothing
  * on it writes nothing: the delete would change nothing, and the log does not
  * collect events that mean nothing.
  */

@@ -5,7 +5,7 @@ import { hitOf, marked, rows, step } from './results.ts';
 
 test('pages come before blocks, and each opens what it names', () => {
   const list = rows({
-    pages: ['Mira'],
+    pages: [{ title: 'Mira', opens: 'Mira' }],
     blocks: [{ id: 'b1', page: '2026-10-12', text: 'Call Mira' }],
   });
   assert.deepEqual(

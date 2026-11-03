@@ -14,6 +14,7 @@ import type { Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import { IMAGE_SCHEME } from '../../../shared/graph';
 import { remarkPlugins as reading } from '@pbnotes/graph';
+import type { PageMatch } from '@pbnotes/graph';
 import { remarkHighlight, remarkStrikethrough } from './marks/marks';
 import { bracketEdit } from './brackets/brackets';
 import type { Edit } from './brackets/brackets';
@@ -373,10 +374,10 @@ export function BlockEditor({
   onIndent?: (text: string, caret: number, by: 1 | -1) => void;
   onCancel: () => void;
   /**
-   * The titles to offer after `[[` for what is typed after it (#29). Left
-   * off, nothing is offered.
+   * The titles to offer after `[[` for what is typed after it (#29), each
+   * with the page it opens. Left off, nothing is offered.
    */
-  findPages?: (query: string) => Promise<string[]>;
+  findPages?: (query: string) => Promise<PageMatch[]>;
 }) {
   const box = useRef<HTMLTextAreaElement | null>(null);
   /* Once per caret rather than on every render: the list re-renders the box
@@ -397,7 +398,7 @@ export function BlockEditor({
    */
   const [link, setLink] = useState<LinkQuery | null>(null);
   const [dismissed, setDismissed] = useState<number>();
-  const [titles, setTitles] = useState<string[]>([]);
+  const [titles, setTitles] = useState<PageMatch[]>([]);
   const [active, setActive] = useState(0);
   const [point, setPoint] = useState({ top: 0, left: 0 });
   const listId = useId();
@@ -477,7 +478,7 @@ export function BlockEditor({
             }
             if (event.key === 'Enter' || event.key === 'Tab') {
               event.preventDefault();
-              pick(titles[active]);
+              pick(titles[active].title);
               return;
             }
             if (event.key === 'Escape') {
@@ -565,7 +566,7 @@ export function BlockEditor({
           className="absolute z-10 w-64 overflow-hidden rounded-sm border border-line bg-bg py-1 shadow-md"
           style={{ top: point.top, left: `clamp(0px, ${point.left}px, 100% - 16rem)` }}
         >
-          {titles.map((title, index) => (
+          {titles.map(({ title, opens }, index) => (
             <li
               key={title}
               id={`${listId}-${index}`}
@@ -579,6 +580,13 @@ export function BlockEditor({
               }}
             >
               {title}
+              {/* An alias or a date name: the page it opens (#221). */}
+              {opens !== title && (
+                <span className={index === active ? 'text-on-accent/80' : 'text-muted'}>
+                  {' → '}
+                  {opens}
+                </span>
+              )}
             </li>
           ))}
         </ul>

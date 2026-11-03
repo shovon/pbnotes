@@ -14,7 +14,7 @@
  * records what the user did, and looking at a page is not something they did.
  */
 
-import type { Page, PageListing, Property } from '@pbnotes/graph';
+import type { Page, PageListing, PageMatch, Property } from '@pbnotes/graph';
 import type { LogStatus } from './log';
 
 /**
@@ -81,9 +81,9 @@ export type PlaceView = {
   previews: [string, string | null][];
 };
 
-/** What `find` answers with: page titles, then blocks. */
+/** What `find` answers with: page titles, each with the page it opens, then blocks. */
 export type Matches = {
-  pages: string[];
+  pages: PageMatch[];
   blocks: { id: string; page: string; text: string }[];
 };
 
@@ -144,10 +144,12 @@ export type GraphApi = {
   locate(blockId: string): Promise<{ page: string } | undefined>;
   /**
    * The titles of the project's pages that contain `query`, ignoring case:
-   * those starting with it first, then A to Z, a handful at most. What the
-   * `[[` autocomplete lists (#29); `find` lists them for the Cmd/Ctrl+K box (#28).
+   * those starting with it first, then A to Z, a handful at most, each with
+   * the page following it opens: another page for an alias or a date name
+   * (#221). What the `[[` autocomplete lists (#29); `find` lists them for the
+   * Cmd/Ctrl+K box (#28).
    */
-  search(query: string): Promise<string[]>;
+  search(query: string): Promise<PageMatch[]>;
   /**
    * What the Cmd/Ctrl+K box lists for `query` (#28): the titles `search`
    * gives, then the blocks whose text contains it, each with the page it is

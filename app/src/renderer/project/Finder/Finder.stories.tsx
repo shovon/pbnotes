@@ -4,7 +4,22 @@ import { fn } from 'storybook/test';
 import Finder from './Finder';
 import type { Found, FoundBlock } from './results/results';
 
-const titles = ['Mira', "Mirabel's notes", 'Project Atlas', 'Shed', '2026-10-12', '2026-10-13'];
+const titles = [
+  'Mira',
+  "Mirabel's notes",
+  'Project Atlas',
+  'Atlas',
+  'Shed',
+  '2026-10-12',
+  'Oct 12th, 2026',
+  '2026-10-13',
+];
+
+/** Titles that open another page: an alias, and a day's date name (#221). */
+const opens = new Map([
+  ['Atlas', 'Project Atlas'],
+  ['Oct 12th, 2026', '2026-10-12'],
+]);
 
 /** Block text as it is shown: links already read, so `[[Mira]]` is `Mira`. */
 const blocks: FoundBlock[] = [
@@ -41,7 +56,8 @@ const find = async (query: string): Promise<Found> => {
         (a, b) =>
           Number(!a.toLowerCase().startsWith(q)) - Number(!b.toLowerCase().startsWith(q)) ||
           a.localeCompare(b),
-      ),
+      )
+      .map((title) => ({ title, opens: opens.get(title) ?? title })),
     blocks: blocks.filter((block) => has(block.text)),
   };
 };

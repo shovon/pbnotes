@@ -105,7 +105,14 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    * asked for, which is why everything drawn reads its place from here.
    */
   const [held, setHeld] = useState<Held | null>(null);
-  const title = held?.place?.page ?? null;
+  /** The name the view was asked for: what the trail holds, as the link spelt it. */
+  const asked = held?.place?.page ?? null;
+  /**
+   * The page the view is on, as it shows, or null for the journal. Not
+   * always `asked`: an alias or a date name opens another page (#221), and a
+   * write, an image or a link back to it is about that page.
+   */
+  const title = asked === null ? null : (held?.view.showing[0]?.page.title ?? asked);
   /** The block the view is zoomed into, when it is. */
   const zoom = held?.place?.block;
   /** `held`'s version, or 0 before the first answer. */
@@ -278,7 +285,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    */
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [title, zoom, browsing]);
+  }, [asked, zoom, browsing]);
 
   /** A block to scroll to and flash once its page has rendered. */
   const [target, setTarget] = useState<string | null>(null);

@@ -21,10 +21,10 @@ import {
   removeTag,
   renameProperty,
   searchBlocks,
-  searchPages,
+  searchNames,
   setProperty,
 } from "@pbnotes/graph";
-import type { GraphView as Base } from "@pbnotes/graph";
+import type { GraphView as Base, PageMatch } from "@pbnotes/graph";
 import type { Command, Matches, PageList, Place, PlaceView } from "../../../../../shared/graph.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
 import { getView } from "../place-view/place-view.ts";
@@ -125,11 +125,11 @@ export function createGraphSession(
 
     locate: async (blockId: string) =>
       locateBlock((await open.require()).state, blockId),
-    search: async (query: string): Promise<string[]> =>
-      searchPages((await open.require()).state, query),
+    search: async (query: string): Promise<PageMatch[]> =>
+      searchNames((await open.require()).state, query),
     find: async (query: string): Promise<Matches> => {
       const { state } = await open.require();
-      return { pages: searchPages(state, query), blocks: searchBlocks(state, query) };
+      return { pages: searchNames(state, query), blocks: searchBlocks(state, query) };
     },
     /** Every page, read beside the version, with no `await` between them. */
     pages: async (): Promise<PageList> => {
