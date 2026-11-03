@@ -69,7 +69,7 @@ export default function AllPages({ graph, sort, onSort, onOpen, onError }: Props
     <section aria-labelledby="all-pages-title">
       <h2
         id="all-pages-title"
-        className="mt-6 mb-3 border-b border-line pb-1.5 text-2xl font-semibold"
+        className="mt-6 mb-4 text-2xl font-semibold"
       >
         All pages
       </h2>

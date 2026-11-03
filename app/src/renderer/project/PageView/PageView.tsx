@@ -564,7 +564,7 @@ export default function PageView({
            it is, a crumb by its `data-block-ref`, like a dot.
            ponytail: a crumb is the first line of its block as written,
            Markdown and all. Render it once a `**` in one looks wrong. */
-        <nav className="mt-6 mb-3 flex flex-wrap items-center gap-x-1.5 border-b border-line pb-1.5 text-sm text-muted">
+        <nav className="mt-6 mb-4 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
           <a className="wikilink text-accent" href={`#${title}`}>
             {title}
           </a>
@@ -586,7 +586,7 @@ export default function PageView({
           ))}
         </nav>
       ) : (
-        <h2 className="mt-6 mb-3 border-b border-line pb-1.5 text-2xl font-semibold">
+        <h2 className="mt-6 mb-4 text-2xl font-semibold">
           {/* A heading still, not a link in the text: no accent, and only
               the underline on hover says it goes somewhere. The project
               view follows it like any wikilink. */}
