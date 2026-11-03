@@ -197,6 +197,12 @@ export type BlockCreated = {
    * that stays true when `after` does not.
    */
   parent?: string;
+  /**
+   * The page's first top-level block (#231). Only with no `after` and no
+   * `parent`, which say more precisely where it goes and win when given.
+   * Absent means the end of the page.
+   */
+  first?: true;
 };
 
 /** The later of two facts about one block's text. The earlier one stays. */
@@ -237,8 +243,8 @@ export type Bare<E = PageEvent> = E extends {
  * The block half of `HANDLES`; the gate that reads it is `graphFold`.
  */
 export const BLOCK_HANDLES: Record<PageEvent["type"], number> = {
-  // Still 1 with `parent` (#226): an older build ignores the field and shows
-  // the block at the end of the page. At 2 it would skip the block, and every
+  // Still 1 with `parent` (#226) and `first` (#231): an older build ignores
+  // either field and shows the block at the end of the page. At 2 it would skip the block, and every
   // later edit to it, entirely.
   [`${NAMESPACE}block.created`]: 1,
   // 2 since the page came off the payload: an older build handed one would
@@ -266,7 +272,8 @@ function string(payload: object, name: string): string | undefined {
  *
  * Two leniencies, both so that a block is never dropped that could be shown:
  * a page that is not a string is filed under its `String` (it always was),
- * and an `after` or `parent` that is not a string is as if it were absent.
+ * an `after` or `parent` that is not a string is as if it were absent, and
+ * so is a `first` that is anything but `true`.
  */
 function parse(event: { type: string; payload: unknown }): Bare | undefined {
   const name = unnamed(event.type);
@@ -282,9 +289,17 @@ function parse(event: { type: string; payload: unknown }): Bare | undefined {
       const page = String(field(payload, "page"));
       const after = string(payload, "after");
       const parent = string(payload, "parent");
+      const first = field(payload, "first") === true;
       return {
         type: name,
-        payload: { page, id, text, ...(after ? { after } : {}), ...(parent ? { parent } : {}) },
+        payload: {
+          page,
+          id,
+          text,
+          ...(after ? { after } : {}),
+          ...(parent ? { parent } : {}),
+          ...(first ? { first } : {}),
+        },
       };
     }
     case "block.edited": {
@@ -332,9 +347,15 @@ function onBlock<S extends BlockState>(
 /**
  * `blocks` with a new `block` in it: beneath `after` when that is one of
  * `parent`'s children (or there is no `parent`), else first under `parent`,
- * else at the end. Never fails, so a creation always shows somewhere.
+ * else at the end. `first`, with neither of the others, is the top of the
+ * page. Never fails, so a creation always shows somewhere.
  */
-function placed(blocks: Block[], block: Block, after?: string, parent?: string): Block[] {
+function placed(
+  blocks: Block[],
+  block: Block,
+  { after, parent, first }: Pick<BlockCreated, "after" | "parent" | "first">,
+): Block[] {
+  if (first && !after && !parent) return [block, ...blocks];
   const fits = after && (!parent || locate(blocks, after)?.parent?.id === parent);
   return (
     (fits && beside(blocks, after, block)) ||
@@ -352,13 +373,13 @@ function foreign(_event: never, state: unknown): never {
 function apply<S extends BlockState>(state: S, it: Bare): S {
   switch (it.type) {
     case "block.created": {
-      const { page, id, text, after, parent } = it.payload;
+      const { page, id, text } = it.payload;
       const blocks = blocksOn(state, page);
       const block: Block = { id, text, children: [] };
       // `addBlock` refuses an `after` or `parent` the page lacks, so a miss
       // here is a log written by something else. Fall back rather than drop:
       // a block in the wrong place can be moved, one the fold discarded is gone.
-      const next = placed(blocks, block, after, parent);
+      const next = placed(blocks, block, it.payload);
       return {
         ...state,
         blocks: new Map(state.blocks).set(canonicalize(page), next),

@@ -38,8 +38,9 @@ function build<T extends Bare["type"]>(
 /**
  * The `block.created` event: the same bytes `addBlock` writes. A writer with
  * no fold (the CLI) can write a valid one if it trusts its own `after`,
- * `parent` and `id`. An absent `after` or `parent` is left off, so a block
- * written without one writes the bytes it always did.
+ * `parent` and `id`. An absent `after` or `parent`, and a `first` that is not
+ * `true`, is left off, so a block written without one writes the bytes it
+ * always did.
  */
 export function blockCreated(
   page: string,
@@ -47,6 +48,7 @@ export function blockCreated(
   after: string | undefined,
   id: string,
   parent?: string,
+  first?: boolean,
 ): Built<"block.created"> {
   return build("block.created", {
     page,
@@ -54,6 +56,7 @@ export function blockCreated(
     text,
     ...(after ? { after } : {}),
     ...(parent ? { parent } : {}),
+    ...(first ? { first: true as const } : {}),
   });
 }
 
@@ -100,10 +103,12 @@ async function onExisting(
 }
 
 /**
- * Writes a new block at the end of the page, directly beneath `after`, or as
- * `parent`'s first child. With both, `after` has to be one of `parent`'s
- * children. Refuses an `after` or `parent` not on this page, and an id the
- * ledger already has. The id is always the caller's: the block on disk has to
+ * Writes a new block at the end of the page, directly beneath `after`, as
+ * `parent`'s first child, or with `first` at the top of the page. With both
+ * `after` and `parent`, `after` has to be one of `parent`'s children; `first`
+ * with either is refused, since they would win and it would mean nothing.
+ * Refuses an `after` or `parent` not on this page, and an id the ledger
+ * already has. The id is always the caller's: the block on disk has to
  * be the one on screen.
  */
 export async function addBlock(
@@ -113,7 +118,11 @@ export async function addBlock(
   after: string | undefined,
   id: string,
   parent?: string,
+  first?: boolean,
 ): Promise<Page> {
+  if (first && (after || parent)) {
+    throw new Error("A first block cannot have an after or a parent");
+  }
   const blocks = blocksOn(view.state, title);
   const sibling = after ? locate(blocks, after) : undefined;
   if (after && !sibling) throw new Error("No such block");
@@ -124,7 +133,7 @@ export async function addBlock(
   if (find(view.state, id)) throw new Error("That block already exists");
   // dispatch appends before it folds, so the page handed back can never show
   // something a crash takes.
-  await append(view, blockCreated(title, text, after, id, parent));
+  await append(view, blockCreated(title, text, after, id, parent, first));
   return getPage(view.state, title);
 }
 

@@ -97,6 +97,23 @@ test("blockCreated is the event addBlock writes, with or without an after", asyn
   ]);
 });
 
+test("blockCreated writes first only when it is true, and addBlock puts that block at the top", async () => {
+  assert.equal("first" in blockCreated(TODAY, "x", undefined, "x").payload, false);
+  assert.equal("first" in blockCreated(TODAY, "x", undefined, "x", undefined, false).payload, false);
+  const view = await outline();
+  const page = await addBlock(view, TODAY, "top", undefined, "t", undefined, true);
+  assert.deepEqual(view.events.at(-1), blockCreated(TODAY, "top", undefined, "t", undefined, true));
+  assert.deepEqual(page.blocks.map((it) => it.id), ["t", "a", "b"]);
+});
+
+test("addBlock refuses first with an after or a parent, and writes nothing", async () => {
+  const view = await outline();
+  const before = view.events.length;
+  await assert.rejects(addBlock(view, TODAY, "D", "a", "d", undefined, true), /first block/);
+  await assert.rejects(addBlock(view, TODAY, "D", undefined, "d", "b", true), /first block/);
+  assert.equal(view.events.length, before);
+});
+
 test("addBlock refuses a parent the page lacks, and an after that is not its child", async () => {
   const view = await outline();
   await assert.rejects(addBlock(view, TODAY, "D", undefined, "d", "gone"), /No such block/);
