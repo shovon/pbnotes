@@ -97,6 +97,23 @@ export const WithProperties: Story = {
   },
 };
 
+/** A new page, nothing on it yet: under the title, "+ Add tag" and "+ Add
+    property" keep their room but show only while the header is hovered or
+    holds focus. Hover the title to see them. */
+export const NewPage: Story = {
+  args: { page: page('Shed', []), properties: [], tags: [] },
+};
+
+/** A page with tags: chips under the title, above the properties, each a
+    link to the page it names. "+ Add tag" shows on hover, as above. */
+export const WithTags: Story = {
+  args: {
+    page: page('Mira', [block('16', 'Prefers #[[the good coffee]].')]),
+    tags: ['People', 'Shed'],
+    properties: [{ key: 'Role', value: 'editor' }],
+  },
+};
+
 /** Zoomed into a block two levels down: it alone is the root, its children
     are the top level, and above it the page and what it hangs under are the
     ways back out. Its sibling is not shown. */
