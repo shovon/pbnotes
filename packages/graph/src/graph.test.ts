@@ -18,6 +18,7 @@ import {
   getPages,
   HANDLES,
   inCode,
+  listPages,
   indentBlock,
   NAMESPACE,
   outdentBlock,
@@ -26,6 +27,7 @@ import {
   propertyRemoved,
   propertySet,
   searchPages,
+  setProperty,
   today,
 } from "./graph.ts";
 import type { Graph, GraphView } from "./graph.ts";
@@ -150,6 +152,33 @@ test("searchPages finds titles written on and titles only linked, prefix matches
   ]);
   assert.deepEqual(searchPages(view.state, "", 2), [TODAY, "Foo Page"]);
   assert.deepEqual(searchPages(view.state, "nothing"), []);
+});
+
+test("listPages lists every page once, journal days and pages only named included, with their counts", async () => {
+  const view = memory();
+  await addBlock(view, "Mira", "about [[Oslo]] and [[mira]]", undefined, "m1");
+  await addBlock(view, "Mira", "plain", undefined, "m2");
+  await indentBlock(view, "m2");
+  await addBlock(view, TODAY, "met [[MIRA]] in [[Oslo]]", undefined, "d1");
+  await addBlock(view, TODAY, "more on [[Mira]]", "d1", "d2");
+  await indentBlock(view, "d2");
+  await setProperty(view, "Book", "author", "Mira");
+  assert.deepEqual(listPages(view.state), [
+    { title: TODAY, blocks: 2, references: 0 },
+    { title: "author", blocks: 0, references: 0 },
+    { title: "Book", blocks: 0, references: 0 },
+    { title: "Mira", blocks: 2, references: 1 },
+    { title: "Oslo", blocks: 0, references: 2 },
+  ]);
+});
+
+test("listPages carries when a page last changed, when it ever did", () => {
+  const at = "2026-11-01T10:00:00.000Z";
+  const state = graphFold.reduce(graphFold.initial, { ...blockCreated("Mira", "[[Oslo]]", undefined, "m"), at });
+  assert.deepEqual(listPages(state), [
+    { title: "Mira", blocks: 1, references: 0, edited: Date.parse(at) },
+    { title: "Oslo", blocks: 0, references: 1 },
+  ]);
 });
 
 test("inCode is true in code spans, fences of either kind and math, and nowhere else", () => {

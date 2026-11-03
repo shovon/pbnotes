@@ -7,12 +7,15 @@ import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
 import type { PageViewGraph } from './PageView/PageView';
 import { imageTarget, placeNew } from './placement/placement';
-import { back, go, home, leave, rezoom } from './trail/trail';
+import { ALL_PAGES, back, browse, go, home, label, leave, placeOf, rezoom } from './trail/trail';
 import type { Stop } from './trail/trail';
 import { samePlace } from './held/held';
 import type { Held } from './held/held';
 import { createFetcher } from './fetcher/fetcher';
 import Finder from './Finder/Finder';
+import AllPages from './AllPages/AllPages';
+import { INITIAL } from './AllPages/sort/sort';
+import type { Sort } from './AllPages/sort/sort';
 import PageMenu from './PageMenu/PageMenu';
 import { deletedSince } from './deleted/deleted';
 import { opensFinder } from './Finder/shortcut/shortcut';
@@ -32,6 +35,7 @@ export type ProjectViewGraph = PageViewGraph &
     | 'view'
     | 'locate'
     | 'find'
+    | 'pages'
     | 'addImage'
     | 'pageMenu'
   >;
@@ -87,10 +91,14 @@ type Props = {
 export default function ProjectView({ act, graph, now, mac, recentPages, sidebar }: Props) {
   /**
    * Where the window is, as how it got there. Empty is the journal, and so is
-   * a journal stop (`home`): `place` is undefined on either.
+   * a journal stop (`home`): `place` is undefined on either, and on the list
+   * of every page (`browse`), which is on no page either.
    */
   const [trail, setTrail] = useState<Stop[]>([]);
-  const place = trail.at(-1);
+  const place = placeOf(trail.at(-1));
+  const browsing = trail.at(-1) === ALL_PAGES;
+  /** How the list of every page is sorted: kept here, so back to it finds it as it was. */
+  const [sort, setSort] = useState<Sort>(INITIAL);
   /**
    * What is drawn, and the place it was asked for. Null until main first
    * answers. It can be a step behind the trail while the next place is being
@@ -270,7 +278,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    */
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [title, zoom]);
+  }, [title, zoom, browsing]);
 
   /** A block to scroll to and flash once its page has rendered. */
   const [target, setTarget] = useState<string | null>(null);
@@ -540,7 +548,9 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
         <Sidebar
           recent={recent.list}
           showing={place?.page}
+          browsing={browsing}
           onJournal={() => step(home)}
+          onAllPages={() => step(browse)}
           onOpen={(page) => step((trail) => go(trail, { page }))}
         />
       )}
@@ -586,12 +596,24 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
               className="app-region-no-drag ml-1 max-w-56 cursor-pointer truncate rounded-md border border-transparent px-1.5 py-0.5 text-sm hover:border-accent hover:text-accent"
               onClick={() => step(back)}
             >
-              ← {trail.at(-2)?.page ?? 'Journal'}
+              ← {label(trail.at(-2))}
             </button>,
             titlebar,
           )}
 
-        {own && (
+        {browsing && (
+          // The journal is still asked for underneath, as on an empty trail:
+          // it is what back from a list that started the trail lands on.
+          <AllPages
+            graph={graph}
+            sort={sort}
+            onSort={setSort}
+            onOpen={(page) => step((trail) => go(trail, { page }))}
+            onError={(error) => act(() => Promise.reject(error))}
+          />
+        )}
+
+        {!browsing && own && (
           <PageMenu
             title={own.page.title}
             canDelete={own.page.blocks.length > 0 || own.properties.length > 0}
@@ -606,7 +628,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
         )}
 
         <Previews value={previews}>
-          {held === null ? (
+          {browsing ? null : held === null ? (
             <p className="mt-1 text-sm text-muted">Loading…</p>
           ) : (
             held.view.showing.map(({ page, references, properties }) => (

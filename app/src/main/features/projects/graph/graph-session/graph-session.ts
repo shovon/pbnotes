@@ -13,6 +13,7 @@ import {
   deletePage,
   editBlock,
   indentBlock,
+  listPages,
   locateBlock,
   outdentBlock,
   removeProperty,
@@ -22,7 +23,7 @@ import {
   setProperty,
 } from "@pbnotes/graph";
 import type { GraphView as Base } from "@pbnotes/graph";
-import type { Command, Matches, Place, PlaceView } from "../../../../../shared/graph.ts";
+import type { Command, Matches, PageList, Place, PlaceView } from "../../../../../shared/graph.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
 import { getView } from "../place-view/place-view.ts";
 
@@ -127,6 +128,11 @@ export function createGraphSession(
     find: async (query: string): Promise<Matches> => {
       const { state } = await open.require();
       return { pages: searchPages(state, query), blocks: searchBlocks(state, query) };
+    },
+    /** Every page, read beside the version, with no `await` between them. */
+    pages: async (): Promise<PageList> => {
+      const view = await open.require();
+      return { version: view.version, pages: listPages(view.state) };
     },
     status: async (): Promise<LogStatus> => (await open.require()).status,
 
