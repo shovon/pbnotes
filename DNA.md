@@ -74,13 +74,13 @@ These should be easy to change. Don't write rules for them as if they were perma
 
 ### The bench
 
-Some state belongs to this machine and only means something to the product: the pages opened lately, whether the sidebar is collapsed, where a project was left. It isn't the ledger's, because it is view state and not something the user wrote, and it isn't `notes.db`'s, because it wouldn't exist under another product. It goes on the bench: the product's own store, in `bench.db` in `userData`. The ledger is the book; the bench is what's left lying beside it while you work with it on this machine.
+Some state belongs to this machine and only means something to the product: the pages opened lately, whether the sidebar is collapsed, where a project was left. It isn't the ledger's, because it is view state and not something the user wrote, and it isn't `notes.db`'s, because it wouldn't exist under another product. It goes on the bench: the product's own store, one file per project in `userData/bench/`, named by the project's id. The ledger is the book; the bench is what's left lying beside it while you work with it on this machine.
 
-- **Nothing on the bench is needed to show what the user wrote.** Losing `bench.db` costs conveniences and nothing else. Anything that should be shared with other writers or devices, or kept as a record, is an event on the ledger.
+- **Nothing on the bench is needed to show what the user wrote.** Losing a bench file costs that project's conveniences and nothing else. Anything that should be shared with other writers or devices, or kept as a record, is an event on the ledger.
 - The product owns it: its own migrations, kept with the product's code, not in `db.ts`.
-- It is keyed by project id, the registry's UUID. That is the only thing it knows about the registry, and the registry knows nothing about it. Rows for a project that has been removed are harmless and can be ignored or swept up; there is no foreign key across the two files.
-- `index.ts` hands it in, the way it hands the graph its ledger, so nothing on the bench asks which project is open.
-- A pivot leaves the old `bench.db` behind, never migrated into the new product's, and the new product starts a bench of its own under a name of its own.
+- **One project, one file.** A bench file holds one project's state and nothing in it names a project, so no query can reach another project's: the only way across is to open the wrong file, and which file is open is decided once, when the project opens. The file is named by the registry's UUID, which survives the folder moving. That id is the only thing the bench knows about the registry, and the registry knows nothing about it. A removed project's file is harmless and can be left or deleted.
+- `index.ts` hands in the open project's bench, the way it hands the graph its ledger, so nothing on the bench asks which project is open.
+- A pivot leaves the old bench behind, never migrated into the new product's, and the new product starts a bench of its own under a name of its own.
 
 ### What a pivot can't undo
 
