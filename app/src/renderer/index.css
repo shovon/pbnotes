@@ -34,6 +34,9 @@
      traffic lights on macOS and the controls overlay elsewhere. */
   --spacing-titlebar: 2.25rem;
 
+  /* The project's left column (#184): fixed, beside the page, not over it. */
+  --spacing-sidebar: 15rem;
+
   /* How far a block's text sits in from its dot, and so how far a child
      block sits in from its parent: the child's dot lands where the parent's
      text starts. */

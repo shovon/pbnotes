@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { locate, canonicalize, today } from '@pbnotes/graph';
-import type { GraphApi, Place } from '../../shared/graph';
+import type { GraphApi } from '../../shared/graph';
 import type { Act } from '../ui';
 import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
 import type { PageViewGraph } from './PageView/PageView';
 import { imageTarget, placeNew } from './placement/placement';
-import { back, go, leave, rezoom } from './trail/trail';
+import { back, go, home, leave, rezoom } from './trail/trail';
+import type { Stop } from './trail/trail';
 import { samePlace } from './held/held';
 import type { Held } from './held/held';
 import { createFetcher } from './fetcher/fetcher';
@@ -15,6 +16,10 @@ import Finder from './Finder/Finder';
 import PageMenu from './PageMenu/PageMenu';
 import { deletedSince } from './deleted/deleted';
 import { opensFinder } from './Finder/shortcut/shortcut';
+import Sidebar from './Sidebar/Sidebar';
+import Toggle from './Sidebar/Toggle/Toggle';
+import { forget, visit } from './Sidebar/recent/recent';
+import { togglesSidebar } from './Sidebar/shortcut/shortcut';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -30,6 +35,17 @@ export type ProjectViewGraph = PageViewGraph &
     | 'addImage'
     | 'pageMenu'
   >;
+
+/**
+ * One value kept for this project: what the view calls, and nothing else of
+ * where it is kept. `App` hands these in, one per mounted view.
+ */
+export type Kept<T> = {
+  /** What was kept last, or undefined if nothing was (or it was lost). */
+  load(): Promise<T | undefined>;
+  /** Keeps `value` in place of what was there. */
+  save(value: T): void;
+};
 
 /**
  * A project, in one of two shapes. By default the journal: every day that has
@@ -57,13 +73,23 @@ type Props = {
   graph: ProjectViewGraph;
   /** The clock, for which day a drop with no page lands on. */
   now: () => Date;
-  /** Whether this is macOS: Cmd+K opens the finder there, Ctrl+K elsewhere. */
+  /**
+   * Whether this is macOS: Cmd+K opens the finder there and Cmd+\\ toggles
+   * the sidebar, Ctrl elsewhere.
+   */
   mac: boolean;
+  /** The pages opened lately in this project, newest first. */
+  recentPages: Kept<string[]>;
+  /** Whether this project's sidebar is collapsed. */
+  sidebar: Kept<{ collapsed: boolean }>;
 };
 
-export default function ProjectView({ act, graph, now, mac }: Props) {
-  /** Where the window is, as how it got there. Empty is the journal. */
-  const [trail, setTrail] = useState<Place[]>([]);
+export default function ProjectView({ act, graph, now, mac, recentPages, sidebar }: Props) {
+  /**
+   * Where the window is, as how it got there. Empty is the journal, and so is
+   * a journal stop (`home`): `place` is undefined on either.
+   */
+  const [trail, setTrail] = useState<Stop[]>([]);
   const place = trail.at(-1);
   /**
    * What is drawn, and the place it was asked for. Null until main first
@@ -95,6 +121,7 @@ export default function ProjectView({ act, graph, now, mac }: Props) {
   deletedElsewhere.current = (gone) => {
     if (deleting.current.has(canonicalize(gone))) return;
     setTrail((trail) => leave(trail, gone));
+    setRecent((recent) => ({ ...recent, list: forget(recent.list, gone) }));
     act(async () => {
       throw new Error(`“${gone}” was deleted in another window or on another device.`);
     });
@@ -121,11 +148,80 @@ export default function ProjectView({ act, graph, now, mac }: Props) {
   );
 
   /** A step the user took: through `act`, like every other gesture. */
-  const step = (take: (trail: Place[]) => Place[]) =>
+  const step = (take: (trail: Stop[]) => Stop[]) =>
     act(async () => setTrail(take));
 
   // On mount, and every time the window moves.
   useEffect(fetcher.moved, [place?.page, place?.block]);
+
+  /**
+   * The pages opened lately (`Sidebar/recent/`). Empty, and saved nowhere,
+   * until what was kept has loaded: saving before then would put a list of
+   * one over the one kept. When it lands, the page on screen goes first, so
+   * a page opened while it loaded is not lost.
+   */
+  const [recent, setRecent] = useState<{ loaded: boolean; list: string[] }>({
+    loaded: false,
+    list: [],
+  });
+  /** The list as it loaded, so loading alone saves nothing back. */
+  const loadedList = useRef<string[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    void recentPages.load().then((kept) => {
+      if (!live) return;
+      const page = latest.current?.page;
+      const list = kept ?? [];
+      loadedList.current = list;
+      setRecent({ loaded: true, list: page === undefined ? list : visit(list, page) });
+    });
+    return () => {
+      live = false;
+    };
+  }, [recentPages]);
+
+  /**
+   * Every page the window lands on, however it got there: a link, the
+   * finder, the sidebar, back, a block's page, a zoom (its page), or where a
+   * delete left it. Watching where the window is covers every step there is
+   * and every one added later. The journal is not a page, and not recorded.
+   */
+  useEffect(() => {
+    const page = place?.page;
+    if (page === undefined) return;
+    setRecent((recent) => (recent.loaded ? { ...recent, list: visit(recent.list, page) } : recent));
+  }, [place?.page]);
+
+  // Kept after each change, and only once loaded. `visit` and `forget` hand
+  // back the same list when nothing moved, so this runs only on a change;
+  // the list just loaded is not one, so opening a project writes nothing.
+  useEffect(() => {
+    if (recent.loaded && recent.list !== loadedList.current) recentPages.save(recent.list);
+  }, [recent.list]);
+
+  /**
+   * Whether the sidebar is hidden. Showing until what was kept has loaded,
+   * and when nothing was. A toggle before it lands wins over it.
+   */
+  const [collapsed, setCollapsed] = useState(false);
+  const toggled = useRef(false);
+  useEffect(() => {
+    let live = true;
+    void sidebar.load().then((kept) => {
+      if (live && kept && !toggled.current) setCollapsed(kept.collapsed);
+    });
+    return () => {
+      live = false;
+    };
+  }, [sidebar]);
+  /** The button and the shortcut both; rebound each render, for `collapsed`. */
+  const toggle = useRef(() => undefined as void);
+  toggle.current = () => {
+    toggled.current = true;
+    const next = !collapsed;
+    setCollapsed(next);
+    sidebar.save({ collapsed: next });
+  };
 
   useEffect(() => {
     // A notice and a write's reply take one path, so this window's writes
@@ -159,6 +255,9 @@ export default function ProjectView({ act, graph, now, mac }: Props) {
    */
   const [titlebar, setTitlebar] = useState<Element | null>(null);
   useEffect(() => setTitlebar(document.getElementById('titlebar')), []);
+  /** The slot `App` leaves first in that strip, before the picker. */
+  const [titlebarStart, setTitlebarStart] = useState<Element | null>(null);
+  useEffect(() => setTitlebarStart(document.getElementById('titlebar-start')), []);
 
   /**
    * To the top on navigation only. A day rolling over mid-session, or another
@@ -254,6 +353,7 @@ export default function ProjectView({ act, graph, now, mac }: Props) {
       const key = canonicalize(gone);
       deleting.current.add(key);
       setTrail((trail) => leave(trail, gone));
+      setRecent((recent) => ({ ...recent, list: forget(recent.list, gone) }));
       try {
         await bridge.run({ type: 'deletePage', title: gone });
       } finally {
@@ -306,14 +406,19 @@ export default function ProjectView({ act, graph, now, mac }: Props) {
   /**
    * Whether the Cmd/Ctrl+K box is open. The key opens it from anywhere, a
    * block being written included, and closes it again. On the window, so it
-   * is heard whatever has focus.
+   * is heard whatever has focus. Cmd/Ctrl+\\ toggles the sidebar the same way.
    */
   const [finding, setFinding] = useState(false);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.isComposing || !opensFinder(event, mac)) return;
-      event.preventDefault();
-      setFinding((open) => !open);
+      if (event.isComposing) return;
+      if (opensFinder(event, mac)) {
+        event.preventDefault();
+        setFinding((open) => !open);
+      } else if (togglesSidebar(event, mac)) {
+        event.preventDefault();
+        toggle.current();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -429,6 +534,21 @@ export default function ProjectView({ act, graph, now, mac }: Props) {
     <>
       {/* Outside the view, so a click in it is not taken for one on a link,
           and a paste into it is text rather than an image for the page. */}
+      {/* Outside the view too: its entries are buttons, not links in a page,
+          so the view's capture of a click on a link stays out of it. */}
+      {!collapsed && (
+        <Sidebar
+          recent={recent.list}
+          showing={place?.page}
+          onJournal={() => step(home)}
+          onOpen={(page) => step((trail) => go(trail, { page }))}
+        />
+      )}
+      {titlebarStart !== null &&
+        createPortal(
+          <Toggle collapsed={collapsed} mac={mac} onToggle={() => toggle.current()} />,
+          titlebarStart,
+        )}
       {finding && (
         <Finder
           find={graph.find}
@@ -457,7 +577,7 @@ export default function ProjectView({ act, graph, now, mac }: Props) {
             owns the state the button acts on, so the button goes up there
             through a portal: still this view's, rendered in App's corner. */}
         {titlebar !== null &&
-          place !== undefined &&
+          trail.length > 0 &&
           createPortal(
             // Borderless until pointed at, like the picker beside it. Capped,
             // because it names the page it goes back to, and a page is named

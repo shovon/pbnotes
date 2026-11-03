@@ -16,6 +16,7 @@ import { openDatabase } from "./db";
 import { createOpenBench } from "./features/bench/bench";
 import { registerBenchIpc } from "./features/bench/bench-ipc";
 import { benchFiles } from "./features/bench/bench-store";
+import { sidebarSlots } from "./features/sidebar/sidebar-slots";
 import { rendererSource } from "./renderer-source/renderer-source";
 import { mainWindowOptions, windowColors } from "./window-options/window-options";
 import { createDisk } from "./features/projects/disk/disk";
@@ -170,10 +171,10 @@ app.on("ready", () => {
   // bench"), so no handle reaches more than one project. It is told the open
   // project by `currentProject`, not `requireProject`: it lives in
   // `userData`, so a project whose folder can't be reached still has its
-  // bench. No slots yet; the product declares each one here.
+  // bench. The product declares its slots here: the sidebar's (#184).
   const bench = createOpenBench(
     benchFiles(path.join(app.getPath("userData"), "bench")),
-    new Map(),
+    sidebarSlots,
     () => projects.currentProject()?.id,
   );
   registerBenchIpc(bench);
