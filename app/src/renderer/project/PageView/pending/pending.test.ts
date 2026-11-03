@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { blockEdited } from '@pbnotes/graph';
+import { blockEdited, propertySet, tagAdded } from '@pbnotes/graph';
 import { drawn, recorded, refused, unseen } from './pending.ts';
 
 const a = blockEdited('b1', 'one');
@@ -37,4 +37,16 @@ test('a refused write drops what is not recorded, and keeps what is', () => {
   all = refused(all, [a, b]);
   assert.deepEqual(events(all), [a]);
   assert.deepEqual(all[0].version, 3);
+});
+
+test('block, property and tag events settle alike, each by its own version', () => {
+  const property = propertySet('Mira', 'Status', 'done');
+  const tag = tagAdded('Mira', 'Work');
+  let all = drawn([], [a, property, tag]);
+  all = recorded(all, a, 3);
+  all = recorded(all, property, 4);
+  all = recorded(all, tag, 5);
+  assert.deepEqual(events(unseen(all, 3)), [property, tag]);
+  assert.deepEqual(events(unseen(all, 4)), [tag]);
+  assert.deepEqual(events(unseen(all, 5)), []);
 });

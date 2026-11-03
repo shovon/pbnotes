@@ -25,6 +25,7 @@ import {
   pageDeleted,
   graphFold,
   propertyRemoved,
+  addTag,
   tagAdded,
   tagRemoved,
   propertySet,
@@ -167,12 +168,15 @@ test("listPages lists every page once, journal days and pages only named include
   await addBlock(view, TODAY, "more on [[Mira]]", "d1", "d2");
   await indentBlock(view, "d2");
   await setProperty(view, "Book", "author", "Mira");
+  await addTag(view, "Book", "Oslo");
+  await addTag(view, "Mira", "oslo");
   assert.deepEqual(listPages(view.state), [
-    { title: TODAY, blocks: 2, references: 0 },
-    { title: "author", blocks: 0, references: 0 },
-    { title: "Book", blocks: 0, references: 0 },
-    { title: "Mira", blocks: 2, references: 1 },
-    { title: "Oslo", blocks: 0, references: 2 },
+    { title: TODAY, blocks: 2, references: 0, taggedBy: 0 },
+    { title: "author", blocks: 0, references: 0, taggedBy: 0 },
+    { title: "Book", blocks: 0, references: 0, taggedBy: 0 },
+    { title: "Mira", blocks: 2, references: 1, taggedBy: 0 },
+    // Tagged twice, linked twice: the two are counted apart.
+    { title: "Oslo", blocks: 0, references: 2, taggedBy: 2 },
   ]);
 });
 
@@ -180,8 +184,8 @@ test("listPages carries when a page last changed, when it ever did", () => {
   const at = "2026-11-01T10:00:00.000Z";
   const state = graphFold.reduce(graphFold.initial, { ...blockCreated("Mira", "[[Oslo]]", undefined, "m"), at });
   assert.deepEqual(listPages(state), [
-    { title: "Mira", blocks: 1, references: 0, edited: Date.parse(at) },
-    { title: "Oslo", blocks: 0, references: 1 },
+    { title: "Mira", blocks: 1, references: 0, taggedBy: 0, edited: Date.parse(at) },
+    { title: "Oslo", blocks: 0, references: 1, taggedBy: 0 },
   ]);
 });
 

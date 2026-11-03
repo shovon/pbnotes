@@ -51,8 +51,10 @@ export type PlaceView = {
    * Each with what links to it, cut down to the blocks that do; none under a
    * zoom, where what links to one block is not what links to its page. And
    * each with its properties, in every mode: whether to draw them is the
-   * view's. And how many times the page has been deleted: a window on it
-   * that sees this go up knows it was deleted, not merely emptied.
+   * view's. And each with its tags, and the pages that tag it, in every mode
+   * but a zoom, where both are empty as `references` is. And how many times
+   * the page has been deleted: a window on it that sees this go up knows it
+   * was deleted, not merely emptied.
    *
    * `refsTo` is how many blocks on other pages hold a `((id))` to a block
    * on this one: what deleting it would leave showing as missing. Only on a
@@ -63,6 +65,10 @@ export type PlaceView = {
     page: Page;
     references: Page[];
     properties: Property[];
+    /** The pages it points to, as `getTags` returns them. */
+    tags: string[];
+    /** The pages that point to it, as `getTaggedBy` returns them. */
+    taggedBy: string[];
     deletions: number;
     refsTo: number;
   }[];
@@ -293,7 +299,18 @@ export type Command =
    */
   | { type: 'renameProperty'; title: string; from: string; to: string }
   /**
-   * Appends a `page.deleted` event: the page's blocks and properties are
+   * Appends a `tag.added` event: `title` now points to `tag`. A tag is a page
+   * title, so it arrives trimmed like one. A tag the page already has
+   * resolves with nothing written.
+   */
+  | { type: 'addTag'; title: string; tag: string }
+  /**
+   * Appends a `tag.removed` event. Removing a tag the page does not have
+   * resolves with nothing written.
+   */
+  | { type: 'removeTag'; title: string; tag: string }
+  /**
+   * Appends a `page.deleted` event: the page's blocks, properties and tags are
    * gone from the fold, and stay on disk. A page with nothing on it resolves
    * with nothing written, since the delete would change nothing.
    */

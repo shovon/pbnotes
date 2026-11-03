@@ -214,6 +214,26 @@ test("property writes are recorded in order with the block writes around them", 
   assert.deepEqual(seen.showing[0].properties, [{ key: "Author", value: "Sal" }]);
 });
 
+test("tag writes are recorded in order with the block writes around them", async () => {
+  const { view, hold } = ledger();
+  const { graph } = session(view);
+  const release = hold();
+  const writes = [
+    graph.run({ type: "addBlock", id: "a1", title: "Mira", text: "hi" }),
+    graph.run({ type: "addTag", title: "Mira", tag: "Work" }),
+    graph.run({ type: "addTag", title: "Mira", tag: "Home" }),
+    graph.run({ type: "editBlock", blockId: "a1", text: "hello" }),
+    graph.run({ type: "removeTag", title: "mira", tag: "home" }),
+    graph.run({ type: "addTag", title: "Atlas", tag: "Mira" }),
+  ];
+  release();
+  await Promise.all(writes);
+  const seen = await graph.view({ page: "Mira" }, TODAY);
+  assert.deepEqual(shown(seen), ["hello"]);
+  assert.deepEqual(seen.showing[0].tags, ["Work"]);
+  assert.deepEqual(seen.showing[0].taggedBy, ["Atlas"]);
+});
+
 test("a refused rename writes nothing and does not hold up the writes behind it", async () => {
   const { view } = ledger();
   const { graph } = session(view);

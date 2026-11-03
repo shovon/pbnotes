@@ -17,7 +17,7 @@ import {
   reduce as reduceProperties,
 } from "./properties/properties.ts";
 import type { PropertyEvent, PropertyState } from "./properties/properties.ts";
-import { named as namedByTags, TAG_HANDLES, reduce as reduceTags } from "./tags/tags.ts";
+import { countTaggedBy, named as namedByTags, TAG_HANDLES, reduce as reduceTags } from "./tags/tags.ts";
 import type { TagEvent, TagState } from "./tags/tags.ts";
 import { DELETE_HANDLES, reduce as reduceDeletes } from "./deletes/deletes.ts";
 import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
@@ -77,7 +77,8 @@ export type {
   PropertySet,
 } from "./properties/properties.ts";
 export { removeProperty, renameProperty, setProperty } from "./properties/commands.ts";
-export { getTaggedBy, getTags, tagAdded, tagRemoved } from "./tags/tags.ts";
+export { getTaggedBy, getTags, predictTags, tagAdded, tagRemoved } from "./tags/tags.ts";
+export { addTag, removeTag } from "./tags/commands.ts";
 export type { TagAdded, TagEvent, TagRemoved } from "./tags/tags.ts";
 export {
   deletePage,
@@ -191,19 +192,22 @@ export type PageListing = {
   title: string;
   /** Blocks on it, at every depth. 0 for a page only a link, a property or a tag names. */
   blocks: number;
-  /** Blocks on other pages that link to it by title (`countLinks`). */
+  /** Blocks on other pages that link to it by title (`countLinks`). Tags never count here. */
   references: number;
+  /** Pages that tag it. */
+  taggedBy: number;
   /** When it last changed, in ms since the epoch; undefined if nothing ever did. */
   edited?: number;
 };
 
 /**
  * Every page, as `searchPages` counts one, journal days included, each once
- * in the spelling it shows, A to Z. With what is on it, what links to it and
- * when it last changed.
+ * in the spelling it shows, A to Z. With what is on it, what links to it,
+ * what tags it and when it last changed.
  */
 export function listPages(state: Graph): PageListing[] {
   const links = countLinks(state);
+  const tagged = countTaggedBy(state);
   const keys = new Set(named(state).map(canonicalize));
   return [...keys]
     .map((key) => {
@@ -212,6 +216,7 @@ export function listPages(state: Graph): PageListing[] {
         title: titleOf(state, key),
         blocks: countBlocks(state, key),
         references: links.get(key) ?? 0,
+        taggedBy: tagged.get(key) ?? 0,
         ...(edited === undefined ? {} : { edited }),
       };
     })

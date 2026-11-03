@@ -12,6 +12,8 @@ import {
   getProperties,
   getReferences,
   getRefsTo,
+  getTaggedBy,
+  getTags,
 } from "@pbnotes/graph";
 import type { Page, Graph } from "@pbnotes/graph";
 import type { Place, PlaceView } from "../../../../../shared/graph.ts";
@@ -32,7 +34,8 @@ import type { Place, PlaceView } from "../../../../../shared/graph.ts";
  * An empty today is asked what links to it too: other days can name it. Not
  * under a zoom, where what links to the page is not about the block showing.
  * Every page carries its properties, under a zoom too: whether to draw them
- * is the window's.
+ * is the window's. Its tags and what tags it are left out under a zoom, as
+ * what links to it is: the zoom shows a block, not the page.
  *
  * ponytail: the whole history, on every change. Send only the days in view
  * when someone has enough years in one ledger for that to show.
@@ -60,6 +63,8 @@ export function getView(
       page,
       references: at?.block ? [] : getReferences(state, page.title),
       properties: getProperties(state, page.title),
+      tags: at?.block ? [] : getTags(state, page.title),
+      taggedBy: at?.block ? [] : getTaggedBy(state, page.title),
       deletions: getDeletions(state, page.title),
       refsTo: at && !at.block ? getRefsTo(state, page.title) : 0,
     })),

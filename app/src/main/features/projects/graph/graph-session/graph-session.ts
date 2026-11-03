@@ -9,6 +9,7 @@
  */
 import {
   addBlock,
+  addTag,
   deleteBlock,
   deletePage,
   editBlock,
@@ -17,6 +18,7 @@ import {
   locateBlock,
   outdentBlock,
   removeProperty,
+  removeTag,
   renameProperty,
   searchBlocks,
   searchPages,
@@ -168,6 +170,10 @@ function apply(view: GraphView, command: Command): Promise<unknown> {
       return removeProperty(view, command.title, command.key);
     case "renameProperty":
       return renameProperty(view, command.title, command.from, command.to);
+    case "addTag":
+      return addTag(view, command.title, command.tag);
+    case "removeTag":
+      return removeTag(view, command.title, command.tag);
     case "deletePage":
       return deletePage(view, command.title);
     default: {

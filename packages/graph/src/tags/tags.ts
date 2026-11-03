@@ -160,6 +160,43 @@ export function getTaggedBy(state: TagState, tag: string): string[] {
   return shown(state, by);
 }
 
+/** `canonicalize(tag)` → how many pages point to it. A page nothing tags has no entry. */
+export function countTaggedBy(state: TagState): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const held of state.tags.values()) {
+    for (const tag of held) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * `page`'s tags as they will stand once `events` are recorded: a view's
+ * writes still in flight, folded over the tags main last sent for it. A
+ * guess, thrown away as each write settles.
+ *
+ * Folded with `reduce`, so what is drawn is what will be recorded. Both events
+ * are safe to fold twice, so one the tags already show changes nothing. Any
+ * event that is not a tag event on `page` is passed over.
+ */
+export function predictTags(
+  tags: readonly string[],
+  page: string,
+  events: readonly { type: string; payload: unknown }[],
+): string[] {
+  if (events.length === 0) return [...tags];
+  const at = canonicalize(page);
+  const held = new Set(tags.map(canonicalize));
+  let state: TagState = {
+    tags: held.size === 0 ? new Map() : new Map([[at, held]]),
+    titles: new Map([
+      [at, page],
+      ...tags.map((tag): [string, string] => [canonicalize(tag), tag]),
+    ]),
+  };
+  for (const event of events) state = reduce(state, event);
+  return getTags(state, page);
+}
+
 /** Every title the tags name: each page that has one, and each tag. */
 export function* named(state: TagState): Generator<string> {
   for (const [page, held] of state.tags) {
