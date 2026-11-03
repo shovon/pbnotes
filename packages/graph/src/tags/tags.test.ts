@@ -17,7 +17,7 @@ import {
   searchPages,
 } from "../graph.ts";
 import type { Graph, GraphView } from "../graph.ts";
-import { getTaggedBy, getTags, reduce, tagAdded, tagRemoved } from "./tags.ts";
+import { getTaggedBy, getTags, predictTags, reduce, tagAdded, tagRemoved } from "./tags.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -196,3 +196,23 @@ function memory(): GraphView {
     },
   };
 }
+
+test("predictTags folds writes in flight over the tags a page was sent", () => {
+  assert.deepEqual(
+    predictTags(["Home", "Work"], "Foo", [added("Foo", "Reading"), removed("foo", "home"), added("Foo", "WORK")]),
+    ["Reading", "Work"],
+  );
+});
+
+test("predictTags passes over other pages' writes and events that are not its own", () => {
+  const block = { type: `${NAMESPACE}block.edited`, payload: { id: "b", text: "x" } };
+  assert.deepEqual(predictTags(["Work"], "Foo", [added("Bar", "Home"), removed("Bar", "Work"), block]), ["Work"]);
+  assert.deepEqual(predictTags([], "Foo", [removed("Foo", "Work")]), []);
+});
+
+test("predicting a write the tags already show changes nothing", () => {
+  const events = [added("Foo", "Reading"), removed("Foo", "Home")];
+  const once = predictTags(["Home"], "Foo", events);
+  assert.deepEqual(once, ["Reading"]);
+  assert.deepEqual(predictTags(once, "Foo", events), once);
+});

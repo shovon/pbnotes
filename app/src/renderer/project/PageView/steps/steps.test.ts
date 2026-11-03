@@ -9,15 +9,19 @@ import {
   blockOutdented,
   propertyRemoved,
   propertySet,
+  tagAdded,
+  tagRemoved,
 } from '@pbnotes/graph';
 import type { Block } from '@pbnotes/graph';
 import {
   add,
+  addTag,
   edit,
   indent,
   outdent,
   remove,
   removeProperty,
+  removeTag,
   renameProperty,
   setProperty,
 } from './steps.ts';
@@ -63,6 +67,8 @@ test('each step draws the event main writes, and sends the write that records it
     [outdent(graph, blocks, 'c'), blockOutdented({ id: 'c', after: 'b' }), { type: 'outdentBlock', blockId: 'c' }],
     [setProperty(graph, 'Mira', 'Status', 'done'), propertySet('Mira', 'Status', 'done'), { type: 'setProperty', title: 'Mira', key: 'Status', value: 'done' }],
     [removeProperty(graph, 'Mira', 'Status'), propertyRemoved('Mira', 'Status'), { type: 'removeProperty', title: 'Mira', key: 'Status' }],
+    [addTag(graph, 'Mira', 'Work'), tagAdded('Mira', 'Work'), { type: 'addTag', title: 'Mira', tag: 'Work' }],
+    [removeTag(graph, 'Mira', 'Work'), tagRemoved('Mira', 'Work'), { type: 'removeTag', title: 'Mira', tag: 'Work' }],
   ];
   for (const [step, built, call] of cases) {
     graph.calls.length = 0;

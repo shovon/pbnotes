@@ -79,7 +79,8 @@ A page has tags: other pages it points to, and nothing else. A tag has no value,
 - **A page holds a tag once.** Adding a tag it has, or removing one it lacks, changes nothing. A page may tag itself.
 - **The later event wins** per `(page, tag)`, in fold order, the same on every machine.
 - **Malformed is skipped whole:** a payload that is not an object, or a `page` or `tag` that is not a string or is blank once trimmed. Any other field in a payload is ignored, not an error.
-- **`getTags(graph, page)`** lists the pages `page` points to, and **`getTaggedBy(graph, tag)`** the pages that point to `tag`, each in the spelling it shows, ordered by `canonicalize`.
+- **`getTags(graph, page)`** lists the pages `page` points to, and **`getTaggedBy(graph, tag)`** the pages that point to `tag`, each in the spelling it shows, ordered by `canonicalize`. **`listPages`** counts the pages tagging each page as `taggedBy`, apart from `references`, which tags never change.
+- **The commands** refuse what the fold would skip (a blank page or tag) and write nothing for a change that changes nothing: `addTag(view, page, tag)` for a tag the page has, `removeTag(view, page, tag)` for one it lacks. **`predictTags(tags, page, events)`** folds writes still in flight over the tags a page was sent, as `predictProperties` does.
 
 ## Deleting a page is a contract
 

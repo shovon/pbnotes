@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blockCreated, pageDeleted, graphFold, propertySet } from "@pbnotes/graph";
+import { blockCreated, pageDeleted, graphFold, propertySet, tagAdded } from "@pbnotes/graph";
 import type { Graph } from "@pbnotes/graph";
 import { getView } from "./place-view.ts";
 
@@ -87,4 +87,38 @@ test("every page in the view carries how many times it has been deleted", () => 
     getView(view, undefined, TODAY).showing.map((shown) => shown.deletions),
     [0],
   );
+});
+
+test("every page in the view carries its tags and what tags it, except under a zoom", () => {
+  const view = folded(
+    blockCreated(TODAY, "a day", undefined, "b1"),
+    tagAdded(TODAY, "Work"),
+    tagAdded("Mira", TODAY),
+    tagAdded("Mira", "Work"),
+    tagAdded("Atlas", "Mira"),
+  );
+
+  const journal = getView(view, undefined, TOMORROW);
+  assert.deepEqual(
+    journal.showing.map((shown) => [shown.page.title, shown.tags, shown.taggedBy]),
+    [
+      [TOMORROW, [], []],
+      [TODAY, ["Work"], ["Mira"]],
+    ],
+  );
+
+  // A page with tags and no blocks.
+  const mira = getView(view, { page: "Mira" }, TOMORROW);
+  assert.deepEqual(mira.showing[0].tags, [TODAY, "Work"]);
+  assert.deepEqual(mira.showing[0].taggedBy, ["Atlas"]);
+
+  // A page only tags name.
+  const work = getView(view, { page: "work" }, TOMORROW);
+  assert.deepEqual(work.showing[0].tags, []);
+  assert.deepEqual(work.showing[0].taggedBy, [TODAY, "Mira"]);
+
+  // Under a zoom, neither: the zoom shows a block, not the page.
+  const zoomed = getView(view, { page: TODAY, block: "b1" }, TOMORROW);
+  assert.deepEqual(zoomed.showing[0].tags, []);
+  assert.deepEqual(zoomed.showing[0].taggedBy, []);
 });

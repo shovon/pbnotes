@@ -17,6 +17,8 @@ test("each command passes with the fields it reads", () => {
     { type: "setProperty", title: "Mira", key: "Status", value: "" },
     { type: "removeProperty", title: "Mira", key: "Status" },
     { type: "renameProperty", title: "Mira", from: "Owner", to: "Author" },
+    { type: "addTag", title: "Mira", tag: "Work" },
+    { type: "removeTag", title: "Mira", tag: "Work" },
     { type: "deletePage", title: "Mira" },
   ];
   for (const command of good) assert.deepEqual(requireCommand(command), command);
@@ -44,6 +46,14 @@ test("a missing or wrong-typed field is refused", () => {
     { type: "removeProperty", title: "Mira", key: 1 },
     { type: "renameProperty", title: "Mira", from: "Owner" },
     { type: "renameProperty", title: "Mira", from: "Owner", to: "Author " },
+    { type: "addTag", title: "Mira" },
+    { type: "addTag", tag: "Work" },
+    { type: "addTag", title: "Mira", tag: "" },
+    { type: "addTag", title: "Mira", tag: " Work" },
+    { type: "addTag", title: 1, tag: "Work" },
+    { type: "removeTag", title: "Mira" },
+    { type: "removeTag", title: "Mira", tag: ["Work"] },
+    { type: "removeTag", title: "", tag: "Work" },
     { type: "deletePage" },
     { type: "deletePage", title: 3 },
     { type: "deletePage", title: "" },
@@ -78,6 +88,10 @@ test("fields a command does not read are dropped", () => {
   assert.deepEqual(
     requireCommand({ type: "addBlock", id: ID, title: "Mira", text: "hi", after: undefined, page: "x" }),
     { type: "addBlock", id: ID, title: "Mira", text: "hi" },
+  );
+  assert.deepEqual(
+    requireCommand({ type: "addTag", title: "Mira", tag: "Work", key: "x", value: "y" }),
+    { type: "addTag", title: "Mira", tag: "Work" },
   );
 });
 

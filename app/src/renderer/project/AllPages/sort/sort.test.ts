@@ -5,10 +5,10 @@ import type { PageListing } from '@pbnotes/graph';
 import { INITIAL, sorted, toggle } from './sort.ts';
 
 const pages: PageListing[] = [
-  { title: 'mira', blocks: 3, references: 1, edited: 200 },
-  { title: 'Oslo', blocks: 0, references: 4 },
-  { title: 'Atlas', blocks: 3, references: 0, edited: 300 },
-  { title: '2026-11-01', blocks: 1, references: 0, edited: 100 },
+  { title: 'mira', blocks: 3, references: 1, taggedBy: 0, edited: 200 },
+  { title: 'Oslo', blocks: 0, references: 4, taggedBy: 0 },
+  { title: 'Atlas', blocks: 3, references: 0, taggedBy: 0, edited: 300 },
+  { title: '2026-11-01', blocks: 1, references: 0, taggedBy: 0, edited: 100 },
 ];
 
 const titles = (list: PageListing[]) => list.map((page) => page.title);

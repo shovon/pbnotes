@@ -118,6 +118,17 @@ const CHECKERS: {
     from: requireTitle(own(raw, "from")),
     to: requireTitle(own(raw, "to")),
   }),
+  // A tag is a page title too, checked as one for the same reason.
+  addTag: (raw) => ({
+    type: "addTag",
+    title: requireTitle(own(raw, "title")),
+    tag: requireTitle(own(raw, "tag")),
+  }),
+  removeTag: (raw) => ({
+    type: "removeTag",
+    title: requireTitle(own(raw, "title")),
+    tag: requireTitle(own(raw, "tag")),
+  }),
   deletePage: (raw) => ({
     type: "deletePage",
     title: requireTitle(own(raw, "title")),

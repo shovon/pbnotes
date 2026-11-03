@@ -16,12 +16,14 @@ import {
   outdented,
   propertyRemoved,
   propertySet,
+  tagAdded,
+  tagRemoved,
 } from '@pbnotes/graph';
-import type { Block, PageEvent, PropertyEvent } from '@pbnotes/graph';
+import type { Block, PageEvent, PropertyEvent, TagEvent } from '@pbnotes/graph';
 import type { Command } from '../../../../shared/graph';
 
 /** An event to draw, and the call that asks main to record it. */
-export type Step = [PageEvent | PropertyEvent, () => Promise<unknown>];
+export type Step = [PageEvent | PropertyEvent | TagEvent, () => Promise<unknown>];
 
 /**
  * The one call the steps here make, for a view that hands them its bridge.
@@ -110,6 +112,16 @@ export function removeProperty(graph: StepsGraph, title: string, key: string): S
     propertyRemoved(title, key),
     () => graph.run({ type: 'removeProperty', title, key }),
   ];
+}
+
+/** `title` now points to `tag`. */
+export function addTag(graph: StepsGraph, title: string, tag: string): Step {
+  return [tagAdded(title, tag), () => graph.run({ type: 'addTag', title, tag })];
+}
+
+/** `title` no longer points to `tag`. */
+export function removeTag(graph: StepsGraph, title: string, tag: string): Step {
+  return [tagRemoved(title, tag), () => graph.run({ type: 'removeTag', title, tag })];
 }
 
 /**
