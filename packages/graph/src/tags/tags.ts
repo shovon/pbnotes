@@ -150,21 +150,32 @@ export function getTags(state: TagState, page: string): string[] {
 }
 
 /**
- * The pages that point to `tag`. Empty for a page nothing tags.
+ * The pages that point to `tag`. Empty for a page nothing tags. `also`:
+ * other names a tag may use for it, as an alias does (#221).
  *
  * ponytail: walks every page's tags per call. Ask it for one page at a time.
  */
-export function getTaggedBy(state: TagState, tag: string): string[] {
-  const to = canonicalize(tag);
-  const by = [...state.tags].filter(([, held]) => held.has(to)).map(([page]) => page);
+export function getTaggedBy(state: TagState, tag: string, also: Iterable<string> = []): string[] {
+  const to = new Set([canonicalize(tag), ...[...also].map(canonicalize)]);
+  const by = [...state.tags]
+    .filter(([, held]) => [...held].some((it) => to.has(it)))
+    .map(([page]) => page);
   return shown(state, by);
 }
 
-/** `canonicalize(tag)` → how many pages point to it. A page nothing tags has no entry. */
-export function countTaggedBy(state: TagState): Map<string, number> {
+/**
+ * `canonicalize(tag)` → how many pages point to it. A page nothing tags has
+ * no entry. `to` takes a tag's key to the key of the page it counts for, as
+ * resolving an alias does (#221); a page tagging two names of one page counts
+ * once.
+ */
+export function countTaggedBy(
+  state: TagState,
+  to: (key: string) => string = (key) => key,
+): Map<string, number> {
   const counts = new Map<string, number>();
   for (const held of state.tags.values()) {
-    for (const tag of held) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    for (const tag of new Set([...held].map(to))) counts.set(tag, (counts.get(tag) ?? 0) + 1);
   }
   return counts;
 }

@@ -26,6 +26,8 @@ import {
   graphFold,
   propertyRemoved,
   addTag,
+  aliasAdded,
+  aliasRemoved,
   tagAdded,
   tagRemoved,
   propertySet,
@@ -136,6 +138,8 @@ test("every builder writes the v its own gate reads, and there is one for every 
     propertyRemoved("x", "y"),
     tagAdded("x", "y"),
     tagRemoved("x", "y"),
+    aliasAdded("x", "y"),
+    aliasRemoved("x", "y"),
     pageDeleted("x"),
   ];
   for (const event of built) assert.equal(event.v, HANDLES[event.type], event.type);

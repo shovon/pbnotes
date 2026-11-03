@@ -67,6 +67,12 @@ export default function Finder({ find, onOpen, onClose }: FinderProps) {
       {row.kind === 'page' ? (
         <div className="truncate">
           <Marked text={row.title} query={query} />
+          {row.opens !== row.title && (
+            <span className={index === active ? 'text-on-accent/80' : 'text-muted'}>
+              {' → '}
+              {row.opens}
+            </span>
+          )}
         </div>
       ) : (
         <>

@@ -1,7 +1,7 @@
 /**
- * The graph: what pbnotes events mean. This is where the slices meet: the block
- * fold and the property fold behind one gate, the state they fold, and the
- * one read that needs both. Everything else is re-exported from the slice
+ * The graph: what pbnotes events mean. This is where the slices meet: their
+ * folds behind one gate, the state they fold, and the reads that need more
+ * than one of them. Everything else is re-exported from the slice
  * that owns it.
  *
  * No plumbing, and no import of any: not `@pbnotes/ledger`, and no `node:`
@@ -10,15 +10,34 @@
  */
 import { BLOCK_HANDLES, reduce } from "./blocks/blocks.ts";
 import type { BlockState, PageEvent } from "./blocks/blocks.ts";
-import { countBlocks, countLinks, named as namedByBlocks } from "./blocks/queries.ts";
 import {
+  countBlocks,
+  countLinks,
+  getPage as getPageAt,
+  getReferences as getReferencesTo,
+  named as namedByBlocks,
+} from "./blocks/queries.ts";
+import type { Page } from "./blocks/blocks.ts";
+import {
+  getProperties as getPropertiesOn,
   named as namedByProperties,
   PROPERTY_HANDLES,
   reduce as reduceProperties,
 } from "./properties/properties.ts";
-import type { PropertyEvent, PropertyState } from "./properties/properties.ts";
-import { countTaggedBy, named as namedByTags, TAG_HANDLES, reduce as reduceTags } from "./tags/tags.ts";
+import type { Property, PropertyEvent, PropertyState } from "./properties/properties.ts";
+import {
+  countTaggedBy,
+  getTaggedBy as getTaggedByAt,
+  getTags as getTagsOn,
+  named as namedByTags,
+  TAG_HANDLES,
+  reduce as reduceTags,
+} from "./tags/tags.ts";
 import type { TagEvent, TagState } from "./tags/tags.ts";
+import { ALIAS_HANDLES, named as namedByAliases, reduce as reduceAliases } from "./aliases/aliases.ts";
+import type { AliasEvent, AliasState } from "./aliases/aliases.ts";
+import { resolver } from "./resolve/resolve.ts";
+import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
 import { DELETE_HANDLES, reduce as reduceDeletes } from "./deletes/deletes.ts";
 import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
@@ -29,7 +48,7 @@ import { canonicalize } from "./canonicalize/canonicalize.ts";
 
 export { canonicalize } from "./canonicalize/canonicalize.ts";
 export { NAMESPACE } from "./events/events.ts";
-export { DATE_PATTERN, today } from "./journal/journal.ts";
+export { DATE_PATTERN, dateOf, namesOf, today } from "./journal/journal.ts";
 export { titleOf } from "./titles/titles.ts";
 export {
   beside,
@@ -54,22 +73,9 @@ export type {
   Page,
   PageEvent,
 } from "./blocks/blocks.ts";
-export {
-  getPage,
-  getPages,
-  getPreviews,
-  getReferences,
-  linking,
-  locateBlock,
-  searchBlocks,
-} from "./blocks/queries.ts";
+export { getPages, getPreviews, linking, locateBlock, searchBlocks } from "./blocks/queries.ts";
 export type { BlockMatch } from "./blocks/queries.ts";
-export {
-  getProperties,
-  predictProperties,
-  propertyRemoved,
-  propertySet,
-} from "./properties/properties.ts";
+export { predictProperties, propertyRemoved, propertySet } from "./properties/properties.ts";
 export type {
   Property,
   PropertyEvent,
@@ -77,9 +83,11 @@ export type {
   PropertySet,
 } from "./properties/properties.ts";
 export { removeProperty, renameProperty, setProperty } from "./properties/commands.ts";
-export { getTaggedBy, getTags, predictTags, tagAdded, tagRemoved } from "./tags/tags.ts";
+export { predictTags, tagAdded, tagRemoved } from "./tags/tags.ts";
 export { addTag, removeTag } from "./tags/commands.ts";
 export type { TagAdded, TagEvent, TagRemoved } from "./tags/tags.ts";
+export { aliasAdded, aliasRemoved } from "./aliases/aliases.ts";
+export type { AliasAdded, AliasEvent, AliasRemoved } from "./aliases/aliases.ts";
 export {
   deletePage,
   getDeletions,
@@ -106,26 +114,36 @@ export { inCode, read } from "./reading/reading.ts";
 export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
 
 /**
- * The graph: every page, by `canonicalize`: the blocks on it, its properties, its tags, the first
- * spelling the fold saw for it, how many times it has been deleted, and when
- * it last changed.
+ * The graph: every page, by `canonicalize`: the blocks on it, its properties,
+ * its tags, its aliases, the first spelling the fold saw for it, how many
+ * times it has been deleted, and when it last changed.
  *
  * `Map` throughout, so a title of `__proto__` is an ordinary key (#62), and
  * it survives the structured clone to the renderer (#146).
  */
-export type Graph = BlockState & PropertyState & TagState & DeleteState & EditedState;
+export type Graph = BlockState &
+  PropertyState &
+  TagState &
+  AliasState &
+  DeleteState &
+  EditedState;
 
 /**
  * Event type → the payload `v` this build folds and writes. Public contract
  * with `NAMESPACE`; see the README.
  */
 export const HANDLES: Record<
-  PageEvent["type"] | PropertyEvent["type"] | TagEvent["type"] | DeleteEvent["type"],
+  | PageEvent["type"]
+  | PropertyEvent["type"]
+  | TagEvent["type"]
+  | AliasEvent["type"]
+  | DeleteEvent["type"],
   number
 > = {
   ...BLOCK_HANDLES,
   ...PROPERTY_HANDLES,
   ...TAG_HANDLES,
+  ...ALIAS_HANDLES,
   ...DELETE_HANDLES,
 };
 
@@ -153,6 +171,7 @@ export const graphFold = {
     titles: new Map(),
     properties: new Map(),
     tags: new Map(),
+    aliases: new Map(),
     deletions: new Map(),
     edited: new Map(),
   } as Graph,
@@ -160,30 +179,139 @@ export const graphFold = {
 
 /** Each slice's fold in turn. The delete fold empties what the others hold. */
 function behindTheGate(state: Graph, event: { type: string; payload: unknown }): Graph {
-  return [reduce, reduceProperties, reduceTags, reduceDeletes].reduce<Graph>(
+  return [reduce, reduceProperties, reduceTags, reduceAliases, reduceDeletes].reduce<Graph>(
     (folded, slice) => slice(folded, event),
     state,
   );
 }
 
-/** Every title something names now: blocks, links, properties and tags. */
+/** Every title something names now: blocks, links, properties, tags and aliases. */
 function named(state: Graph): string[] {
-  return [...namedByBlocks(state), ...namedByProperties(state), ...namedByTags(state)];
+  return [
+    ...namedByBlocks(state),
+    ...namedByProperties(state),
+    ...namedByTags(state),
+    ...namedByAliases(state),
+  ];
+}
+
+// ── Names: what a name opens (#221) ─────────────────────────────────────────
+//
+// The slices' own reads take a page's title as written. These go through
+// `resolve` first, so a page reached by an alias or a date name is the page
+// it opens: its blocks, properties and tags, and what links to it by any of
+// its names.
+
+/** What resolving reads. */
+type Names = BlockState & PropertyState & TagState & AliasState;
+
+/**
+ * The page `title` opens, as it shows: the page that claims it as an alias,
+ * the day a date name means, or `title` itself. See the README for the order.
+ */
+export function resolve(state: Names, title: string): string {
+  return resolver(state).title(title);
+}
+
+/** The page `title` opens, as it stands. `getPage(graph, "JS")` is `JavaScript`. */
+export function getPage(state: Names, title: string): Page {
+  return getPageAt(state, resolve(state, title));
+}
+
+/**
+ * What links to the page `title` opens, by any name that opens it: its
+ * title, its date names if it is a day, and its aliases in effect.
+ */
+export function getReferences(state: Names, title: string): Page[] {
+  const names = resolver(state);
+  return getReferencesTo(state, names.title(title), names.names(names.key(title)));
+}
+
+/** The properties of the page `title` opens. */
+export function getProperties(state: Names, title: string): Property[] {
+  return getPropertiesOn(state, resolve(state, title));
+}
+
+/** The tags of the page `title` opens. */
+export function getTags(state: Names, title: string): string[] {
+  return getTagsOn(state, resolve(state, title));
+}
+
+/** The pages that tag the page `tag` opens, by any name that opens it. */
+export function getTaggedBy(state: Names, tag: string): string[] {
+  const names = resolver(state);
+  return getTaggedByAt(state, names.title(tag), names.names(names.key(tag)));
+}
+
+/**
+ * The aliases in effect on the page `page` opens, each as it shows, ordered
+ * by `canonicalize`. Not a day's built-in names, which are `namesOf`.
+ */
+export function getAliases(state: Names, page: string): string[] {
+  const names = resolver(state);
+  return names
+    .aliases(names.key(page))
+    .sort()
+    .map((alias) => titleOf(state, alias));
+}
+
+/** The page `alias` opens as an alias in effect, as it shows, or undefined. */
+export function getAliasOf(state: Names, alias: string): string | undefined {
+  return resolver(state).aliasOf(alias);
+}
+
+/** A page title search offered, and the page following it opens. */
+export type PageMatch = {
+  /** As it shows. What a link to it is written as. */
+  title: string;
+  /** The page it opens, as it shows: `title` itself unless it resolves elsewhere. */
+  opens: string;
+};
+
+/**
+ * Every name search offers, by key, each in the spelling it shows: every
+ * title something names, and each day one of them opens, by its title and
+ * its built-in names: a day named by a link to `Nov 4th, 2024` is offered as
+ * `2024-11-04` and `November 4th, 2024` too.
+ */
+function offered(state: Graph): Map<string, string> {
+  const opens = resolver(state);
+  const names = new Map<string, string>();
+  for (const title of named(state)) {
+    const key = canonicalize(title);
+    if (!names.has(key)) names.set(key, titleOf(state, key));
+  }
+  const days = new Set([...names.keys()].map(opens.key).filter((key) => DATE_PATTERN.test(key)));
+  for (const day of days) {
+    if (!names.has(day)) names.set(day, titleOf(state, day));
+    for (const name of namesOf(day)) {
+      const at = canonicalize(name);
+      if (!names.has(at)) names.set(at, titleOf(state, name));
+    }
+  }
+  return names;
 }
 
 /**
  * The page titles that contain `query`, ignoring case: prefix matches first,
- * then the rest, each A to Z, at most `limit`. A page is any title something
- * names now: blocks on it, a link to it, a property on it, a property key, a
- * tag on it, or a tag pointing to it.
- * Each is offered once, in the spelling it shows.
+ * then the rest, each A to Z, at most `limit`, each with the page it opens.
+ * A page is any title something names now: blocks on it, a link to it, a
+ * property on it, a property key, a tag on it, a tag pointing to it, an
+ * alias, or a page with one. A day anything names is offered by its date
+ * names too, so `Nov 4` finds `Nov 4th, 2024`. Each is offered once, in the
+ * spelling it shows.
  */
+export function searchNames(state: Graph, query: string, limit = 10): PageMatch[] {
+  const names = resolver(state);
+  return search(offered(state).values(), query, limit).map((title) => ({
+    title,
+    opens: names.title(title),
+  }));
+}
+
+/** `searchNames`, the titles alone. */
 export function searchPages(state: Graph, query: string, limit = 10): string[] {
-  return search(
-    named(state).map((title) => titleOf(state, title)),
-    query,
-    limit,
-  );
+  return searchNames(state, query, limit).map(({ title }) => title);
 }
 
 /** One page as the list of every page shows it. */
@@ -192,9 +320,9 @@ export type PageListing = {
   title: string;
   /** Blocks on it, at every depth. 0 for a page only a link, a property or a tag names. */
   blocks: number;
-  /** Blocks on other pages that link to it by title (`countLinks`). Tags never count here. */
+  /** Blocks on other pages that link to it by any of its names (`countLinks`). Tags never count here. */
   references: number;
-  /** Pages that tag it. */
+  /** Pages that tag it, by any of its names. */
   taggedBy: number;
   /** When it last changed, in ms since the epoch; undefined if nothing ever did. */
   edited?: number;
@@ -204,11 +332,16 @@ export type PageListing = {
  * Every page, as `searchPages` counts one, journal days included, each once
  * in the spelling it shows, A to Z. With what is on it, what links to it,
  * what tags it and when it last changed.
+ *
+ * A name that opens another page (an alias in effect, a date name with no
+ * page of its own) is not a row: its links and tags count for the page it
+ * opens.
  */
 export function listPages(state: Graph): PageListing[] {
-  const links = countLinks(state);
-  const tagged = countTaggedBy(state);
-  const keys = new Set(named(state).map(canonicalize));
+  const names = resolver(state);
+  const links = countLinks(state, names.key);
+  const tagged = countTaggedBy(state, names.key);
+  const keys = new Set(named(state).map(names.key));
   return [...keys]
     .map((key) => {
       const edited = state.edited.get(key);

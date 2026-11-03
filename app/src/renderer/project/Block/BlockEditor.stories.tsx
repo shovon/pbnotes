@@ -65,13 +65,20 @@ export const Paragraphs: Story = {
 
 /** Type `[[` and the project's pages are offered under it, narrowed by what
     follows: Up and Down to move, Enter, Tab or a click to pick, Escape to
-    leave the text as typed. Not offered inside backticks. */
+    leave the text as typed. Not offered inside backticks. An alias or a
+    date name shows the page it opens: try `coffee` or `sep`. */
 export const Linking: Story = {
   args: {
     initial: 'Asked about the hinge, see ',
     findPages: async (query) =>
-      ['Hinges', 'Shed', 'Mira', 'The good coffee', '2026-09-24'].filter(
-        (title) => title.toLowerCase().includes(query.toLowerCase()),
-      ),
+      [
+        { title: 'Hinges', opens: 'Hinges' },
+        { title: 'Shed', opens: 'Shed' },
+        { title: 'Mira', opens: 'Mira' },
+        { title: 'The good coffee', opens: 'The good coffee' },
+        { title: '2026-09-24', opens: '2026-09-24' },
+        { title: 'Sep 24th, 2026', opens: '2026-09-24' },
+        { title: 'Coffee', opens: 'The good coffee' },
+      ].filter(({ title }) => title.toLowerCase().includes(query.toLowerCase())),
   },
 };

@@ -256,7 +256,7 @@ test("find lists the matching titles, then the matching blocks with their page",
   await graph.run({ type: "addBlock", id: "m1", title: "Mira", text: "her page" });
   await graph.run({ type: "addBlock", id: "d1", title: TODAY, text: "Call [[Mira]]" });
   assert.deepEqual(await graph.find("mira"), {
-    pages: ["Mira"],
+    pages: [{ title: "Mira", opens: "Mira" }],
     blocks: [{ id: "d1", page: TODAY, text: "Call Mira" }],
   });
 });

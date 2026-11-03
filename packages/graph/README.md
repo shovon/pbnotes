@@ -18,11 +18,13 @@ Each of those writes one event, and each event has a pure builder: `blockCreated
 
 Page properties have commands too, `setProperty`, `removeProperty` and `renameProperty`, and builders, `propertySet` and `propertyRemoved`.
 
+Page tags have `addTag` and `removeTag`, with builders `tagAdded` and `tagRemoved`. Aliases have builders, `aliasAdded` and `aliasRemoved`, and no commands yet.
+
 A page is deleted with `deletePage`, whose builder is `pageDeleted`.
 
 A view that draws its writes before they are recorded folds them with `predict` for blocks and `predictProperties` for a page's properties. Each passes over events that are not its own, so a view can hand both everything it has in flight.
 
-The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperties`, `getDeletions`, `getRefsTo`, `hasContent`, `searchPages` and `locateBlock`) take the folded graph alone, since they never write.
+The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperties`, `getTags`, `getTaggedBy`, `getAliases`, `getAliasOf`, `resolve`, `getDeletions`, `getRefsTo`, `hasContent`, `searchPages`, `searchNames`, `listPages` and `locateBlock`) take the folded graph alone, since they never write. The ones that take a page's title resolve it first (see "What a name opens"), so `getPage(graph, "JS")` is the page `JS` opens.
 
 ## What it does not depend on
 
@@ -82,11 +84,56 @@ A page has tags: other pages it points to, and nothing else. A tag has no value,
 - **`getTags(graph, page)`** lists the pages `page` points to, and **`getTaggedBy(graph, tag)`** the pages that point to `tag`, each in the spelling it shows, ordered by `canonicalize`. **`listPages`** counts the pages tagging each page as `taggedBy`, apart from `references`, which tags never change.
 - **The commands** refuse what the fold would skip (a blank page or tag) and write nothing for a change that changes nothing: `addTag(view, page, tag)` for a tag the page has, `removeTag(view, page, tag)` for one it lacks. **`predictTags(tags, page, events)`** folds writes still in flight over the tags a page was sent, as `predictProperties` does.
 
+## Page aliases are a contract
+
+A page can answer to other names. An alias is a page title, compared through `canonicalize` like any other, so giving `JavaScript` the alias `JS` names two pages, `JavaScript` and `JS`.
+
+| Type | `v` | Payload | Meaning |
+|---|---|---|---|
+| `alias.added` | 1 | `{ page, alias }` | `page` answers to `alias`. |
+| `alias.removed` | 1 | `{ page, alias }` | `page` no longer answers to `alias`. |
+
+- **The fold only records them.** Which page a name opens is read, never stored (below), so removing an alias undoes everything it did at once. No block is ever filed under any title but the one it was created under.
+- **A page holds an alias once,** with no value and no order. Adding one it has, or removing one it lacks, changes nothing. **The later event wins** per `(page, alias)`, in fold order.
+- **An alias names a page; it never creates one,** as with tags. A page that has aliases has something on it: `hasContent` counts them, a page delete removes them, and adding or removing one is an edit to the page.
+- **Malformed is skipped whole:** a payload that is not an object, or a `page` or `alias` that is not a string or is blank once trimmed. Any other field is ignored.
+
+## Built-in date names are a contract
+
+A journal day answers to its date in words, with nothing written. A name, once `canonicalize`d, is a date name when it reads as a real day in one of these formats:
+
+| Format | Example |
+|---|---|
+| `MMM do, yyyy` | `Nov 4th, 2024` |
+| `MMMM do, yyyy` | `November 4th, 2024` |
+
+- **English months:** `Jan` … `Dec` (`Sep`, not `Sept`) and `January` … `December`. **English ordinals:** `1st`, `2nd`, `3rd`, `4th`, `11th`, `12th`, `13th`, `21st`, … `31st`; a wrong one (`4st`) is not a date.
+- **A real day only.** `Feb 30th, 2024` and `Feb 29th, 2023` are ordinary page titles.
+- **No numeric formats,** since `04/05/2024` reads differently in different places.
+- **The table is the specification,** as `canonicalize`'s expression is. Names are read, not stored, so adding a format makes links already written in it open their day in every folder. Change it rarely, on purpose, and say so in the release.
+- **`dateOf(name)`** gives the `YYYY-MM-DD` a name means, or undefined, and **`namesOf(day)`** a day's names, in the table's order.
+
+## What a name opens
+
+**`resolve(graph, title)`** is the page a name opens, as it shows. The first of these that applies:
+
+1. **A name with a page of its own opens itself:** blocks, properties or tags on it. Nothing is ever hidden behind another name.
+2. **A date name opens its day.**
+3. **A `YYYY-MM-DD` opens itself.** No alias takes a day over, in either form, but a day can have aliases.
+4. **A name with aliases of its own opens itself.** One hop only, so nothing chains and nothing loops.
+5. **An alias opens the page that claims it.** When two pages claim one, the one whose `canonicalize`d title sorts first wins, the same on every machine. A page claiming it that is a date name, with nothing on it, is its day.
+6. Otherwise, the name opens itself.
+
+- **The reads resolve first.** `getPage`, `getProperties` and `getTags` read the page a name opens. `getReferences` and `getTaggedBy` match every name that opens it: its title, its date names if it is a day, and its aliases in effect. A link keeps the spelling it was written with.
+- **`getAliases(graph, page)`** lists the aliases in effect, not the built-in names, and **`getAliasOf(graph, alias)`** the page an alias in effect opens.
+- **`searchNames(graph, query)`** offers each name with the page it `opens`; `searchPages` is the titles alone. Beside the titles it always offered, it offers aliases, and for each day any offered name opens, the day's title and its date names. A day nothing names isn't offered, since the days can't be listed without end.
+- **`listPages`** lists each page once, under its title. A name that opens another page isn't a row, and its links and tags count for the page it opens, a block or a tagging page once however many of the page's names it uses.
+
 ## Deleting a page is a contract
 
 | Type | `v` | Payload | Meaning |
 |---|---|---|---|
-| `page.deleted` | 1 | `{ page }` | The user was done with `page`: its blocks, its properties and its tags. Tags on other pages that point to it stay, as links to it do. |
+| `page.deleted` | 1 | `{ page }` | The user was done with `page`: its blocks, its properties, its tags and its aliases. Tags on other pages that point to it stay, as links to it do. |
 
 - **One event for the whole page.** No `block.deleted` per block and no `property.removed` per key, so a crash or a sync still arriving can never leave a page half deleted.
 - **It applies to the page as it stands at that point in fold order.** A block or property that sorts before it goes with it, however late it arrived. One that sorts after it is a later fact and stands. An edit that sorts after it, to a block it removed, changes nothing, like any edit to a block the fold does not have.

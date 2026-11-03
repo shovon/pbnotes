@@ -474,6 +474,10 @@ export default function PageView({
   /** The × on a row. */
   const removeRow = (key: string) => act(() => write(removeProperty(graph, title, key)));
 
+  /** Titles alone, for the tag and key inputs: a tag or a key is the name picked. */
+  const findTitles = (query: string) =>
+    graph.search(query).then((found) => found.map(({ title }) => title));
+
   /** A tag typed or picked in the chip row, and the × on a chip. */
   const tagPage = (tag: string) => act(() => write(addTag(graph, title, tag)));
   const untagPage = (tag: string) => act(() => write(removeTag(graph, title, tag)));
@@ -627,7 +631,7 @@ export default function PageView({
             day shows its tags only when it has some, and neither a zoom nor a
             cut shows them. */}
         {tags && !reference && !root && (!linked || tags.length > 0) && (
-          <Tags tags={tags} findTags={graph.search} onAdd={tagPage} onRemove={untagPage} />
+          <Tags tags={tags} findTags={findTitles} onAdd={tagPage} onRemove={untagPage} />
         )}
 
         {/* Under the title, on the page's own view. A journal day shows its
@@ -638,7 +642,7 @@ export default function PageView({
         {properties && !reference && !root && (!linked || properties.length > 0) && (
           <Properties
             rows={properties}
-            findKeys={graph.search}
+            findKeys={findTitles}
             onCommit={commitProperties}
             onRemove={removeRow}
           />
