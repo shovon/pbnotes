@@ -386,6 +386,57 @@ test("a parent places a created block under it, and falls back rather than dropp
   assert.equal(shape(getPage(start, TODAY).blocks), "a(c) z", "the start is untouched");
 });
 
+/**
+ * #231: `first` puts a block at the top of the page. Each case starts from
+ * `a` with one child `c`, and `z` at the top level, and lands `n` somewhere.
+ */
+test("first places a created block at the top of the page, and only on its own", () => {
+  const created = (payload: object) =>
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "n", text: "new", ...payload });
+  const start = [
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "a", text: "A" }),
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "c", text: "C", parent: "a" }),
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "z", text: "Z" }),
+  ].reduce(reduce, empty());
+  const shape = (blocks: Block[]): string =>
+    blocks
+      .map((it) => (it.children.length ? `${it.id}(${shape(it.children)})` : it.id))
+      .join(" ");
+  const cases: [string, object, string][] = [
+    ["first alone: the top of the page", { first: true }, "n a(c) z"],
+    ["with after: after places it", { first: true, after: "a" }, "a(c) n z"],
+    ["with parent: parent places it", { first: true, parent: "a" }, "a(n c) z"],
+    ["with a missing after: first is still ignored", { first: true, after: "gone" }, "a(c) z n"],
+    ["false: the end of the page", { first: false }, "a(c) z n"],
+    ["a string: the end of the page", { first: "yes" }, "a(c) z n"],
+    ["a number: the end of the page", { first: 1 }, "a(c) z n"],
+  ];
+  for (const [name, payload, expected] of cases) {
+    assert.equal(shape(getPage(reduce(start, created(payload)), TODAY).blocks), expected, name);
+  }
+  const alone = reduce(empty(), created({ first: true }));
+  assert.equal(shape(getPage(alone, TODAY).blocks), "n", "an empty page");
+});
+
+test("without first, the block goes at the end: what an older build, which ignores it, shows", () => {
+  const start = reduce(
+    empty(),
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "a", text: "A" }),
+  );
+  const { first: _, ...older } = { page: TODAY, id: "n", text: "new", first: true };
+  const folded = reduce(start, event(`${NAMESPACE}block.created`, 1, older));
+  assert.deepEqual(getPage(folded, TODAY).blocks.map((it) => it.id), ["a", "n"]);
+});
+
+test("a prediction places a first block at the top as the fold does", () => {
+  const page = { title: TODAY, blocks: [{ id: "a", text: "A", children: [] }] };
+  const create: PageEvent = {
+    type: `${NAMESPACE}block.created`,
+    payload: { page: TODAY, id: "n", text: "new", first: true },
+  };
+  assert.deepEqual(predict(page, [create]).blocks.map((it) => it.id), ["n", "a"]);
+});
+
 test("a prediction places a block under its parent as the fold does", () => {
   const page = { title: TODAY, blocks: [{ id: "a", text: "A", children: [] }] };
   const create: PageEvent = {
