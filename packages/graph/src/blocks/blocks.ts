@@ -106,6 +106,19 @@ export function beside(
   return undefined;
 }
 
+/**
+ * `block` as `parent`'s first child, wherever `parent` is. Undefined when
+ * `parent` is not in this subtree.
+ */
+export function under(
+  blocks: Block[],
+  parent: string,
+  block: Block,
+): Block[] | undefined {
+  if (!locate(blocks, parent)) return undefined;
+  return mapChildren(blocks, parent, (children) => [block, ...children]);
+}
+
 /** The block and everything under it, gone from wherever it sat. */
 export function without(blocks: Block[], id: string): Block[] {
   return blocks
@@ -177,6 +190,13 @@ export type BlockCreated = {
    * user wrote beneath stays true forever, an index does not.
    */
   after?: string;
+  /**
+   * The block it was written under (#226). Alone, the block is its first
+   * child. With `after`, `after` places it, and `parent` is where it goes if
+   * `after` is not one of its children: the user wrote under `parent`, and
+   * that stays true when `after` does not.
+   */
+  parent?: string;
 };
 
 /** The later of two facts about one block's text. The earlier one stays. */
@@ -217,6 +237,9 @@ export type Bare<E = PageEvent> = E extends {
  * The block half of `HANDLES`; the gate that reads it is `graphFold`.
  */
 export const BLOCK_HANDLES: Record<PageEvent["type"], number> = {
+  // Still 1 with `parent` (#226): an older build ignores the field and shows
+  // the block at the end of the page. At 2 it would skip the block, and every
+  // later edit to it, entirely.
   [`${NAMESPACE}block.created`]: 1,
   // 2 since the page came off the payload: an older build handed one would
   // look up a page of `undefined` and drop the text without a word. At `v: 2`
@@ -243,7 +266,7 @@ function string(payload: object, name: string): string | undefined {
  *
  * Two leniencies, both so that a block is never dropped that could be shown:
  * a page that is not a string is filed under its `String` (it always was),
- * and an `after` that is not a string means the end of the page.
+ * and an `after` or `parent` that is not a string is as if it were absent.
  */
 function parse(event: { type: string; payload: unknown }): Bare | undefined {
   const name = unnamed(event.type);
@@ -258,7 +281,11 @@ function parse(event: { type: string; payload: unknown }): Bare | undefined {
       if (text === undefined) return undefined;
       const page = String(field(payload, "page"));
       const after = string(payload, "after");
-      return { type: name, payload: { page, id, text, ...(after ? { after } : {}) } };
+      const parent = string(payload, "parent");
+      return {
+        type: name,
+        payload: { page, id, text, ...(after ? { after } : {}), ...(parent ? { parent } : {}) },
+      };
     }
     case "block.edited": {
       const text = string(payload, "text");
@@ -302,6 +329,20 @@ function onBlock<S extends BlockState>(
     : state;
 }
 
+/**
+ * `blocks` with a new `block` in it: beneath `after` when that is one of
+ * `parent`'s children (or there is no `parent`), else first under `parent`,
+ * else at the end. Never fails, so a creation always shows somewhere.
+ */
+function placed(blocks: Block[], block: Block, after?: string, parent?: string): Block[] {
+  const fits = after && (!parent || locate(blocks, after)?.parent?.id === parent);
+  return (
+    (fits && beside(blocks, after, block)) ||
+    (parent && under(blocks, parent, block)) ||
+    [...blocks, block]
+  );
+}
+
 /** Adding a type to `PageEvent` without a case for it stops the build here. */
 function foreign(_event: never, state: unknown): never {
   return state as never;
@@ -311,13 +352,13 @@ function foreign(_event: never, state: unknown): never {
 function apply<S extends BlockState>(state: S, it: Bare): S {
   switch (it.type) {
     case "block.created": {
-      const { page, id, text, after } = it.payload;
+      const { page, id, text, after, parent } = it.payload;
       const blocks = blocksOn(state, page);
       const block: Block = { id, text, children: [] };
-      // `addBlock` refuses an `after` the page lacks, so a miss here is a log
-      // written by something else. Append rather than drop: a block in the
-      // wrong place can be moved, one the fold discarded is gone.
-      const next = (after && beside(blocks, after, block)) || [...blocks, block];
+      // `addBlock` refuses an `after` or `parent` the page lacks, so a miss
+      // here is a log written by something else. Fall back rather than drop:
+      // a block in the wrong place can be moved, one the fold discarded is gone.
+      const next = placed(blocks, block, after, parent);
       return {
         ...state,
         blocks: new Map(state.blocks).set(canonicalize(page), next),

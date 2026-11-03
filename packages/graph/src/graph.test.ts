@@ -97,6 +97,14 @@ test("blockCreated is the event addBlock writes, with or without an after", asyn
   ]);
 });
 
+test("addBlock refuses a parent the page lacks, and an after that is not its child", async () => {
+  const view = await outline();
+  await assert.rejects(addBlock(view, TODAY, "D", undefined, "d", "gone"), /No such block/);
+  await assert.rejects(addBlock(view, TODAY, "D", "a", "d", "b"), /not a child/);
+  await assert.rejects(addBlock(view, "Elsewhere", "D", undefined, "d", "a"), /No such block/);
+  assert.equal(view.events.length, 4, "nothing written");
+});
+
 /**
  * `a` and `b` at the top of today, and `c` filed under `b`: something for
  * every command to do, written through the commands themselves.
@@ -113,6 +121,8 @@ async function outline(): Promise<ReturnType<typeof memory>> {
 test("each builder is the event its command writes, and folds to the same graph", async () => {
   const cases: [string, (view: GraphView) => Promise<unknown>, { type: string; v: number; payload: unknown }][] = [
     ["add", (view) => addBlock(view, TODAY, "D", "a", "d"), blockCreated(TODAY, "D", "a", "d")],
+    ["add under", (view) => addBlock(view, TODAY, "D", undefined, "d", "a"), blockCreated(TODAY, "D", undefined, "d", "a")],
+    ["add under, after", (view) => addBlock(view, TODAY, "D", "c", "d", "b"), blockCreated(TODAY, "D", "c", "d", "b")],
     ["edit", (view) => editBlock(view, "c", "C again"), blockEdited("c", "C again")],
     ["delete", (view) => deleteBlock(view, "b"), blockDeleted("b")],
     ["indent", (view) => indentBlock(view, "b"), blockIndented({ id: "b", parent: "a" })],

@@ -352,3 +352,45 @@ test("plain text keeps tags, aliases and paragraphs apart, and drops an empty re
   assert.equal(read("one\n\ntwo").plain, "one two");
   assert.equal(read("see ((abc123))").plain, "see");
 });
+
+/**
+ * #226: `parent` writes a child in one event. Each case starts from `a` with
+ * one child `c`, and `z` at the top level, and lands `n` somewhere.
+ */
+test("a parent places a created block under it, and falls back rather than dropping it", () => {
+  const created = (payload: object) =>
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "n", text: "new", ...payload });
+  const start = [
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "a", text: "A" }),
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "c", text: "C", parent: "a" }),
+    event(`${NAMESPACE}block.created`, 1, { page: TODAY, id: "z", text: "Z" }),
+  ].reduce(reduce, empty());
+  /** The page as `id(children…)`, so a case reads as the outline it makes. */
+  const shape = (blocks: Block[]): string =>
+    blocks
+      .map((it) => (it.children.length ? `${it.id}(${shape(it.children)})` : it.id))
+      .join(" ");
+  const cases: [string, object, string][] = [
+    ["parent alone: first child", { parent: "a" }, "a(n c) z"],
+    ["a nested parent", { parent: "c" }, "a(c(n)) z"],
+    ["after a child of the parent", { parent: "a", after: "c" }, "a(c n) z"],
+    ["after outside the parent: the parent wins", { parent: "a", after: "z" }, "a(n c) z"],
+    ["after missing: the parent wins", { parent: "a", after: "gone" }, "a(n c) z"],
+    ["parent missing, no after: end of page", { parent: "gone" }, "a(c) z n"],
+    ["parent missing, after present: after places it", { parent: "gone", after: "a" }, "a(c) z n"],
+    ["parent not a string: ignored", { parent: 5, after: "a" }, "a(c) n z"],
+  ];
+  for (const [name, payload, expected] of cases) {
+    assert.equal(shape(getPage(reduce(start, created(payload)), TODAY).blocks), expected, name);
+  }
+  assert.equal(shape(getPage(start, TODAY).blocks), "a(c) z", "the start is untouched");
+});
+
+test("a prediction places a block under its parent as the fold does", () => {
+  const page = { title: TODAY, blocks: [{ id: "a", text: "A", children: [] }] };
+  const create: PageEvent = {
+    type: `${NAMESPACE}block.created`,
+    payload: { page: TODAY, id: "n", text: "new", parent: "a" },
+  };
+  assert.deepEqual(predict(page, [create]).blocks[0].children.map((it) => it.id), ["n"]);
+});
