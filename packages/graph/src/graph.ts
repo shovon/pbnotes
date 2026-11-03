@@ -17,6 +17,8 @@ import {
   reduce as reduceProperties,
 } from "./properties/properties.ts";
 import type { PropertyEvent, PropertyState } from "./properties/properties.ts";
+import { named as namedByTags, TAG_HANDLES, reduce as reduceTags } from "./tags/tags.ts";
+import type { TagEvent, TagState } from "./tags/tags.ts";
 import { DELETE_HANDLES, reduce as reduceDeletes } from "./deletes/deletes.ts";
 import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
@@ -75,6 +77,8 @@ export type {
   PropertySet,
 } from "./properties/properties.ts";
 export { removeProperty, renameProperty, setProperty } from "./properties/commands.ts";
+export { getTaggedBy, getTags, tagAdded, tagRemoved } from "./tags/tags.ts";
+export type { TagAdded, TagEvent, TagRemoved } from "./tags/tags.ts";
 export {
   deletePage,
   getDeletions,
@@ -101,25 +105,26 @@ export { inCode, read } from "./reading/reading.ts";
 export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
 
 /**
- * The graph: every page, by `canonicalize`: the blocks on it, its properties, the first
+ * The graph: every page, by `canonicalize`: the blocks on it, its properties, its tags, the first
  * spelling the fold saw for it, how many times it has been deleted, and when
  * it last changed.
  *
  * `Map` throughout, so a title of `__proto__` is an ordinary key (#62), and
  * it survives the structured clone to the renderer (#146).
  */
-export type Graph = BlockState & PropertyState & DeleteState & EditedState;
+export type Graph = BlockState & PropertyState & TagState & DeleteState & EditedState;
 
 /**
  * Event type → the payload `v` this build folds and writes. Public contract
  * with `NAMESPACE`; see the README.
  */
 export const HANDLES: Record<
-  PageEvent["type"] | PropertyEvent["type"] | DeleteEvent["type"],
+  PageEvent["type"] | PropertyEvent["type"] | TagEvent["type"] | DeleteEvent["type"],
   number
 > = {
   ...BLOCK_HANDLES,
   ...PROPERTY_HANDLES,
+  ...TAG_HANDLES,
   ...DELETE_HANDLES,
 };
 
@@ -140,27 +145,41 @@ export const graphFold = {
   ): Graph =>
     Object.hasOwn(HANDLES, event.type) &&
     event.v <= HANDLES[event.type as keyof typeof HANDLES]
-      ? reduceEdited(state, reduceDeletes(reduceProperties(reduce(state, event), event), event), event)
+      ? reduceEdited(state, behindTheGate(state, event), event)
       : state,
   initial: {
     blocks: new Map(),
     titles: new Map(),
     properties: new Map(),
+    tags: new Map(),
     deletions: new Map(),
     edited: new Map(),
   } as Graph,
 };
 
+/** Each slice's fold in turn. The delete fold empties what the others hold. */
+function behindTheGate(state: Graph, event: { type: string; payload: unknown }): Graph {
+  return [reduce, reduceProperties, reduceTags, reduceDeletes].reduce<Graph>(
+    (folded, slice) => slice(folded, event),
+    state,
+  );
+}
+
+/** Every title something names now: blocks, links, properties and tags. */
+function named(state: Graph): string[] {
+  return [...namedByBlocks(state), ...namedByProperties(state), ...namedByTags(state)];
+}
+
 /**
  * The page titles that contain `query`, ignoring case: prefix matches first,
  * then the rest, each A to Z, at most `limit`. A page is any title something
- * names now: blocks on it, a link to it, a property on it, or a property key.
+ * names now: blocks on it, a link to it, a property on it, a property key, a
+ * tag on it, or a tag pointing to it.
  * Each is offered once, in the spelling it shows.
  */
 export function searchPages(state: Graph, query: string, limit = 10): string[] {
-  const titles = [...namedByBlocks(state), ...namedByProperties(state)];
   return search(
-    titles.map((title) => titleOf(state, title)),
+    named(state).map((title) => titleOf(state, title)),
     query,
     limit,
   );
@@ -170,7 +189,7 @@ export function searchPages(state: Graph, query: string, limit = 10): string[] {
 export type PageListing = {
   /** In the spelling it shows. */
   title: string;
-  /** Blocks on it, at every depth. 0 for a page only a link or a property names. */
+  /** Blocks on it, at every depth. 0 for a page only a link, a property or a tag names. */
   blocks: number;
   /** Blocks on other pages that link to it by title (`countLinks`). */
   references: number;
@@ -185,7 +204,7 @@ export type PageListing = {
  */
 export function listPages(state: Graph): PageListing[] {
   const links = countLinks(state);
-  const keys = new Set([...namedByBlocks(state), ...namedByProperties(state)].map(canonicalize));
+  const keys = new Set(named(state).map(canonicalize));
   return [...keys]
     .map((key) => {
       const edited = state.edited.get(key);
