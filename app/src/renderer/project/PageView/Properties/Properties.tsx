@@ -315,8 +315,10 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
           {open && !open.from && editing(open, `draft-${drafts.current}`)}
         </div>
       )}
+      {/* Marked so whoever holds the table may hide it until wanted. */}
       <button
         type="button"
+        data-reveal
         className="w-full px-3 py-2 text-left text-muted hover:bg-line/40 hover:text-fg focus-visible:bg-line/40 focus-visible:text-fg focus-visible:outline-none"
         onClick={() => start(draft(), 'key')}
       >

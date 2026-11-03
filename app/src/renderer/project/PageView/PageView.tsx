@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { locate, predict, predictProperties } from '@pbnotes/graph';
+import { locate, predict, predictProperties, predictTags } from '@pbnotes/graph';
 import type { Block as BlockType, Page, Property } from '@pbnotes/graph';
 import type { GraphApi } from '../../../shared/graph';
 import type { Act } from '../../ui';
@@ -7,13 +7,16 @@ import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
 import Properties from './Properties/Properties';
 import type { Write } from './Properties/rows';
+import Tags from './Tags/Tags';
 import {
   add,
+  addTag,
   edit,
   indent,
   outdent,
   remove,
   removeProperty,
+  removeTag,
   renameProperty,
   setProperty,
 } from './steps/steps';
@@ -60,6 +63,8 @@ type Props = {
    * are drawn: a cut, which is another page's blocks under its heading.
    */
   properties?: Property[];
+  /** The pages it points to, as main last showed them. Left off where none are drawn. */
+  tags?: string[];
   /**
    * Shown under another page as what links to it: a cut of this page — the
    * blocks that link, not all of them — decided in main and read again
@@ -108,6 +113,7 @@ export default function PageView({
   version,
   references,
   properties: sentProperties,
+  tags: sentTags,
   reference = false,
   zoom,
   onZoom,
@@ -168,6 +174,8 @@ export default function PageView({
   /** Its properties as they are drawn, the same way. */
   const properties =
     sentProperties && predictProperties(sentProperties, sent.title, inFlight);
+  /** Its tags as they are drawn, the same way. */
+  const tags = sentTags && predictTags(sentTags, sent.title, inFlight);
 
   /**
    * Tab or Shift+Tab on a block, as the step it is on `blocks`. Undefined at
@@ -462,6 +470,10 @@ export default function PageView({
   /** The × on a row. */
   const removeRow = (key: string) => act(() => write(removeProperty(graph, title, key)));
 
+  /** A tag typed or picked in the chip row, and the × on a chip. */
+  const tagPage = (tag: string) => act(() => write(addTag(graph, title, tag)));
+  const untagPage = (tag: string) => act(() => write(removeTag(graph, title, tag)));
+
   /** The box for a block that does not exist yet. */
   const newBlockEditor = (
     <BlockEditor
@@ -549,70 +561,85 @@ export default function PageView({
 
   return (
     <>
-      {/* A cut is headed by the page it is cut from, as a link there — the
-          project view follows it like the ones in the blocks. */}
-      {reference ? (
-        <h4 className="mt-3 mb-1 text-sm font-semibold">
-          <a className="wikilink text-accent" href={`#${title}`}>
-            {title}
-          </a>
-        </h4>
-      ) : root ? (
-        /* Zoomed: the title steps back to a link out to the whole page, and
-           what the block hangs under follows it, each a way out to that
-           level. The project view follows both — the title as the wikilink
-           it is, a crumb by its `data-block-ref`, like a dot.
-           ponytail: a crumb is the first line of its block as written,
-           Markdown and all. Render it once a `**` in one looks wrong. */
-        <nav className="mt-6 mb-4 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
-          <a className="wikilink text-accent" href={`#${title}`}>
-            {title}
-          </a>
-          {ancestors.map((ancestor) => (
-            <Fragment key={ancestor.id}>
-              <span aria-hidden>›</span>
-              <a
-                href="#"
-                data-block-ref={ancestor.id}
-                className="max-w-48 truncate hover:text-accent"
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  openMenu(ancestor);
-                }}
-              >
-                {ancestor.text.split('\n')[0] || '…'}
-              </a>
-            </Fragment>
-          ))}
-        </nav>
-      ) : (
-        <h2 className="mt-6 mb-4 text-2xl font-semibold">
-          {/* A heading still, not a link in the text: no accent, and only
-              the underline on hover says it goes somewhere. The project
-              view follows it like any wikilink. */}
-          {linked ? (
-            <a className="wikilink hover:underline" href={`#${title}`}>
+      {/* The header: the title, and on a page's own view its tags and
+          properties. What is marked `data-reveal` in it ("+ Add tag", "+ Add
+          property") shows only while it is hovered or holds focus, so a new
+          page is not two empty placeholders under its title. Hidden is
+          opacity, not removal: they keep their room, and nothing below moves
+          as the pointer crosses the title. */}
+      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity focus-within:[&_[data-reveal]]:opacity-100 hover:[&_[data-reveal]]:opacity-100">
+        {/* A cut is headed by the page it is cut from, as a link there — the
+            project view follows it like the ones in the blocks. */}
+        {reference ? (
+          <h4 className="mt-3 mb-1 text-sm font-semibold">
+            <a className="wikilink text-accent" href={`#${title}`}>
               {title}
             </a>
-          ) : (
-            title
-          )}
-        </h2>
-      )}
+          </h4>
+        ) : root ? (
+          /* Zoomed: the title steps back to a link out to the whole page, and
+             what the block hangs under follows it, each a way out to that
+             level. The project view follows both — the title as the wikilink
+             it is, a crumb by its `data-block-ref`, like a dot.
+             ponytail: a crumb is the first line of its block as written,
+             Markdown and all. Render it once a `**` in one looks wrong. */
+          <nav className="mt-6 mb-4 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+            <a className="wikilink text-accent" href={`#${title}`}>
+              {title}
+            </a>
+            {ancestors.map((ancestor) => (
+              <Fragment key={ancestor.id}>
+                <span aria-hidden>›</span>
+                <a
+                  href="#"
+                  data-block-ref={ancestor.id}
+                  className="max-w-48 truncate hover:text-accent"
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    openMenu(ancestor);
+                  }}
+                >
+                  {ancestor.text.split('\n')[0] || '…'}
+                </a>
+              </Fragment>
+            ))}
+          </nav>
+        ) : (
+          <h2 className="mt-6 mb-4 text-2xl font-semibold">
+            {/* A heading still, not a link in the text: no accent, and only
+                the underline on hover says it goes somewhere. The project
+                view follows it like any wikilink. */}
+            {linked ? (
+              <a className="wikilink hover:underline" href={`#${title}`}>
+                {title}
+              </a>
+            ) : (
+              title
+            )}
+          </h2>
+        )}
 
-      {/* Under the title, on the page's own view. A journal day shows its
-          table only when it has something in it: an empty one on every day
-          is noise, and the first property on a day is added from its page.
-          Not under a zoom, where what shows is a block and the page's
-          properties would read as its own. */}
-      {properties && !reference && !root && (!linked || properties.length > 0) && (
-        <Properties
-          rows={properties}
-          findKeys={graph.search}
-          onCommit={commitProperties}
-          onRemove={removeRow}
-        />
-      )}
+        {/* Under the title, above the properties, on the same terms: a journal
+            day shows its tags only when it has some, and neither a zoom nor a
+            cut shows them. */}
+        {tags && !reference && !root && (!linked || tags.length > 0) && (
+          <Tags tags={tags} findTags={graph.search} onAdd={tagPage} onRemove={untagPage} />
+        )}
+
+        {/* Under the title, on the page's own view. A journal day shows its
+            table only when it has something in it: an empty one on every day
+            is noise, and the first property on a day is added from its page.
+            Not under a zoom, where what shows is a block and the page's
+            properties would read as its own. */}
+        {properties && !reference && !root && (!linked || properties.length > 0) && (
+          <Properties
+            rows={properties}
+            findKeys={graph.search}
+            onCommit={commitProperties}
+            onRemove={removeRow}
+          />
+        )}
+      </div>
 
       {/* The blank space under the page is part of the page: clicking it opens
           the box at the end, the way clicking below the last line of any
