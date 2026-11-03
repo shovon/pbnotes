@@ -13,9 +13,9 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import started from "electron-squirrel-startup";
 import { openDatabase } from "./db";
-import { benchOfOpenProject, createBench } from "./features/bench/bench";
+import { createOpenBench } from "./features/bench/bench";
 import { registerBenchIpc } from "./features/bench/bench-ipc";
-import { createSlotStore, openBenchDatabase } from "./features/bench/bench-store";
+import { benchFiles } from "./features/bench/bench-store";
 import { rendererSource } from "./renderer-source/renderer-source";
 import { mainWindowOptions, windowColors } from "./window-options/window-options";
 import { createDisk } from "./features/projects/disk/disk";
@@ -158,28 +158,25 @@ app.on("ready", () => {
     newId: randomUUID,
     pathKey: pathKeyOn(process.platform),
   });
-  // Nothing in main holds anything per project that a change of project has
-  // to clear: the trail is each window's, and `App` remounts the project view
-  // when the project changes. A feature that does hold something gets a line
-  // here.
-  const projects = createOpenProject(store, disk.probe, () => undefined);
+  // What main holds per project that a change of project has to clear: the
+  // open project's bench file, let go so the next call opens the new one's.
+  // The trail is each window's, and `App` remounts the project view when the
+  // project changes. A feature that holds something gets a line here.
+  const projects = createOpenProject(store, disk.probe, () => bench.release());
   registerProjectIpc(store, projects);
 
   // The bench: this machine's state that only means something to the
-  // product, kept apart from `notes.db` (DNA.md, "The bench"). Every value is
-  // one project's, and no call reaches another's. It is told the
-  // open project by `currentProject`, not `requireProject`: it lives in
+  // product, one file per project in `userData/bench/` (DNA.md, "The
+  // bench"), so no handle reaches more than one project. It is told the open
+  // project by `currentProject`, not `requireProject`: it lives in
   // `userData`, so a project whose folder can't be reached still has its
   // bench. No slots yet; the product declares each one here.
-  const benchDb = openBenchDatabase(
-    path.join(app.getPath("userData"), "bench.db"),
+  const bench = createOpenBench(
+    benchFiles(path.join(app.getPath("userData"), "bench")),
+    new Map(),
+    () => projects.currentProject()?.id,
   );
-  registerBenchIpc(
-    benchOfOpenProject(
-      createBench(createSlotStore(benchDb), new Map()),
-      () => projects.currentProject()?.id,
-    ),
-  );
+  registerBenchIpc(bench);
 
   // The graph is handed its view of what is open, and the images beside it,
   // and never ask what that is. This is the one place that says it is the
@@ -244,7 +241,7 @@ app.on("ready", () => {
 
   app.on("will-quit", () => {
     db.close();
-    benchDb.close();
+    bench.release();
     // Best effort, and that is enough: every append is fsynced before it is
     // acknowledged, so a log left unclosed has already lost nothing.
     void ledgers.close();

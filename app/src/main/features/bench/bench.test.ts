@@ -4,17 +4,16 @@ import assert from "node:assert/strict";
 import { createBench } from "./bench.ts";
 import type { Slot, SlotStore } from "./bench.ts";
 
-// Composition root for these tests: slot values kept in a Map, and one slot
-// that holds a list of strings, which is all a test needs of what a slot is.
+// Composition root for these tests: one project's slot values kept in a Map,
+// and slots that hold a list and a name, which is all a test needs of one.
 
 function memoryStore(): SlotStore & { rows: Map<string, string> } {
   const rows = new Map<string, string>();
-  const key = (projectId: string, slot: string) => `${projectId}\u0000${slot}`;
   return {
     rows,
-    read: (projectId, slot) => rows.get(key(projectId, slot)),
-    write: (projectId, slot, json) => {
-      rows.set(key(projectId, slot), json);
+    read: (slot) => rows.get(slot),
+    write: (slot, json) => {
+      rows.set(slot, json);
     },
   };
 }
@@ -48,57 +47,49 @@ const setup = () => {
 
 test("a value set is the value got", () => {
   const { bench } = setup();
-  bench.set("p1", "words", ["a", "b"]);
-  assert.deepEqual(bench.get("p1", "words"), ["a", "b"]);
+  bench.set("words", ["a", "b"]);
+  assert.deepEqual(bench.get("words"), ["a", "b"]);
 });
 
 test("a slot never set is empty", () => {
   const { bench } = setup();
-  assert.equal(bench.get("p1", "words"), undefined);
-});
-
-test("each project has its own value", () => {
-  const { bench } = setup();
-  bench.set("p1", "words", ["one"]);
-  bench.set("p2", "words", ["two"]);
-  assert.deepEqual(bench.get("p1", "words"), ["one"]);
-  assert.deepEqual(bench.get("p2", "words"), ["two"]);
+  assert.equal(bench.get("words"), undefined);
 });
 
 test("a set replaces the value before it", () => {
   const { bench } = setup();
-  bench.set("p1", "words", ["old"]);
-  bench.set("p1", "words", ["new"]);
-  assert.deepEqual(bench.get("p1", "words"), ["new"]);
+  bench.set("words", ["old"]);
+  bench.set("words", ["new"]);
+  assert.deepEqual(bench.get("words"), ["new"]);
 });
 
 test("a value the slot does not accept is refused and nothing is kept", () => {
   const { store, bench } = setup();
-  assert.throws(() => bench.set("p1", "words", "not a list"), TypeError);
+  assert.throws(() => bench.set("words", "not a list"), TypeError);
   assert.equal(store.rows.size, 0);
 });
 
 test("what is kept is what the slot decoded, not what arrived", () => {
   const { bench } = setup();
-  bench.set("p1", "named", { name: "Mira", extra: true });
-  assert.deepEqual(bench.get("p1", "named"), { name: "Mira" });
+  bench.set("named", { name: "Mira", extra: true });
+  assert.deepEqual(bench.get("named"), { name: "Mira" });
 });
 
 test("a stored value that no longer decodes reads as empty", () => {
   const { store, bench } = setup();
-  store.write("p1", "words", JSON.stringify({ shape: "from an older build" }));
-  assert.equal(bench.get("p1", "words"), undefined);
+  store.write("words", JSON.stringify({ shape: "from an older build" }));
+  assert.equal(bench.get("words"), undefined);
 });
 
 test("a stored value that is not JSON reads as empty", () => {
   const { store, bench } = setup();
-  store.write("p1", "words", "{damaged");
-  assert.equal(bench.get("p1", "words"), undefined);
+  store.write("words", "{damaged");
+  assert.equal(bench.get("words"), undefined);
 });
 
 test("a slot that is not declared is refused both ways", () => {
   const { bench } = setup();
-  assert.throws(() => bench.get("p1", "nope"), /no slot named "nope"/);
-  assert.throws(() => bench.set("p1", "nope", []), /no slot named "nope"/);
-  assert.throws(() => bench.get("p1", "__proto__"), /no slot named/);
+  assert.throws(() => bench.get("nope"), /no slot named "nope"/);
+  assert.throws(() => bench.set("nope", []), /no slot named "nope"/);
+  assert.throws(() => bench.get("__proto__"), /no slot named/);
 });
