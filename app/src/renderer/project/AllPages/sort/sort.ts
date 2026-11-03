@@ -5,7 +5,7 @@
 import type { PageListing } from '@pbnotes/graph';
 
 /** A column the list can be sorted by. */
-export type Column = 'title' | 'blocks' | 'references' | 'edited';
+export type Column = 'title' | 'blocks' | 'references' | 'taggedBy' | 'edited';
 
 export type Sort = { by: Column; descending: boolean };
 

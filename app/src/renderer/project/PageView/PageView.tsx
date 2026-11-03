@@ -5,6 +5,7 @@ import type { GraphApi } from '../../../shared/graph';
 import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
 import LinkedReferences from './LinkedReferences/LinkedReferences';
+import TaggedBy from './TaggedBy/TaggedBy';
 import Properties from './Properties/Properties';
 import type { Write } from './Properties/rows';
 import Tags from './Tags/Tags';
@@ -65,6 +66,8 @@ type Props = {
   properties?: Property[];
   /** The pages it points to, as main last showed them. Left off where none are drawn. */
   tags?: string[];
+  /** The pages that point to it. Left off, as `references` is, where none are drawn. */
+  taggedBy?: string[];
   /**
    * Shown under another page as what links to it: a cut of this page — the
    * blocks that link, not all of them — decided in main and read again
@@ -114,6 +117,7 @@ export default function PageView({
   references,
   properties: sentProperties,
   tags: sentTags,
+  taggedBy,
   reference = false,
   zoom,
   onZoom,
@@ -555,7 +559,7 @@ export default function PageView({
    */
   const pageSpace = reference
     ? 'ml-indent cursor-default'
-    : references?.length
+    : references?.length || taggedBy?.length
       ? 'cursor-text pb-5'
       : 'cursor-text pb-12';
 
@@ -687,6 +691,16 @@ export default function PageView({
 
       {/* After the page, not in it: the blank space in the page is
           click-to-write, and these are other graph' blocks. */}
+      {/* Above what links here: a tag is a deliberate statement about the
+          whole page, a link a passing mention in a block. The air after it is
+          the page's own when nothing links here, and less when something
+          does. */}
+      {taggedBy && taggedBy.length > 0 && !reference && !root && (
+        <div className={references?.length ? 'pb-5' : 'pb-12'}>
+          <TaggedBy tag={title} pages={taggedBy} />
+        </div>
+      )}
+
       {references && (
         <LinkedReferences
           graph={graph}

@@ -28,6 +28,8 @@ const COLUMNS: { by: Column; name: string; numeric: boolean }[] = [
   { by: 'title', name: 'Page', numeric: false },
   { by: 'blocks', name: 'Blocks', numeric: true },
   { by: 'references', name: 'References', numeric: true },
+  // Pages that tag it: never added to References, which stays links only.
+  { by: 'taggedBy', name: 'Tagged by', numeric: true },
   { by: 'edited', name: 'Last edited', numeric: true },
 ];
 
@@ -125,6 +127,7 @@ export default function AllPages({ graph, sort, onSort, onOpen, onError }: Props
                 </td>
                 <td className="py-1.5 pl-4 text-right tabular-nums">{page.blocks}</td>
                 <td className="py-1.5 pl-4 text-right tabular-nums">{page.references}</td>
+                <td className="py-1.5 pl-4 text-right tabular-nums">{page.taggedBy}</td>
                 <td className="py-1.5 pl-4 text-right whitespace-nowrap text-muted tabular-nums">
                   {page.edited === undefined ? '—' : time.format(page.edited)}
                 </td>

@@ -114,6 +114,17 @@ export const WithTags: Story = {
   },
 };
 
+/** A page other pages tag: they are listed under its blocks, above what
+    links to it. A page can be in both, as `Mira` is here: she tags it, and
+    a block of hers links to it. */
+export const TaggedByOthers: Story = {
+  args: {
+    page: page('Work', [block('17', 'Where the projects live.')]),
+    taggedBy: ['Mira', 'Project Atlas'],
+    references: [page('Mira', [block('18', 'Off to [[Work]] early.')])],
+  },
+};
+
 /** Zoomed into a block two levels down: it alone is the root, its children
     are the top level, and above it the page and what it hangs under are the
     ways back out. Its sibling is not shown. */

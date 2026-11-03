@@ -631,7 +631,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           {browsing ? null : held === null ? (
             <p className="mt-1 text-sm text-muted">Loading…</p>
           ) : (
-            held.view.showing.map(({ page, references, properties, tags }) => (
+            held.view.showing.map(({ page, references, properties, tags, taggedBy }) => (
               // Keyed by the title, so a page is never handed another page's
               // editor state — the open box and the block id in it belong to
               // the page they were opened on. The element is only a name on
@@ -643,6 +643,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
                   version={version}
                   // Not under a zoom: what links to one block is #2's.
                   references={zoom ? undefined : references}
+                  taggedBy={zoom ? undefined : taggedBy}
                   properties={properties}
                   tags={tags}
                   zoom={zoom}
