@@ -1,8 +1,8 @@
 /**
  * Deleting a page: the event, its fold, its builder and the reads around it.
  *
- * Where the block fold and the property fold meet, because a page delete
- * empties both. One event for the whole page, so a crash or a sync still
+ * Where the block, property and tag folds meet, because a page delete
+ * empties all three. One event for the whole page, so a crash or a sync still
  * arriving can never leave it half deleted. Nothing leaves the disk: the
  * event records that the user was done with the page.
  *
@@ -18,6 +18,7 @@ import { read } from "../reading/reading.ts";
 import { blocksOn } from "../blocks/blocks.ts";
 import type { Block, BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
+import type { TagState } from "../tags/tags.ts";
 
 /**
  * How many times each page has been deleted, by `canonicalize`. A window on a
@@ -27,12 +28,12 @@ export type DeleteState = {
   readonly deletions: Map<string, number>;
 };
 
-/** What a delete folds over: the blocks and properties it empties. */
-type Holds = BlockState & PropertyState & DeleteState;
+/** What a delete folds over: the blocks, properties and tags it empties. */
+type Holds = BlockState & PropertyState & TagState & DeleteState;
 
 // ── The event ───────────────────────────────────────────────────────────────
 
-/** That the user was done with `page`: its blocks and its properties. */
+/** That the user was done with `page`: its blocks, its properties and its tags. */
 export type PageDeleted = { page: string };
 
 export type DeleteEvent = { type: Named<"page.deleted">; payload: PageDeleted };
@@ -67,12 +68,13 @@ function parse(event: { type: string; payload: unknown }): string | undefined {
 }
 
 /**
- * The delete fold: the page's blocks and properties emptied at its key, as
- * the page stands at this point in fold order. A block or property written
+ * The delete fold: the page's blocks, properties and tags emptied at its key,
+ * as the page stands at this point in fold order. A block, property or tag written
  * after it in fold order is a later fact, and stands.
  *
  * `titles` is left alone, so a page a link keeps alive still shows the
- * spelling it had. Hands back `state` itself for any other event.
+ * spelling it had. Tags other pages hold that point to it stay: they are on
+ * those pages, as links to it are. Hands back `state` itself for any other event.
  */
 export function reduce<S extends Holds>(
   state: S,
@@ -85,8 +87,10 @@ export function reduce<S extends Holds>(
   blocks.delete(key);
   const properties = new Map(state.properties);
   properties.delete(key);
+  const tags = new Map(state.tags);
+  tags.delete(key);
   const deletions = new Map(state.deletions).set(key, (state.deletions.get(key) ?? 0) + 1);
-  return { ...state, blocks, properties, deletions };
+  return { ...state, blocks, properties, tags, deletions };
 }
 
 // ── Reads ───────────────────────────────────────────────────────────────────
@@ -97,9 +101,13 @@ export function getDeletions(state: DeleteState, page: string): number {
 }
 
 /** Whether a delete of `page` would change anything: something is on it. */
-export function hasContent(state: BlockState & PropertyState, page: string): boolean {
+export function hasContent(state: BlockState & PropertyState & TagState, page: string): boolean {
   const key = canonicalize(page);
-  return (state.blocks.get(key)?.length ?? 0) > 0 || (state.properties.get(key)?.size ?? 0) > 0;
+  return (
+    (state.blocks.get(key)?.length ?? 0) > 0 ||
+    (state.properties.get(key)?.size ?? 0) > 0 ||
+    (state.tags.get(key)?.size ?? 0) > 0
+  );
 }
 
 /** Every block in a tree, depth first. */
@@ -140,13 +148,13 @@ export function getRefsTo(state: BlockState, page: string): number {
  * event. `GraphView` is one.
  */
 export type DeletesView = {
-  readonly state: BlockState & PropertyState;
+  readonly state: BlockState & PropertyState & TagState;
   /** Resolves once the event is durable and folded into `state`. */
   dispatch(v: number, type: DeleteEvent["type"], payload: unknown): Promise<unknown>;
 };
 
 /**
- * Deletes `page`'s blocks and properties, as one event. A page with nothing
+ * Deletes `page`'s blocks, properties and tags, as one event. A page with nothing
  * on it writes nothing: the delete would change nothing, and the log does not
  * collect events that mean nothing.
  */

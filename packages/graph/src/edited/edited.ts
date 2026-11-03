@@ -12,6 +12,7 @@ import { find } from "../blocks/blocks.ts";
 import type { BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { DeleteState } from "../deletes/deletes.ts";
+import type { TagState } from "../tags/tags.ts";
 
 /** Page key (`canonicalize`) → when it last changed, in ms since the epoch. */
 export type EditedState = {
@@ -19,7 +20,7 @@ export type EditedState = {
 };
 
 /** What a change is read off: the parts of the graph that hold what a user wrote. */
-type Holds = BlockState & PropertyState & DeleteState & EditedState;
+type Holds = BlockState & PropertyState & TagState & DeleteState & EditedState;
 
 /** When an event was written, or undefined when it says nothing readable. */
 function when(event: { at?: unknown }): number | undefined {
@@ -48,7 +49,7 @@ function pageOf(
 /**
  * Records when `after` changed a page `before` held differently. `before` is
  * the graph ahead of the event and `after` the graph once the other slices
- * folded it. An event that changed no blocks, properties or deletions (a
+ * folded it. An event that changed no blocks, properties, tags or deletions (a
  * repeat, one aimed at a block that is not there, one this build skips) is
  * not an edit, and neither is one with no readable `at`: a prediction in the
  * renderer has none. Hands back `after` itself when nothing is recorded.
@@ -61,6 +62,7 @@ export function reduce<S extends Holds>(
   if (
     after.blocks === before.blocks &&
     after.properties === before.properties &&
+    after.tags === before.tags &&
     after.deletions === before.deletions
   ) {
     return after;

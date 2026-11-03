@@ -66,11 +66,26 @@ A page has properties: each a key and a string value. A key is a page title, com
 - **`getProperties(graph, page)`** lists a page's properties as `{ key, value }`, each key in the spelling it shows, ordered by `canonicalize(key)`.
 - **The commands** refuse what the fold would skip (a blank page or key) and write nothing for a change that changes nothing: setting the value a key has, or removing a key the page lacks. `renameProperty(view, page, from, to)` writes a `set` of `to` with `from`'s value, then a `removed` of `from`, so a stop between them leaves both keys and never neither. It refuses a `from` the page lacks and a `to` it already has, and writes nothing for a `to` that is `from` once canonicalized: a key's spelling is its page's, so a rename cannot change it.
 
+## Page tags are a contract
+
+A page has tags: other pages it points to, and nothing else. A tag has no value, no type and no order. A tag is a page title, compared through `canonicalize` like any other, so tagging `Foo` with `Work` names two pages, `Foo` and `Work`.
+
+| Type | `v` | Payload | Meaning |
+|---|---|---|---|
+| `tag.added` | 1 | `{ page, tag }` | `page` now points to `tag`. |
+| `tag.removed` | 1 | `{ page, tag }` | `page` no longer points to `tag`. |
+
+- **A tag names a page; it never creates one.** Both events give `page` and `tag` a spelling if they have none yet, the first spelling the fold saw. A page that only tags name, as the page they are on or as a tag, is a page while one of them stands, and stops being one when the last goes, as with properties and links.
+- **A page holds a tag once.** Adding a tag it has, or removing one it lacks, changes nothing. A page may tag itself.
+- **The later event wins** per `(page, tag)`, in fold order, the same on every machine.
+- **Malformed is skipped whole:** a payload that is not an object, or a `page` or `tag` that is not a string or is blank once trimmed. Any other field in a payload is ignored, not an error.
+- **`getTags(graph, page)`** lists the pages `page` points to, and **`getTaggedBy(graph, tag)`** the pages that point to `tag`, each in the spelling it shows, ordered by `canonicalize`.
+
 ## Deleting a page is a contract
 
 | Type | `v` | Payload | Meaning |
 |---|---|---|---|
-| `page.deleted` | 1 | `{ page }` | The user was done with `page`: its blocks and its properties. |
+| `page.deleted` | 1 | `{ page }` | The user was done with `page`: its blocks, its properties and its tags. Tags on other pages that point to it stay, as links to it do. |
 
 - **One event for the whole page.** No `block.deleted` per block and no `property.removed` per key, so a crash or a sync still arriving can never leave a page half deleted.
 - **It applies to the page as it stands at that point in fold order.** A block or property that sorts before it goes with it, however late it arrived. One that sorts after it is a later fact and stands. An edit that sorts after it, to a block it removed, changes nothing, like any edit to a block the fold does not have.
