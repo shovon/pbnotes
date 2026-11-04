@@ -103,6 +103,14 @@ export function createGraphSession(
 
   return {
     /**
+     * Resolves once every write that arrived before this call is recorded or
+     * refused; never rejects. Writes that arrive later are not waited on. For
+     * whoever lets go of what a write was sent to: the write settled where it
+     * goes when it arrived, and still has to get there.
+     */
+    settled: (): Promise<void> => writing.then((): void => undefined),
+
+    /**
      * The fold moved: a write from any window, or something arrived in the
      * open ledger's folder. Fed from outside, so the graph never subscribes to
      * the ledger itself, and never asks which ledger moved — whoever calls

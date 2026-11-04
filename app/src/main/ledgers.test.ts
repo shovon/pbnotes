@@ -257,3 +257,40 @@ test("a write the fold took up first is not folded in again", async () => {
   assert.equal(view.version, taken, "the version moved for a state that changed nothing");
   assert.deepEqual(texts(view.state, "Mira"), ["ours"]);
 });
+
+/** A ledger with nothing in it, that counts each time it is closed. */
+function closable() {
+  const fake = fakeLedger({ state: graph.graphFold.initial, reached: 0 });
+  const closed = { count: 0 };
+  fake.ledger.close = async () => void closed.count++;
+  return { ledger: fake.ledger, closed };
+}
+
+test("keepOnly closes every ledger but the one named, and the next open of a closed one opens it again", async () => {
+  /** Every ledger opened, in order, with the folder it was opened in. */
+  const opened: { at: string; closed: { count: number } }[] = [];
+  const ledgers = createLedgers(undefined, async (at) => {
+    const one = closable();
+    opened.push({ at, closed: one.closed });
+    return one.ledger;
+  });
+  /** How many times each ledger opened in `at` was closed, oldest first. */
+  const closes = (at: string) => opened.filter((o) => o.at === at).map((o) => o.closed.count);
+  const [a, b, c] = ["a", "b", "c"].map((id) => ({ id, path: `/fake/${id}` }));
+  await ledgers.graphOf(a);
+  await ledgers.graphOf(b);
+  await ledgers.graphOf(c);
+
+  await ledgers.keepOnly("b");
+  assert.deepEqual([a, b, c].map((p) => closes(p.path)), [[1], [0], [1]]);
+
+  // Kept: the same ledger is handed back. Closed: a new one is opened.
+  await ledgers.graphOf(b);
+  await ledgers.graphOf(a);
+  assert.deepEqual(closes(b.path), [0]);
+  assert.deepEqual(closes(a.path), [1, 0]);
+
+  await ledgers.keepOnly(undefined);
+  assert.deepEqual(closes(a.path), [1, 1]);
+  assert.deepEqual(closes(b.path), [1]);
+});

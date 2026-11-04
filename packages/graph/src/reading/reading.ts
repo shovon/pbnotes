@@ -7,6 +7,7 @@
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import { remarkPlugins } from "../wikilink/wikilink.ts";
+import { lru } from "./lru/lru.ts";
 
 /**
  * The pages a text links to and the blocks it refers to, read with the same parser that renders it, so
@@ -19,9 +20,12 @@ import { remarkPlugins } from "../wikilink/wikilink.ts";
  * nothing it has seen. Keyed on the object, the whole project would be
  * parsed again after each of those.
  *
- * ponytail: the map keeps every text ever parsed this session, edits
- * included. Strings the log already holds, so it is small; bound it if a
- * long session ever shows it.
+ * Bounded (#236): kept whole, the memo held every text parsed this session,
+ * every edited version and every project's, and was the largest thing main
+ * held. The least recently read go first. A refold reads every live text,
+ * so each one is read again every half minute and stays, while the versions
+ * an edit replaced fall out. That holds while a project's distinct block
+ * texts fit under `READINGS`; past that a refold parses some of them again.
  *
  * Read from the `href` the plugin sets, which is the contract the renderer
  * follows a link by; a link to nothing has no `href` and is not a link.
@@ -40,7 +44,10 @@ type Reading = {
   plain: string;
 };
 
-const readings = new Map<string, Reading>();
+/** How many texts the memo holds: about 30 MB at the 0.3 KB each #236 measured. */
+const READINGS = 100_000;
+
+const readings = lru<string, Reading>(READINGS);
 
 type Node = {
   type: string;

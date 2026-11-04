@@ -160,10 +160,19 @@ app.on("ready", () => {
     pathKey: pathKeyOn(process.platform),
   });
   // What main holds per project that a change of project has to clear: the
-  // open project's bench file, let go so the next call opens the new one's.
-  // The trail is each window's, and `App` remounts the project view when the
-  // project changes. A feature that holds something gets a line here.
-  const projects = createOpenProject(store, disk.probe, () => bench.release());
+  // open project's bench file, let go so the next call opens the new one's,
+  // and every ledger but the new one's, with the log and the graph each holds
+  // (#236). A ledger closes once the writes sent before the change are
+  // recorded, as each still goes where it was sent. Kept is what is open
+  // then, so a quick switch back keeps the project it went back to. The trail
+  // is each window's, and `App` remounts the project view when the project
+  // changes. A feature that holds something gets a line here.
+  const projects = createOpenProject(store, disk.probe, () => {
+    bench.release();
+    void graph
+      .settled()
+      .then(() => ledgers.keepOnly(projects.currentProject()?.id));
+  });
   registerProjectIpc(store, projects);
 
   // The bench: this machine's state that only means something to the
