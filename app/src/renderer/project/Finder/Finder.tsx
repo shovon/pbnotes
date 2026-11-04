@@ -125,6 +125,8 @@ export default function Finder({ find, onOpen, onClose }: FinderProps) {
         placeholder="Search pages and blocks"
         className="w-full border-b border-line bg-transparent px-3 py-2.5 text-base outline-none"
         value={query}
+        /* A history of its own, never the document's: a search writes nothing (#247). */
+        data-undo="field"
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing) return;

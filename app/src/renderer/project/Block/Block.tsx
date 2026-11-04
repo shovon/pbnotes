@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { OwnEdit } from '../undo/own-edit';
 import type { ReactNode } from 'react';
 import Markdown from 'react-markdown';
 import type { Components } from 'react-markdown';
@@ -380,6 +381,8 @@ export function BlockEditor({
   findPages?: (query: string) => Promise<PageMatch[]>;
 }) {
   const box = useRef<HTMLTextAreaElement | null>(null);
+  /** Tells undo the box is about to change its own text (#247). */
+  const ownEdit = useContext(OwnEdit);
   /* Once per caret rather than on every render: the list re-renders the box
      as it is typed in, and the caret it was opened with is long gone. */
   const mount = useCallback(
@@ -436,6 +439,7 @@ export function BlockEditor({
   const pick = (title: string) => {
     const element = box.current;
     if (!element || !shown) return;
+    ownEdit(element);
     apply(element, completeLink(element.value, element.selectionEnd, shown, title));
     sync(element);
   };
@@ -458,6 +462,8 @@ export function BlockEditor({
         /* One line to start with; the CSS grows the box from there. */
         rows={1}
         defaultValue={initial}
+        /* Its own undo history while open, then main's (#247). */
+        data-undo="document"
         placeholder={placeholder}
         /* The window losing focus blurs the box too, but that is the user
            looking elsewhere, not leaving the block: the browser hands focus
@@ -500,6 +506,7 @@ export function BlockEditor({
             bracketEdit(event.key, target.value, target.selectionStart, target.selectionEnd);
           if (edit) {
             event.preventDefault();
+            ownEdit(target);
             apply(target, edit);
             return;
           }

@@ -197,6 +197,7 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
           placeholder="Key"
           autoFocus={focus === 'key'}
           value={it.key}
+          data-undo="document"
           role="combobox"
           aria-expanded={offered.length > 0}
           aria-controls={listId}
@@ -245,6 +246,7 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
             placeholder="Empty"
             autoFocus={focus === 'value'}
             value={it.value}
+            data-undo="document"
             className={`${input} w-full`}
             // A draft takes its key first: a value with nowhere to go is
             // only dropped.

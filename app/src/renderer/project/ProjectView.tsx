@@ -23,6 +23,10 @@ import Sidebar from './Sidebar/Sidebar';
 import Toggle from './Sidebar/Toggle/Toggle';
 import { forget, visit } from './Sidebar/recent/recent';
 import { togglesSidebar } from './Sidebar/shortcut/shortcut';
+import { createDispatcher } from './undo/dispatcher/dispatcher';
+import { watchFields } from './undo/fields';
+import type { Fields } from './undo/fields';
+import { OwnEdit } from './undo/own-edit';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -32,6 +36,7 @@ export type ProjectViewGraph = PageViewGraph &
   Pick<
     GraphApi,
     | 'onChanged'
+    | 'onTake'
     | 'view'
     | 'locate'
     | 'find'
@@ -237,6 +242,31 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
     setCollapsed(next);
     sidebar.save({ collapsed: next });
   };
+
+  /**
+   * Undo (#247): the menu's Undo and Redo, and the browser's own undo from
+   * any field, go to one dispatcher. The open field's history first, then
+   * main's, through `act`, so a refused undo lands in the app's notice. What
+   * the window does with main's answer is #248; here the reply's version
+   * reaches the screen the way every write's does, by the notice of it.
+   */
+  const [fields, setFields] = useState<Fields | null>(null);
+  useEffect(() => {
+    const dispatcher = createDispatcher((way) =>
+      act(async () => {
+        await graph.run({ type: way });
+      }),
+    );
+    const watched = watchFields(document, dispatcher, () => now().getTime());
+    const off = graph.onTake((way) => (way === 'undo' ? dispatcher.undo() : dispatcher.redo()));
+    setFields(watched);
+    return () => {
+      // A stubbed bridge (Storybook's) answers with something that is not an
+      // unsubscribe.
+      if (typeof off === 'function') off();
+      watched.stop();
+    };
+  }, [graph]);
 
   useEffect(() => {
     // A notice and a write's reply take one path, so this window's writes
@@ -546,7 +576,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   };
 
   return (
-    <>
+    <OwnEdit.Provider value={fields?.ownEdit ?? noEdit}>
       {/* Outside the view, so a click in it is not taken for one on a link,
           and a paste into it is text rather than an image for the page. */}
       {/* Outside the view too: its entries are buttons, not links in a page,
@@ -664,6 +694,9 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           )}
         </Previews>
       </div>
-    </>
+    </OwnEdit.Provider>
   );
 }
+
+/** No watcher yet: a field's own edit is nothing to note. */
+const noEdit = (): void => undefined;

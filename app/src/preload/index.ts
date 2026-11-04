@@ -37,6 +37,14 @@ const graph: GraphApi = {
       ipcRenderer.off(GRAPH_CHANNELS.changed, heard);
     };
   },
+  // The way alone, as `onChanged` hands on the version alone.
+  onTake: (listener) => {
+    const heard = (_event: IpcRendererEvent, way: 'undo' | 'redo') => listener(way);
+    ipcRenderer.on(GRAPH_CHANNELS.take, heard);
+    return () => {
+      ipcRenderer.off(GRAPH_CHANNELS.take, heard);
+    };
+  },
   locate: (blockId) => ipcRenderer.invoke(GRAPH_CHANNELS.locate, blockId),
   search: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.search, query),
   find: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.find, query),
