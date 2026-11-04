@@ -8,10 +8,13 @@ import { ALIAS } from "./aliases.ts";
 import { ALIAS_ADDED } from "./added/added.ts";
 import { ALIAS_REMOVED } from "./removed/removed.ts";
 
-const ALIASES = ALIAS.slice([ALIAS_ADDED, ALIAS_REMOVED]);
+/** Every alias event. A new one is a module, and a line here. */
+const EVENTS = [ALIAS_ADDED, ALIAS_REMOVED] as const;
 
-/** Every event this slice folds, and its payload. */
-export type AliasEvent = EventOf<typeof ALIAS_ADDED> | EventOf<typeof ALIAS_REMOVED>;
+const ALIASES = ALIAS.slice(EVENTS);
+
+/** Every event this slice folds, and its payload: read off `EVENTS`, so it cannot drift. */
+export type AliasEvent = EventOf<(typeof EVENTS)[number]>;
 
 /**
  * Event type → the payload `v` this build folds and writes. The alias part of

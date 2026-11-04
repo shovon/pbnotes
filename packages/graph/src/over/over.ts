@@ -81,6 +81,27 @@ export type EventOf<M> = M extends { type: infer T; build(it: infer P): unknown 
   ? { type: T; payload: P }
   : never;
 
+/** An event as a fold is handed one: its `v` as well as its type and payload. */
+export type Versioned = { type: string; v: number; payload: unknown };
+
+/**
+ * The gate in front of a fold: whether `handles` has `event`'s type, at a `v`
+ * no higher than this build reads. An older build passes over what a newer
+ * one wrote rather than fold it wrongly.
+ */
+export function admits(
+  handles: Readonly<Record<string, number>>,
+  event: { type: string; v: number },
+): boolean {
+  return Object.hasOwn(handles, event.type) && event.v <= handles[event.type];
+}
+
+/** A fold as a ledger runs one: where it starts, and one event at a time. */
+export type Fold<S> = {
+  readonly initial: S;
+  reduce(state: S, event: Versioned): S;
+};
+
 /** A slice's fold, version table and undo table, put together from its events. */
 export type Slice<S, T extends string> = {
   /** Event type → the payload `v` this build reads and writes. */
@@ -93,6 +114,12 @@ export type Slice<S, T extends string> = {
   reduce<St extends S>(state: St, event: { type: string; payload: unknown }): St;
   /** Whether a prediction already shows `event`. False for one not of this slice. */
   landed(state: S, event: { type: string; payload: unknown }): boolean;
+  /**
+   * The slice as a fold on its own, from `initial`, with the gate in front:
+   * for a slice that is not behind another fold's gate, such as a plugin's.
+   * The graph's slices are behind `graphFold`'s, and use `reduce`.
+   */
+  fold(initial: S): Fold<S>;
 };
 
 /** `spec` with its payload type hidden, and its builder. */
@@ -140,12 +167,19 @@ function slice<S, const L extends readonly Event<S>[]>(events: L): Slice<S, L[nu
     by.set(event.type, event);
   }
   const of = (type: string) => by.get(type);
+  const handles = Object.fromEntries(events.map((it) => [it.type, it.v])) as Record<T, number>;
+  const reduce = <St extends S>(state: St, event: { type: string; payload: unknown }): St =>
+    of(event.type)?.reduce(state, event.payload) ?? state;
   return {
-    handles: Object.fromEntries(events.map((it) => [it.type, it.v])) as Record<T, number>,
+    handles,
     undo: Object.fromEntries(events.map((it) => [it.type, it.undo])) as Record<T, Undo<S>>,
     reads: (event) => of(event.type)?.reads(event.payload) ?? false,
-    reduce: (state, event) => of(event.type)?.reduce(state, event.payload) ?? state,
+    reduce,
     landed: (state, event) => of(event.type)?.landed(state, event.payload) ?? false,
+    fold: (initial) => ({
+      initial,
+      reduce: (state, event) => (admits(handles, event) ? reduce(state, event) : state),
+    }),
   };
 }
 

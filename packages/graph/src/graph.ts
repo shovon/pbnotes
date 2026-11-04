@@ -52,6 +52,7 @@ import { all, BATCH_HANDLES, unbatch } from "./batch/batch.ts";
 import type { BatchEvent, Batched } from "./batch/batch.ts";
 import { holds as holdsWith, invert as invertWith } from "./undo/undo.ts";
 import type { Step, Undo } from "./undo/undo.ts";
+import { admits } from "./over/over.ts";
 import { BLOCK_UNDO } from "./blocks/undo.ts";
 import { PROPERTY_UNDO } from "./properties/undo.ts";
 import { TAG_UNDO } from "./tags/undo.ts";
@@ -247,10 +248,7 @@ type Incoming = { type: string; v: number; at?: unknown; payload: unknown };
 
 /** Whether this build has `event`'s type, at a `v` it reads. */
 function gated(event: Incoming): boolean {
-  return (
-    Object.hasOwn(HANDLES, event.type) &&
-    event.v <= HANDLES[event.type as keyof typeof HANDLES]
-  );
+  return admits(HANDLES, event);
 }
 
 /** Through the gate, and well formed for the slice whose type it is. */

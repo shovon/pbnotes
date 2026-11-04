@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CANNOT, same } from "../undo/undo.ts";
-import { over } from "./over.ts";
+import { admits, over } from "./over.ts";
 import type { Written } from "./over.ts";
 
 /** A counter. */
@@ -98,4 +98,27 @@ test("a type that is an Object.prototype name is passed over like any other", ()
 
 test("two events with one type is refused", () => {
   assert.throws(() => COUNT.slice([ADD, ADD]), /Two events are add/);
+});
+
+test("the gate admits a type it has, at its own v or lower, and nothing else", () => {
+  const handles = { add: 2 };
+  assert.equal(admits(handles, { type: "add", v: 2 }), true);
+  assert.equal(admits(handles, { type: "add", v: 1 }), true, "an older payload");
+  assert.equal(admits(handles, { type: "add", v: 3 }), false, "a newer build wrote it");
+  assert.equal(admits(handles, { type: "other", v: 1 }), false);
+  assert.equal(admits(handles, { type: "toString", v: 1 }), false, "not an inherited name");
+});
+
+test("a slice's fold starts where it is told, and gates by v before it folds", () => {
+  const fold = COUNT.slice([ADD, RESET]).fold({ n: 1 });
+  assert.deepEqual(fold.initial, { n: 1 });
+  const at = (v: number, payload: unknown) => ({ type: "add", v, payload });
+  assert.deepEqual(fold.reduce(fold.initial, at(2, 4)), { n: 5 });
+  assert.equal(fold.reduce(fold.initial, at(3, 4)), fold.initial, "a v this build cannot read");
+  assert.equal(fold.reduce(fold.initial, at(2, "x")), fold.initial, "malformed");
+  assert.equal(
+    fold.reduce(fold.initial, { type: "other", v: 1, payload: 4 }),
+    fold.initial,
+    "another slice's event",
+  );
 });
