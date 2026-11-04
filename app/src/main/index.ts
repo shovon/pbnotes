@@ -160,10 +160,15 @@ app.on("ready", () => {
     pathKey: pathKeyOn(process.platform),
   });
   // What main holds per project that a change of project has to clear: the
-  // open project's bench file, let go so the next call opens the new one's.
-  // The trail is each window's, and `App` remounts the project view when the
-  // project changes. A feature that holds something gets a line here.
-  const projects = createOpenProject(store, disk.probe, () => bench.release());
+  // open project's bench file, let go so the next call opens the new one's,
+  // and undo's history (#234), so Cmd+Z never reaches back into the project
+  // left. The trail is each window's, and `App` remounts the project view
+  // when the project changes. A feature that holds something gets a line
+  // here. `graph` is made below; this only runs once the app is up.
+  const projects = createOpenProject(store, disk.probe, () => {
+    bench.release();
+    graph.forget();
+  });
   registerProjectIpc(store, projects);
 
   // The bench: this machine's state that only means something to the

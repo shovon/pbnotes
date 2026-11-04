@@ -179,9 +179,10 @@ export type GraphApi = {
    * its own. Main checks the command's shape, then runs the `@pbnotes/graph`
    * command it names, which makes the full checks and builds the event.
    * Resolves once it is recorded, to the fold's version after it: a view at
-   * that version or later holds it.
+   * that version or later holds it. Undo and redo resolve to an `Undone`,
+   * which carries the version too.
    */
-  run(command: Command): Promise<number>;
+  run<C extends Command>(command: C): Promise<Reply<C>>;
   /**
    * Stores an image in the project's folder and returns the link a block
    * holds it by, `images/<sha256>.png`. Appends nothing: the caller puts the
@@ -316,4 +317,43 @@ export type Command =
    * gone from the fold, and stay on disk. A page with nothing on it resolves
    * with nothing written, since the delete would change nothing.
    */
-  | { type: 'deletePage'; title: string };
+  | { type: 'deletePage'; title: string }
+  /**
+   * Takes back the latest step this session wrote in the open project (#234):
+   * the events that undo it, written as one batch. Stops, writing nothing,
+   * when someone else has changed what the step touched since, or when it
+   * cannot be undone; it never skips a step to reach an older one. Resolves
+   * to an `Undone`, not a bare version.
+   */
+  | { type: 'undo' }
+  /** Takes back the latest undo, by the same rules (#234). Resolves to an `Undone`. */
+  | { type: 'redo' };
+
+/** The commands that take a step back, and answer with an `Undone`. */
+export type Taking = Extract<Command, { type: 'undo' | 'redo' }>;
+
+/**
+ * What an undo or a redo did (#234), with the fold's version after it, as
+ * every write's reply carries.
+ *
+ * - `done`: the step was taken back.
+ * - `nothing`: there was nothing to undo, or to redo. Nothing was written.
+ * - `changed`: undo stopped, because someone else changed what the step
+ *   touched since. Nothing was written, and it stops there again until that
+ *   change goes away.
+ * - `cannot`: undo stopped, because the step cannot be undone at all.
+ *   Nothing was written.
+ *
+ * `page` and `block` are where the step happened, for the window to go to,
+ * with every result but `nothing`. `block` is absent for a step that is
+ * about a page as a whole (a property, a tag, a page delete).
+ */
+export type Undone = {
+  version: number;
+  result: 'done' | 'nothing' | 'changed' | 'cannot';
+  page?: string;
+  block?: string;
+};
+
+/** What `run` resolves to for `command`: an `Undone` for undo and redo, else the version. */
+export type Reply<C extends Command> = C extends Taking ? Undone : number;

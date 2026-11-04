@@ -1,8 +1,11 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blockEdited, graphFold } from "@pbnotes/graph";
+import { blockEdited, blockIndented, graphFold } from "@pbnotes/graph";
+import type { Graph } from "@pbnotes/graph";
 import { createGraphSession } from "./graph-session.ts";
+import { createHistory, stepOf } from "../history/history.ts";
+import type { History } from "../history/history.ts";
 import type { GraphView } from "./graph-session.ts";
 
 /**
@@ -15,6 +18,8 @@ function ledger() {
   let state = graphFold.initial;
   let version = 0;
   let gate: Promise<void> = Promise.resolve();
+  /** How many times this session wrote: one record each. */
+  let writes = 0;
   const fold = (event: { type: string; v: number; payload: unknown }) => {
     state = graphFold.reduce(state, event);
     version++;
@@ -29,6 +34,7 @@ function ledger() {
     status: { devices: [], ignored: [] },
     async dispatch(v, type, payload) {
       await gate;
+      writes++;
       fold({ type, v, payload });
     },
   };
@@ -43,7 +49,7 @@ function ledger() {
     [...state.blocks.values()].flatMap((blocks) =>
       blocks.map((block) => block.text),
     );
-  return { view, hold, texts, arrive: fold };
+  return { view, hold, texts, arrive: fold, writes: () => writes };
 }
 
 /**
@@ -51,7 +57,7 @@ function ledger() {
  * test says, read the moment `require` is called — as `requireProject` reads
  * it — and refused when there is none. Every version told is kept.
  */
-function session(first: GraphView | null) {
+function session(first: GraphView | null, history?: History<GraphView>) {
   let current = first;
   const told: number[] = [];
   const graph = createGraphSession(
@@ -64,6 +70,7 @@ function session(first: GraphView | null) {
       },
     },
     (version) => told.push(version),
+    history,
   );
   return {
     graph,
@@ -298,4 +305,206 @@ test("a page's own view counts the refs other graph hold to its blocks", async (
   // Not walked where no delete is offered.
   assert.equal((await graph.view({ page: "Mira", block: "a1" }, TODAY)).showing[0].refsTo, 0);
   assert.ok((await graph.view(undefined, TODAY)).showing.every((it) => it.refsTo === 0));
+});
+
+// ── Undo and redo (#234) ────────────────────────────────────────────────────
+
+/** What undo puts back: what the user wrote, not spellings, counts or dates. */
+const held = ({ blocks, properties, tags, aliases }: Graph) => ({ blocks, properties, tags, aliases });
+
+/** Ids for the blocks the tests write. */
+const A = "a1";
+const B = "b1";
+const C = "c1";
+
+/**
+ * `Foo` with `a1` holding `b1` under it and `c1` after it, a property, a tag
+ * and an alias-free page `Bar`: something every command can change.
+ */
+async function written() {
+  const it = ledger();
+  const { graph, openLedger } = session(it.view);
+  for (const command of [
+    { type: "addBlock", id: A, title: "Foo", text: "A" },
+    { type: "addBlock", id: B, title: "Foo", text: "B", after: A },
+    { type: "indentBlock", blockId: B },
+    { type: "addBlock", id: C, title: "Foo", text: "C", after: A },
+    { type: "setProperty", title: "Foo", key: "Owner", value: "Mira" },
+    { type: "addTag", title: "Foo", tag: "Work" },
+    { type: "addBlock", id: "d1", title: "Bar", text: "D" },
+  ] as const) {
+    await graph.run(command);
+  }
+  return { ...it, graph, openLedger };
+}
+
+/** Undo and redo of every command undoes back to where it started, and redoes forward. */
+test("every command is undone to the graph before it, and redone to the graph after", async () => {
+  const commands = [
+    { type: "addBlock", id: "n1", title: "Foo", text: "new", after: C },
+    { type: "editBlock", blockId: C, text: "C!" },
+    { type: "deleteBlock", blockId: A },
+    { type: "indentBlock", blockId: C },
+    { type: "outdentBlock", blockId: B },
+    { type: "setProperty", title: "Foo", key: "Owner", value: "Sal" },
+    { type: "removeProperty", title: "Foo", key: "Owner" },
+    { type: "renameProperty", title: "Foo", from: "Owner", to: "Author" },
+    { type: "addTag", title: "Foo", tag: "Home" },
+    { type: "removeTag", title: "Foo", tag: "Work" },
+    { type: "deletePage", title: "Foo" },
+  ] as const;
+  for (const command of commands) {
+    const { graph, view } = await written();
+    const before = held(view.state);
+    await graph.run(command);
+    const after = held(view.state);
+    assert.notDeepEqual(after, before, `${command.type} changes something`);
+    const undone = await graph.run({ type: "undo" });
+    assert.equal(undone.result, "done", command.type);
+    assert.equal(undone.version, view.version, `${command.type}: the version after`);
+    assert.deepEqual(held(view.state), before, `${command.type} undone`);
+    assert.equal((await graph.run({ type: "redo" })).result, "done", command.type);
+    assert.deepEqual(held(view.state), after, `${command.type} redone`);
+  }
+});
+
+test("undoing a delete writes one record, and says where it was", async () => {
+  const { graph, view, writes } = await written();
+  await graph.run({ type: "deleteBlock", blockId: A });
+  const before = writes();
+  const undone = await graph.run({ type: "undo" });
+  assert.equal(writes(), before + 1, "one batch");
+  assert.deepEqual(undone, { version: view.version, result: "done", page: "Foo", block: A });
+  assert.deepEqual(
+    (view.state.blocks.get("foo") ?? []).map((it) => it.id),
+    [A, C],
+    "back in its place, its child with it",
+  );
+  await graph.run({ type: "deletePage", title: "Bar" });
+  const page = await graph.run({ type: "undo" });
+  assert.deepEqual([page.result, page.page, page.block], ["done", "Bar", undefined]);
+});
+
+test("redoing a page delete deletes the page again, not its blocks one by one", async () => {
+  const { graph, view } = await written();
+  await graph.run({ type: "deletePage", title: "Foo" });
+  const deleted = view.state.deletions.get("foo");
+  await graph.run({ type: "undo" });
+  await graph.run({ type: "redo" });
+  assert.equal(view.state.deletions.get("foo"), (deleted ?? 0) + 1, "a page delete, counted");
+  assert.equal(view.state.blocks.has("foo"), false);
+});
+
+test("undo goes back step by step, last first", async () => {
+  const { graph, texts } = await written();
+  await graph.run({ type: "editBlock", blockId: C, text: "one" });
+  await graph.run({ type: "editBlock", blockId: C, text: "two" });
+  await graph.run({ type: "undo" });
+  assert.ok(texts().includes("one"));
+  await graph.run({ type: "undo" });
+  assert.ok(texts().includes("C"));
+});
+
+test("another session's edit stops undo there, leaves their text, and lets undo on once it is gone", async () => {
+  const { graph, view, arrive, writes, texts } = await written();
+  await graph.run({ type: "editBlock", blockId: A, text: "A!" });
+  await graph.run({ type: "editBlock", blockId: C, text: "mine" });
+  arrive(blockEdited(C, "theirs"));
+  const before = writes();
+  const stopped = await graph.run({ type: "undo" });
+  assert.deepEqual(stopped, { version: view.version, result: "changed", page: "Foo", block: C });
+  assert.equal((await graph.run({ type: "undo" })).result, "changed", "still");
+  assert.equal(writes(), before, "nothing written");
+  assert.ok(texts().includes("theirs") && texts().includes("A!"), "theirs kept, the step before never undone");
+  arrive(blockEdited(C, "mine"));
+  assert.equal((await graph.run({ type: "undo" })).result, "done");
+  assert.ok(texts().includes("C"));
+});
+
+test("an event from another session is never undone", async () => {
+  const { graph, arrive, texts } = await written();
+  arrive(blockEdited(C, "theirs"));
+  // The last step this session wrote is the tag on `Bar`'s block, not theirs.
+  const undone = await graph.run({ type: "undo" });
+  assert.equal(undone.page, "Bar");
+  assert.ok(texts().includes("theirs"));
+});
+
+test("a step that cannot be undone stops undo there; one after it still undoes, down to it", async () => {
+  const it = ledger();
+  const history = createHistory<GraphView>();
+  const { graph } = session(it.view, history);
+  await graph.run({ type: "addBlock", id: A, title: "Foo", text: "A" });
+  await graph.run({ type: "addBlock", id: B, title: "Foo", text: "B", after: A });
+  await graph.run({ type: "addBlock", id: C, title: "Foo", text: "C", after: B });
+  // No command writes this: `c1`'s sibling above is `b1`, not `a1`. Written
+  // as if another writer had, and kept as this session's step.
+  const before = it.view.state;
+  const stuck = blockIndented({ id: C, parent: A });
+  it.arrive(stuck);
+  const entry = stepOf(before, it.view.state, [stuck]);
+  assert.ok(entry);
+  history.record(it.view, entry);
+  await graph.run({ type: "editBlock", blockId: B, text: "B!" });
+  assert.equal((await graph.run({ type: "undo" })).result, "done", "the step after it");
+  const writes = it.writes();
+  const cannot = await graph.run({ type: "undo" });
+  assert.deepEqual([cannot.result, cannot.page, cannot.block], ["cannot", "Foo", C]);
+  assert.equal((await graph.run({ type: "undo" })).result, "cannot", "still");
+  assert.equal(it.writes(), writes, "nothing written");
+  assert.ok(it.texts().includes("A"), "the steps before it are never undone");
+});
+
+test("a new step after an undo clears redo", async () => {
+  const { graph } = await written();
+  await graph.run({ type: "editBlock", blockId: C, text: "C!" });
+  await graph.run({ type: "undo" });
+  await graph.run({ type: "editBlock", blockId: A, text: "A!" });
+  assert.equal((await graph.run({ type: "redo" })).result, "nothing");
+});
+
+test("undo and redo with nothing to do write nothing, and name the version held", async () => {
+  const it = ledger();
+  const { graph } = session(it.view);
+  assert.deepEqual(await graph.run({ type: "undo" }), { version: 0, result: "nothing" });
+  assert.deepEqual(await graph.run({ type: "redo" }), { version: 0, result: "nothing" });
+  assert.equal(it.writes(), 0);
+});
+
+test("a write that changed nothing is not a step", async () => {
+  const { graph, texts } = await written();
+  await graph.run({ type: "editBlock", blockId: C, text: "C!" });
+  // `a1` is first among its siblings: nowhere to indent, nothing written.
+  await graph.run({ type: "indentBlock", blockId: A });
+  await graph.run({ type: "undo" });
+  assert.ok(texts().includes("C"), "the undo reached the edit");
+});
+
+test("changing the open project forgets the history", async () => {
+  const { graph } = await written();
+  graph.forget();
+  assert.equal((await graph.run({ type: "undo" })).result, "nothing");
+});
+
+test("a write queued for the project before a switch is never undone in the one after", async () => {
+  const one = ledger();
+  const two = ledger();
+  const { graph, openLedger } = session(one.view);
+  const release = one.hold();
+  const queued = graph.run({ type: "addBlock", id: A, title: "Foo", text: "A" });
+  openLedger(two.view);
+  graph.forget();
+  release();
+  await queued;
+  assert.equal((await graph.run({ type: "undo" })).result, "nothing", "the new project has no steps");
+  assert.equal(two.writes(), 0);
+  assert.deepEqual(one.texts(), ["A"]);
+});
+
+test("a refused write is not a step, and leaves undo where it was", async () => {
+  const { graph, texts } = await written();
+  await graph.run({ type: "editBlock", blockId: C, text: "C!" });
+  await assert.rejects(graph.run({ type: "editBlock", blockId: "nope", text: "x" }));
+  await graph.run({ type: "undo" });
+  assert.ok(texts().includes("C"));
 });
