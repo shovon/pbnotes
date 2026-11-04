@@ -20,8 +20,18 @@ test("each command passes with the fields it reads", () => {
     { type: "addTag", title: "Mira", tag: "Work" },
     { type: "removeTag", title: "Mira", tag: "Work" },
     { type: "deletePage", title: "Mira" },
+    { type: "undo" },
+    { type: "redo" },
   ];
   for (const command of good) assert.deepEqual(requireCommand(command), command);
+});
+
+test("undo and redo carry nothing the window sent: what to take back is main's (#234)", () => {
+  assert.deepEqual(requireCommand({ type: "undo", step: 3, blockId: "b1" }), { type: "undo" });
+  assert.deepEqual(requireCommand({ type: "redo", events: [] }), { type: "redo" });
+  for (const bad of [{ type: "Undo" }, { type: "undo " }, { type: ["undo"] }, "undo", null]) {
+    assert.throws(() => requireCommand(bad), TypeError, JSON.stringify(bad));
+  }
 });
 
 test("a missing or wrong-typed field is refused", () => {

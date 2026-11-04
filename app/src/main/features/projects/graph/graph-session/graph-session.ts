@@ -10,6 +10,7 @@
 import {
   addBlock,
   addTag,
+  batch,
   deleteBlock,
   deletePage,
   editBlock,
@@ -24,10 +25,21 @@ import {
   searchNames,
   setProperty,
 } from "@pbnotes/graph";
-import type { GraphView as Base, PageMatch } from "@pbnotes/graph";
-import type { Command, Matches, PageList, Place, PlaceView } from "../../../../../shared/graph.ts";
+import type { Batched, GraphView as Base, PageMatch } from "@pbnotes/graph";
+import type {
+  Command,
+  Matches,
+  PageList,
+  Place,
+  PlaceView,
+  Reply,
+  Taking,
+  Undone,
+} from "../../../../../shared/graph.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
 import { getView } from "../place-view/place-view.ts";
+import { createHistory, stepOf, takenBack } from "../history/history.ts";
+import type { History, Way } from "../history/history.ts";
 
 /**
  * What the graph needs of what is open: the package's view (the fold and a way to
@@ -67,11 +79,13 @@ export type Open = {
 
 /**
  * `notify` tells every window the fold's version, handed in like everything
- * else this reaches outside. The write queue lives in here, one per call.
+ * else this reaches outside. The write queue lives in here, one per call, and
+ * so does undo's history (#234), unless one is handed in.
  */
 export function createGraphSession(
   open: Open,
   notify: (version: number) => void,
+  history: History<GraphView> = createHistory<GraphView>(),
 ) {
   /**
    * A write: `run` appends, and resolves to the fold's version after it.
@@ -86,19 +100,69 @@ export function createGraphSession(
    */
   let writing: Promise<unknown> = Promise.resolve();
 
-  function write(run: (view: GraphView) => Promise<unknown>): Promise<number> {
+  function write<R>(run: (view: GraphView) => Promise<R>): Promise<R> {
     const view = open.require();
     // Waited on in turn, which may be later than it fails.
     view.catch((): void => undefined);
-    const turn = writing.then(async () => {
-      const it = await view;
-      await run(it);
-      // A write that changed nothing (an indent with nowhere to go) names the
-      // version already held, which is as true.
-      return it.version;
-    });
+    const turn = writing.then(async () => run(await view));
     writing = turn.catch((): void => undefined);
     return turn;
+  }
+
+  /**
+   * `command` run on `view`, and kept as a step when it wrote something: the
+   * events it dispatched, on the graph before it. Its turn in the queue is
+   * the whole of it, so nothing else writes between the graph before and the
+   * events.
+   */
+  async function recorded(view: GraphView, command: Exclude<Command, Taking>): Promise<number> {
+    const before = view.state;
+    const events: Batched[] = [];
+    const tapped: GraphView = {
+      get state() {
+        return view.state;
+      },
+      get version() {
+        return view.version;
+      },
+      get status() {
+        return view.status;
+      },
+      dispatch(v, type, payload) {
+        events.push({ v, type, payload });
+        return view.dispatch(v, type, payload);
+      },
+    };
+    try {
+      await apply(tapped, command);
+    } finally {
+      // A command that throws after writing (a rename's second check, say)
+      // has still written: what it wrote is a step like any other.
+      const entry = stepOf(before, view.state, events);
+      if (entry) history.record(view, entry);
+    }
+    // A write that changed nothing (an indent with nowhere to go) names the
+    // version already held, which is as true.
+    return view.version;
+  }
+
+  /**
+   * The next step `way` taken back, by writing what takes it back as one
+   * batch, or why it stops. What it writes is kept the other way: an undo
+   * can be redone, which writes the step's own events again, and a redo
+   * undone.
+   */
+  async function take(view: GraphView, way: Way): Promise<Undone> {
+    const next = history.next(view, way, view.state);
+    if (next.kind === "nothing") return { version: view.version, result: "nothing" };
+    if (next.kind === "stopped") {
+      return { version: view.version, result: next.why, ...next.where };
+    }
+    const before = view.state;
+    const written = batch(next.inverse);
+    await view.dispatch(written.v, written.type, written.payload);
+    history.taken(view, way, next.entry, takenBack(next.entry, before, written));
+    return { version: view.version, result: "done", ...next.entry.where };
   }
 
   return {
@@ -140,17 +204,35 @@ export function createGraphSession(
 
     /**
      * Records `command`, checked by `requireCommand` before it gets here, as
-     * the `@pbnotes/graph` command it names (#158). Through `write`, so every
-     * write is recorded one at a time in the order it arrived.
+     * the `@pbnotes/graph` command it names (#158), and keeps it as a step to
+     * undo. Undo and redo take a step back instead (#234). Through `write`,
+     * so every write is recorded one at a time in the order it arrived.
      */
-    run: (command: Command) => write((view) => apply(view, command)),
+    run: <C extends Command>(command: C): Promise<Reply<C>> =>
+      (isTaking(command)
+        ? write((view) => take(view, command.type))
+        : write((view) => recorded(view, command))) as Promise<Reply<C>>,
+
+    /**
+     * Undo's history, gone: the open project changed (#234). A write still
+     * queued for the project before keeps its step under that project's
+     * graph, never this one's.
+     */
+    forget(): void {
+      history.forget();
+    },
   };
 }
 
 export type GraphSession = ReturnType<typeof createGraphSession>;
 
+/** Whether `command` takes a step back, rather than writing one. */
+function isTaking(command: Command): command is Taking {
+  return command.type === "undo" || command.type === "redo";
+}
+
 /** A command run as the one `@pbnotes/graph` command it names. */
-function apply(view: GraphView, command: Command): Promise<unknown> {
+function apply(view: GraphView, command: Exclude<Command, Taking>): Promise<unknown> {
   switch (command.type) {
     case "addBlock": {
       const { title, text, after, id } = command;
