@@ -47,7 +47,14 @@ import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
 import { DELETE_HANDLES, reads as readsDeletes, reduce as reduceDeletes } from "./deletes/deletes.ts";
 import { all, BATCH_HANDLES, unbatch } from "./batch/batch.ts";
-import type { BatchEvent } from "./batch/batch.ts";
+import type { BatchEvent, Batched } from "./batch/batch.ts";
+import { holds as holdsWith, invert as invertWith } from "./undo/undo.ts";
+import type { Step, Undo } from "./undo/undo.ts";
+import { BLOCK_UNDO } from "./blocks/undo.ts";
+import { PROPERTY_UNDO } from "./properties/undo.ts";
+import { TAG_UNDO } from "./tags/undo.ts";
+import { ALIAS_UNDO } from "./aliases/undo.ts";
+import { DELETE_UNDO } from "./deletes/undo.ts";
 import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
 import type { EditedState } from "./edited/edited.ts";
@@ -58,6 +65,8 @@ import { canonicalize } from "./canonicalize/canonicalize.ts";
 export { canonicalize } from "./canonicalize/canonicalize.ts";
 export { NAMESPACE } from "./events/events.ts";
 export { batch, each } from "./batch/batch.ts";
+export { CANNOT } from "./undo/undo.ts";
+export type { Check, Undo } from "./undo/undo.ts";
 export type { BatchEvent, Batched } from "./batch/batch.ts";
 export { DATE_PATTERN, dateOf, namesOf, today } from "./journal/journal.ts";
 export { titleOf } from "./titles/titles.ts";
@@ -193,6 +202,42 @@ export const graphFold = {
     edited: new Map(),
   } as Graph,
 };
+
+// ── Undo (#233) ─────────────────────────────────────────────────────────────
+
+/** What one command wrote: the graph before it, its events, and the graph after. */
+export type UndoStep = Step<Graph>;
+
+/**
+ * Event type → how to undo it: every slice's entries for the events it owns.
+ * Keyed on every type in `HANDLES` but `batch`, which is undone as the events
+ * it holds, so an event type with no entry stops the build here. An event
+ * that cannot be undone says so in its entry (`CANNOT`).
+ */
+export const UNDO: Record<Exclude<keyof typeof HANDLES, BatchEvent["type"]>, Undo<Graph>> = {
+  ...BLOCK_UNDO,
+  ...PROPERTY_UNDO,
+  ...TAG_UNDO,
+  ...ALIAS_UNDO,
+  ...DELETE_UNDO,
+};
+
+/**
+ * The events that undo `events`, written on `before`, to be written as one
+ * `batch`. `[]` when nothing in them changed anything; `undefined` when one
+ * that did cannot be undone. See the README.
+ */
+export function invert(before: Graph, events: readonly Batched[]): Batched[] | undefined {
+  return invertWith(graphFold.reduce, UNDO, before, events);
+}
+
+/**
+ * Whether `step` can still be undone in `now`: everything it touched is as it
+ * left it, so undoing it undoes nobody else's work.
+ */
+export function holds(now: Graph, step: UndoStep): boolean {
+  return holdsWith(graphFold.reduce, UNDO, now, step);
+}
 
 /** An event as the fold is handed one. */
 type Incoming = { type: string; v: number; at?: unknown; payload: unknown };
