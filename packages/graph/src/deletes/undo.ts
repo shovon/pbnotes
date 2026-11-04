@@ -12,7 +12,7 @@ import { propertySet } from "../properties/properties.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import { tagAdded } from "../tags/tags.ts";
 import type { TagState } from "../tags/tags.ts";
-import { aliasAdded } from "../aliases/aliases.ts";
+import { aliasAdded } from "../aliases/added/added.ts";
 import type { AliasState } from "../aliases/aliases.ts";
 import { titleOf } from "../titles/titles.ts";
 import type { DeleteEvent } from "./deletes.ts";

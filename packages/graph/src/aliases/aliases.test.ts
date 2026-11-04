@@ -7,10 +7,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { NAMESPACE } from "../events/events.ts";
 import { addBlock, getAliases, getEdited, graphFold, hasContent, pageDeleted } from "../graph.ts";
 import type { Graph, GraphView } from "../graph.ts";
-import { aliasAdded, aliasRemoved, reduce } from "./aliases.ts";
+import { aliasAdded } from "./added/added.ts";
+import { aliasRemoved } from "./removed/removed.ts";
+import { reduce } from "./slice.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -34,25 +37,6 @@ function memory(): GraphView {
   };
 }
 
-test("an added gives the page that alias, and names both", () => {
-  const state = fold([added("JavaScript", "JS")]);
-  assert.deepEqual(state.aliases, new Map([["javascript", new Set(["js"])]]));
-  assert.deepEqual(getAliases(state, "javascript"), ["JS"]);
-  assert.equal(state.titles.get("javascript"), "JavaScript");
-  assert.equal(state.titles.get("js"), "JS");
-  assert.equal(state.blocks.size, 0);
-});
-
-test("an added over a populated state keeps what was there", async () => {
-  const view = memory();
-  await addBlock(view, "JavaScript", "see [[Node]]", undefined, "j");
-  const before = view.state;
-  const state = fold([added("JavaScript", "JS"), added("JavaScript", "ECMAScript")], before);
-  assert.equal(state.blocks, before.blocks);
-  assert.deepEqual(getAliases(state, "JavaScript"), ["ECMAScript", "JS"]);
-  assert.equal(state.titles.get("node"), "Node");
-});
-
 test("a page holds an alias once, and the later event on one alias wins", () => {
   const once = fold([added("JavaScript", "JS")]);
   assert.equal(graphFold.reduce(once, added("javascript", " js ")), once);
@@ -65,19 +49,6 @@ test("an added and a removed from two writers end with whichever folds later, al
   const b = removed("A", "B");
   assert.deepEqual(getAliases(fold([a, b]), "A"), []);
   assert.deepEqual(getAliases(fold([b, a]), "A"), ["B"]);
-});
-
-test("removing an alias the page lacks changes nothing but the spelling", () => {
-  const before = fold([added("A", "B")]);
-  const after = graphFold.reduce(before, removed("A", "C"));
-  assert.equal(after.aliases, before.aliases);
-  assert.equal(after.titles.get("c"), "C");
-  assert.equal(graphFold.reduce(after, removed("a", "c")), after);
-});
-
-test("removing a page's last alias deletes its entry", () => {
-  const state = fold([added("A", "B"), added("A", "C"), removed("A", "B"), removed("A", "C")]);
-  assert.equal(state.aliases.has("a"), false);
 });
 
 test("a malformed alias event is skipped whole, and extra fields are ignored", () => {
@@ -121,4 +92,24 @@ test("an alias is something on its page: it counts as content, an edit, and a de
   const deleted = fold([pageDeleted("A")], state);
   assert.equal(deleted.aliases.has("a"), false);
   assert.equal(hasContent(deleted, "a"), false);
+});
+
+/**
+ * `added/` and `removed/` import each other, since each is undone by the
+ * other. That is safe only while neither builds an event as it loads. Each
+ * order is a fresh process, so neither module is already loaded.
+ */
+test("the alias events load in either order to the same slice", () => {
+  const here = new URL(".", import.meta.url);
+  const slice = (first: string) =>
+    execFileSync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      `await import(${JSON.stringify(new URL(first, here).href)});
+       const { ALIAS_HANDLES, ALIAS_UNDO } = await import(${JSON.stringify(new URL("slice.ts", here).href)});
+       console.log(JSON.stringify([ALIAS_HANDLES, Object.keys(ALIAS_UNDO)]));`,
+    ]).toString();
+  const added = slice("added/added.ts");
+  assert.equal(slice("removed/removed.ts"), added);
+  assert.deepEqual(JSON.parse(added)[1].length, 2);
 });

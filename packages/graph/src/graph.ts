@@ -36,13 +36,15 @@ import {
   reduce as reduceTags,
 } from "./tags/tags.ts";
 import type { TagEvent, TagState } from "./tags/tags.ts";
+import { named as namedByAliases } from "./aliases/aliases.ts";
+import type { AliasState } from "./aliases/aliases.ts";
 import {
   ALIAS_HANDLES,
-  named as namedByAliases,
+  ALIAS_UNDO,
   reads as readsAliases,
   reduce as reduceAliases,
-} from "./aliases/aliases.ts";
-import type { AliasEvent, AliasState } from "./aliases/aliases.ts";
+} from "./aliases/slice.ts";
+import type { AliasEvent } from "./aliases/slice.ts";
 import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
 import { DELETE_HANDLES, reads as readsDeletes, reduce as reduceDeletes } from "./deletes/deletes.ts";
@@ -53,7 +55,6 @@ import type { Step, Undo } from "./undo/undo.ts";
 import { BLOCK_UNDO } from "./blocks/undo.ts";
 import { PROPERTY_UNDO } from "./properties/undo.ts";
 import { TAG_UNDO } from "./tags/undo.ts";
-import { ALIAS_UNDO } from "./aliases/undo.ts";
 import { DELETE_UNDO } from "./deletes/undo.ts";
 import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
@@ -106,8 +107,10 @@ export { removeProperty, renameProperty, setProperty } from "./properties/comman
 export { predictTags, tagAdded, tagRemoved } from "./tags/tags.ts";
 export { addTag, removeTag } from "./tags/commands.ts";
 export type { TagAdded, TagEvent, TagRemoved } from "./tags/tags.ts";
-export { aliasAdded, aliasRemoved } from "./aliases/aliases.ts";
-export type { AliasAdded, AliasEvent, AliasRemoved } from "./aliases/aliases.ts";
+export { aliasAdded } from "./aliases/added/added.ts";
+export { aliasRemoved } from "./aliases/removed/removed.ts";
+export type { AliasAdded, AliasRemoved } from "./aliases/aliases.ts";
+export type { AliasEvent } from "./aliases/slice.ts";
 export {
   deletePage,
   getDeletions,
