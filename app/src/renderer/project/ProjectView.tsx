@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { locate, canonicalize, today } from '@pbnotes/graph';
-import type { GraphApi } from '../../shared/graph';
+import type { GraphApi, Undone } from '../../shared/graph';
 import type { Act } from '../ui';
 import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
@@ -25,6 +25,7 @@ import { forget, visit } from './Sidebar/recent/recent';
 import { togglesSidebar } from './Sidebar/shortcut/shortcut';
 import { createDispatcher } from './undo/dispatcher/dispatcher';
 import { watchFields } from './undo/fields';
+import { landing } from './undo/landing/landing';
 import type { Fields } from './undo/fields';
 import { OwnEdit } from './undo/own-edit';
 
@@ -246,15 +247,24 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   /**
    * Undo (#247): the menu's Undo and Redo, and the browser's own undo from
    * any field, go to one dispatcher. The open field's history first, then
-   * main's, through `act`, so a refused undo lands in the app's notice. What
-   * the window does with main's answer is #248; here the reply's version
-   * reaches the screen the way every write's does, by the notice of it.
+   * main's, through `act`, so a refused undo lands in the app's notice.
+   *
+   * Main's answer (#248): the window goes to where the step happened and
+   * flashes its block, once the view holds the undo. When undo stopped, it
+   * goes there too and the notice says why, thrown as `act` reports any
+   * failed action. Nothing is drawn ahead: what an undo writes is main's.
    */
   const [fields, setFields] = useState<Fields | null>(null);
   useEffect(() => {
     const dispatcher = createDispatcher((way) =>
       act(async () => {
-        await graph.run({ type: way });
+        // Main answers undo and redo with an `Undone` (`Reply` in
+        // `shared/graph.ts`); the page view's `run` is typed for every write.
+        const it = landing((await graph.run({ type: way })) as Undone);
+        const { page, block, version, say } = it;
+        if (page !== undefined) setTrail((trail) => go(trail, { page }));
+        if (block !== undefined) setTarget({ id: block, version });
+        if (say !== undefined) throw new Error(say);
       }),
     );
     const watched = watchFields(document, dispatcher, () => now().getTime());
@@ -317,8 +327,13 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
     window.scrollTo(0, 0);
   }, [asked, zoom, browsing]);
 
-  /** A block to scroll to and flash once its page has rendered. */
-  const [target, setTarget] = useState<string | null>(null);
+  /**
+   * A block to scroll to and flash once its page has rendered, and the
+   * version the view has to hold first: an undo's (#248), so a block it
+   * brought back is drawn before it is looked for. 0 for a block already
+   * there.
+   */
+  const [target, setTarget] = useState<{ id: string; version: number } | null>(null);
 
   /**
    * Opens the page a block is on, the way a wikilink does, and brings the
@@ -330,7 +345,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       const found = await graph.locate(id);
       if (!found) throw new Error('That block no longer exists.');
       setTrail((trail) => go(trail, { page: found.page }));
-      setTarget(id);
+      setTarget({ id, version: 0 });
     });
 
   /**
@@ -353,9 +368,10 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    */
   useEffect(() => {
     if (target === null || !held || !samePlace(held.place, place)) return;
+    if (held.view.version < target.version) return;
     setTarget(null);
     const element = document.querySelector(
-      `[data-block-id="${CSS.escape(target)}"]`,
+      `[data-block-id="${CSS.escape(target.id)}"]`,
     );
     if (!element) return;
     element.scrollIntoView({ block: 'center' });
