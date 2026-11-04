@@ -1,14 +1,14 @@
 /**
  * Writing a page delete: the command that checks the page before it builds
- * and dispatches. The event is `deleted/`.
+ * and dispatches. The event is `events/pages/deleted/`.
  */
 import type { BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { TagState } from "../tags/tags.ts";
 import type { AliasState } from "../aliases/aliases.ts";
 import { hasContent } from "./deletes.ts";
-import type { DeleteEvent } from "./slice.ts";
-import { pageDeleted } from "./deleted/deleted.ts";
+import type { DeleteEvent } from "../events/pages/slice.ts";
+import { pageDeleted } from "../events/pages/deleted/deleted.ts";
 
 // ── The command ─────────────────────────────────────────────────────────────
 

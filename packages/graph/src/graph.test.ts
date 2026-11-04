@@ -243,18 +243,20 @@ test("today is the local calendar day of the moment it is handed", () => {
 });
 
 /**
- * Every event module: `<slice>/<event>/<event>.ts`, found on disk so a new
- * one is covered without being listed here.
+ * Every event module: `events/<subject>/<event>/<event>.ts`, found on disk
+ * so a new one is covered without being listed here.
  */
 function eventModules(): string[] {
-  const src = new URL(".", import.meta.url);
+  const events = new URL("events/", import.meta.url);
   const folders = (at: URL) =>
     readdirSync(at, { withFileTypes: true })
       .filter((it) => it.isDirectory())
       .map((it) => it.name);
-  return folders(src)
-    .flatMap((slice) => folders(new URL(`${slice}/`, src)).map((event) => `${slice}/${event}/${event}.ts`))
-    .filter((path) => existsSync(new URL(path, src)))
+  return folders(events)
+    .flatMap((subject) =>
+      folders(new URL(`${subject}/`, events)).map((event) => `events/${subject}/${event}/${event}.ts`),
+    )
+    .filter((path) => existsSync(new URL(path, import.meta.url)))
     .sort();
 }
 

@@ -12,7 +12,7 @@
  * hidden behind `unknown`, so a slice can hold events with different payloads
  * in one list.
  */
-import type { Batched } from "../batch/batch.ts";
+import type { Batched } from "../events/batch/batch.ts";
 import { CANNOT } from "../undo/undo.ts";
 import type { Check, Undo } from "../undo/undo.ts";
 

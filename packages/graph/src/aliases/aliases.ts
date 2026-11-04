@@ -9,8 +9,9 @@
  * later, so removing an alias undoes everything it did at once.
  *
  * This file holds what both alias events share: the state, the payload, and
- * how a page gains or loses an alias. Each event is its own module
- * (`added/`, `removed/`), and `slice.ts` puts them together (#238).
+ * how a page gains or loses an alias. The events themselves are in
+ * `events/aliases/`, one module each, with the list that puts them together
+ * (#238).
  *
  * Nothing here reads blocks, properties or tags, and nothing in those folds
  * reads this.

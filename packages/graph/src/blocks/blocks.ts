@@ -1,8 +1,8 @@
 /**
  * The block is the primitive, and this is what every block event shares: the
- * tree, the payloads, where a new block goes, and the moves. Each event is its
- * own module (`created/`, `edited/`, `deleted/`, `indented/`, `outdented/`),
- * and `slice.ts` puts them together as the fold (#238).
+ * tree, the payloads, where a new block goes, and the moves. The events
+ * themselves are in `events/blocks/`, one module each, with the list that
+ * puts them together as the fold (#238).
  *
  * A page is not a record anywhere: it is a title that blocks carry, so pages
  * come into being by being named and go away by having nothing left on them.

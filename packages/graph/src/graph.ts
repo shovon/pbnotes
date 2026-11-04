@@ -9,8 +9,8 @@
  * commands a view whose `dispatch` writes to its own log.
  */
 import type { BlockState } from "./blocks/blocks.ts";
-import { BLOCK_HANDLES, BLOCK_UNDO, reads as readsBlocks, reduce } from "./blocks/slice.ts";
-import type { PageEvent } from "./blocks/slice.ts";
+import { BLOCK_HANDLES, BLOCK_UNDO, reads as readsBlocks, reduce } from "./events/blocks/slice.ts";
+import type { PageEvent } from "./events/blocks/slice.ts";
 import {
   countBlocks,
   countLinks,
@@ -29,8 +29,8 @@ import {
   PROPERTY_UNDO,
   reads as readsProperties,
   reduce as reduceProperties,
-} from "./properties/slice.ts";
-import type { PropertyEvent } from "./properties/slice.ts";
+} from "./events/properties/slice.ts";
+import type { PropertyEvent } from "./events/properties/slice.ts";
 import {
   countTaggedBy,
   getTaggedBy as getTaggedByAt,
@@ -38,8 +38,8 @@ import {
   named as namedByTags,
 } from "./tags/tags.ts";
 import type { TagState } from "./tags/tags.ts";
-import { TAG_HANDLES, TAG_UNDO, reads as readsTags, reduce as reduceTags } from "./tags/slice.ts";
-import type { TagEvent } from "./tags/slice.ts";
+import { TAG_HANDLES, TAG_UNDO, reads as readsTags, reduce as reduceTags } from "./events/tags/slice.ts";
+import type { TagEvent } from "./events/tags/slice.ts";
 import { named as namedByAliases } from "./aliases/aliases.ts";
 import type { AliasState } from "./aliases/aliases.ts";
 import {
@@ -47,8 +47,8 @@ import {
   ALIAS_UNDO,
   reads as readsAliases,
   reduce as reduceAliases,
-} from "./aliases/slice.ts";
-import type { AliasEvent } from "./aliases/slice.ts";
+} from "./events/aliases/slice.ts";
+import type { AliasEvent } from "./events/aliases/slice.ts";
 import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
 import {
@@ -56,14 +56,14 @@ import {
   DELETE_UNDO,
   reads as readsDeletes,
   reduce as reduceDeletes,
-} from "./deletes/slice.ts";
-import { all, BATCH_HANDLES, unbatch } from "./batch/batch.ts";
-import type { BatchEvent, Batched } from "./batch/batch.ts";
+} from "./events/pages/slice.ts";
+import { all, BATCH_HANDLES, unbatch } from "./events/batch/batch.ts";
+import type { BatchEvent, Batched } from "./events/batch/batch.ts";
 import { holds as holdsWith, invert as invertWith } from "./undo/undo.ts";
 import type { Step, Undo } from "./undo/undo.ts";
 import { admits } from "./over/over.ts";
 import type { DeleteState } from "./deletes/deletes.ts";
-import type { DeleteEvent } from "./deletes/slice.ts";
+import type { DeleteEvent } from "./events/pages/slice.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
 import type { EditedState } from "./edited/edited.ts";
 import { search } from "./search/search.ts";
@@ -72,10 +72,10 @@ import { canonicalize } from "./canonicalize/canonicalize.ts";
 
 export { canonicalize } from "./canonicalize/canonicalize.ts";
 export { NAMESPACE } from "./events/events.ts";
-export { batch, each } from "./batch/batch.ts";
+export { batch, each } from "./events/batch/batch.ts";
 export { CANNOT } from "./undo/undo.ts";
 export type { Check, Undo } from "./undo/undo.ts";
-export type { BatchEvent, Batched } from "./batch/batch.ts";
+export type { BatchEvent, Batched } from "./events/batch/batch.ts";
 export { DATE_PATTERN, dateOf, namesOf, today } from "./journal/journal.ts";
 export { titleOf } from "./titles/titles.ts";
 export {
@@ -88,7 +88,7 @@ export {
   outdented,
   without,
 } from "./blocks/blocks.ts";
-export { predict, reduce } from "./blocks/slice.ts";
+export { predict, reduce } from "./events/blocks/slice.ts";
 export type {
   Block,
   BlockCreated,
@@ -99,35 +99,35 @@ export type {
   Found,
   Page,
 } from "./blocks/blocks.ts";
-export type { PageEvent } from "./blocks/slice.ts";
+export type { PageEvent } from "./events/blocks/slice.ts";
 export { getPages, getPreviews, linking, locateBlock, searchBlocks } from "./blocks/queries.ts";
 export type { BlockMatch } from "./blocks/queries.ts";
-export { propertySet } from "./properties/set/set.ts";
-export { propertyRemoved } from "./properties/removed/removed.ts";
-export { predictProperties } from "./properties/slice.ts";
+export { propertySet } from "./events/properties/set/set.ts";
+export { propertyRemoved } from "./events/properties/removed/removed.ts";
+export { predictProperties } from "./events/properties/slice.ts";
 export type { Property, PropertyRemoved, PropertySet } from "./properties/properties.ts";
-export type { PropertyEvent } from "./properties/slice.ts";
+export type { PropertyEvent } from "./events/properties/slice.ts";
 export { removeProperty, renameProperty, setProperty } from "./properties/commands.ts";
-export { tagAdded } from "./tags/added/added.ts";
-export { tagRemoved } from "./tags/removed/removed.ts";
-export { predictTags } from "./tags/slice.ts";
+export { tagAdded } from "./events/tags/added/added.ts";
+export { tagRemoved } from "./events/tags/removed/removed.ts";
+export { predictTags } from "./events/tags/slice.ts";
 export { addTag, removeTag } from "./tags/commands.ts";
 export type { TagAdded, TagRemoved } from "./tags/tags.ts";
-export type { TagEvent } from "./tags/slice.ts";
-export { aliasAdded } from "./aliases/added/added.ts";
-export { aliasRemoved } from "./aliases/removed/removed.ts";
+export type { TagEvent } from "./events/tags/slice.ts";
+export { aliasAdded } from "./events/aliases/added/added.ts";
+export { aliasRemoved } from "./events/aliases/removed/removed.ts";
 export type { AliasAdded, AliasRemoved } from "./aliases/aliases.ts";
-export type { AliasEvent } from "./aliases/slice.ts";
+export type { AliasEvent } from "./events/aliases/slice.ts";
 export { getDeletions, getRefsTo, hasContent } from "./deletes/deletes.ts";
 export { deletePage } from "./deletes/commands.ts";
-export { pageDeleted } from "./deletes/deleted/deleted.ts";
+export { pageDeleted } from "./events/pages/deleted/deleted.ts";
 export type { PageDeleted } from "./deletes/deletes.ts";
-export type { DeleteEvent } from "./deletes/slice.ts";
-export { blockCreated } from "./blocks/created/created.ts";
-export { blockEdited } from "./blocks/edited/edited.ts";
-export { blockDeleted } from "./blocks/deleted/deleted.ts";
-export { blockIndented } from "./blocks/indented/indented.ts";
-export { blockOutdented } from "./blocks/outdented/outdented.ts";
+export type { DeleteEvent } from "./events/pages/slice.ts";
+export { blockCreated } from "./events/blocks/created/created.ts";
+export { blockEdited } from "./events/blocks/edited/edited.ts";
+export { blockDeleted } from "./events/blocks/deleted/deleted.ts";
+export { blockIndented } from "./events/blocks/indented/indented.ts";
+export { blockOutdented } from "./events/blocks/outdented/outdented.ts";
 export {
   addBlock,
   deleteBlock,

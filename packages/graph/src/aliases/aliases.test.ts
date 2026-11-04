@@ -10,9 +10,9 @@ import assert from "node:assert/strict";
 import { NAMESPACE } from "../events/events.ts";
 import { getAliases, getEdited, graphFold, hasContent, pageDeleted } from "../graph.ts";
 import type { Graph } from "../graph.ts";
-import { aliasAdded } from "./added/added.ts";
-import { aliasRemoved } from "./removed/removed.ts";
-import { reduce } from "./slice.ts";
+import { aliasAdded } from "../events/aliases/added/added.ts";
+import { aliasRemoved } from "../events/aliases/removed/removed.ts";
+import { reduce } from "../events/aliases/slice.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 

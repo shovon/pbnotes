@@ -10,11 +10,11 @@
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { getProperties, valueOf } from "./properties.ts";
 import type { Property, PropertyState } from "./properties.ts";
-import type { PropertyEvent } from "./slice.ts";
-import { propertySet } from "./set/set.ts";
-import { propertyRemoved } from "./removed/removed.ts";
-import { batch } from "../batch/batch.ts";
-import type { BatchEvent } from "../batch/batch.ts";
+import type { PropertyEvent } from "../events/properties/slice.ts";
+import { propertySet } from "../events/properties/set/set.ts";
+import { propertyRemoved } from "../events/properties/removed/removed.ts";
+import { batch } from "../events/batch/batch.ts";
+import type { BatchEvent } from "../events/batch/batch.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of

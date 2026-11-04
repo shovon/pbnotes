@@ -8,12 +8,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { indented, outdented } from "./blocks.ts";
-import { BLOCK_HANDLES, predict, reduce } from "./slice.ts";
+import { BLOCK_HANDLES, predict, reduce } from "../events/blocks/slice.ts";
 import { NAMESPACE } from "../events/events.ts";
 import { getPage, getReferences, graphFold, read, searchBlocks, searchPages } from "../graph.ts";
 import type { Graph } from "../graph.ts";
 import type { Block } from "./blocks.ts";
-import type { PageEvent } from "./slice.ts";
+import type { PageEvent } from "../events/blocks/slice.ts";
 
 const TODAY = "2026-09-21";
 

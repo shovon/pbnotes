@@ -9,8 +9,9 @@
  * link names does when the link goes.
  *
  * This file holds what both property events share: the state, the payloads,
- * and how a page's value for a key is read and written. Each event is its own
- * module (`set/`, `removed/`), and `slice.ts` puts them together (#238).
+ * and how a page's value for a key is read and written. The events
+ * themselves are in `events/properties/`, one module each, with the list that
+ * puts them together (#238).
  *
  * Nothing here reads blocks, and nothing in the block fold reads this.
  */

@@ -6,12 +6,12 @@ import type { Written } from "../over/over.ts";
 import { blocksOn, find, indented, locate, outdented } from "./blocks.ts";
 import type { BlockState, Found, Page } from "./blocks.ts";
 import { getPage } from "./queries.ts";
-import type { PageEvent } from "./slice.ts";
-import { blockCreated } from "./created/created.ts";
-import { blockEdited } from "./edited/edited.ts";
-import { blockDeleted } from "./deleted/deleted.ts";
-import { blockIndented } from "./indented/indented.ts";
-import { blockOutdented } from "./outdented/outdented.ts";
+import type { PageEvent } from "../events/blocks/slice.ts";
+import { blockCreated } from "../events/blocks/created/created.ts";
+import { blockEdited } from "../events/blocks/edited/edited.ts";
+import { blockDeleted } from "../events/blocks/deleted/deleted.ts";
+import { blockIndented } from "../events/blocks/indented/indented.ts";
+import { blockOutdented } from "../events/blocks/outdented/outdented.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of

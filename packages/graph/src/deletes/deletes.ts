@@ -1,7 +1,6 @@
 /**
  * Deleting a page: the state a delete keeps, and the reads around it. The
- * event is its own module (`deleted/`), `slice.ts` puts it in a slice, and
- * the command is `commands.ts` (#238).
+ * event is in `events/pages/`, and the command is `commands.ts` (#238).
  *
  * Where the block, property, tag and alias folds meet, because a page delete
  * empties all four. One event for the whole page, so a crash or a sync still
