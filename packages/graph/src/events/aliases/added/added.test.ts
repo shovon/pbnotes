@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBlock, getAliases, graphFold, holds, invert } from "../../../graph.ts";
+import { addBlock, getAliases, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph, GraphView } from "../../../graph.ts";
 import { ALIAS_ADDED, aliasAdded } from "./added.ts";
 import { aliasRemoved } from "../removed/removed.ts";
@@ -71,7 +71,7 @@ test("an added is undone by a removed, and not at all when the page already had 
 test("an added holds until someone else takes the alias away", () => {
   const before = graphFold.initial;
   const after = fold([added("A", "B")]);
-  const step = { before, events: [added("A", "B")], after };
+  const step = remember(before, [added("A", "B")]);
   assert.equal(holds(fold([added("A", "C")], after), step), true, "another alias");
   assert.equal(holds(fold([removed("A", "B")], after), step), false);
 });

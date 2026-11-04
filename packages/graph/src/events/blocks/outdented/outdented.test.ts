@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getPage, graphFold, holds, invert } from "../../../graph.ts";
+import { getPage, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Batched, Graph } from "../../../graph.ts";
 import { blockCreated } from "../created/created.ts";
 import { blockIndented } from "../indented/indented.ts";
@@ -49,7 +49,8 @@ test("an outdent is undone by an indent, then an outdent for each sibling it too
 
 test("an outdent holds until the block or a sibling it took along moves again", () => {
   const out = blockOutdented({ id: "a1", after: "a" });
-  const step = { before: FOO, events: [out], after: fold(FOO, out) };
-  assert.equal(holds(step.after, step), true);
-  assert.equal(holds(fold(step.after, blockOutdented({ id: "a2", after: "a1" })), step), false);
+  const after = fold(FOO, out);
+  const step = remember(FOO, [out]);
+  assert.equal(holds(after, step), true);
+  assert.equal(holds(fold(after, blockOutdented({ id: "a2", after: "a1" })), step), false);
 });

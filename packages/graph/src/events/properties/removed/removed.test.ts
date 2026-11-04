@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getProperties, graphFold, holds, invert } from "../../../graph.ts";
+import { getProperties, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph } from "../../../graph.ts";
 import { propertySet } from "../set/set.ts";
 import { PROPERTY_REMOVED, propertyRemoved } from "./removed.ts";
@@ -51,7 +51,7 @@ test("a removed is undone by setting the old value back, and not at all when the
 test("a removed holds until someone else sets the key again", () => {
   const before = fold([set("Bar", "K", "1")]);
   const after = fold([removed("Bar", "K")], before);
-  const step = { before, events: [removed("Bar", "K")], after };
+  const step = remember(before, [removed("Bar", "K")]);
   assert.equal(holds(after, step), true);
   assert.equal(holds(fold([set("Bar", "K", "2")], after), step), false);
 });

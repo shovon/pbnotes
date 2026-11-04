@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBlock, graphFold, holds, invert } from "../../../graph.ts";
+import { addBlock, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph, GraphView } from "../../../graph.ts";
 import { getTaggedBy, getTags } from "../../../tags/tags.ts";
 import { TAG_ADDED, tagAdded } from "./added.ts";
@@ -72,7 +72,7 @@ test("an added is undone by a removed, and not at all when the page already had 
 
 test("an added holds until someone else takes the tag away", () => {
   const after = fold([added("Foo", "Work")]);
-  const step = { before: graphFold.initial, events: [added("Foo", "Work")], after };
+  const step = remember(graphFold.initial, [added("Foo", "Work")]);
   assert.equal(holds(fold([added("Foo", "Home")], after), step), true, "another tag");
   assert.equal(holds(fold([removed("Foo", "Work")], after), step), false);
 });

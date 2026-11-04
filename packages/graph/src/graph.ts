@@ -59,8 +59,8 @@ import {
 } from "./events/pages/slice.ts";
 import { all, BATCH_HANDLES, unbatch } from "./events/batch/batch.ts";
 import type { BatchEvent, Batched } from "./events/batch/batch.ts";
-import { holds as holdsWith, invert as invertWith } from "./undo/undo.ts";
-import type { Step, Undo } from "./undo/undo.ts";
+import { holds as holdsWith, invert as invertWith, remember as rememberWith } from "./undo/undo.ts";
+import type { Remembered as RememberedWith, Undo } from "./undo/undo.ts";
 import { admits } from "./over/over.ts";
 import type { DeleteState } from "./deletes/deletes.ts";
 import type { DeleteEvent } from "./events/pages/slice.ts";
@@ -210,10 +210,10 @@ export const graphFold = {
   } as Graph,
 };
 
-// ── Undo (#233) ─────────────────────────────────────────────────────────────
+// ── Undo (#233, #242) ───────────────────────────────────────────────────────
 
-/** What one command wrote: the graph before it, its events, and the graph after. */
-export type UndoStep = Step<Graph>;
+/** A step as it is remembered: what undoes it, and what it must find. No graph. */
+export type Remembered = RememberedWith<Graph>;
 
 /**
  * Event type → how to undo it: every slice's entries for the events it owns.
@@ -239,11 +239,20 @@ export function invert(before: Graph, events: readonly Batched[]): Batched[] | u
 }
 
 /**
- * Whether `step` can still be undone in `now`: everything it touched is as it
- * left it, so undoing it undoes nobody else's work.
+ * `events`, written on `before`, as a step is remembered: the events that
+ * undo it, and what it has to find to be undone. Keeps no graph, so `before`
+ * and the graph after can be let go once it returns. See the README.
  */
-export function holds(now: Graph, step: UndoStep): boolean {
-  return holdsWith(graphFold.reduce, UNDO, now, step);
+export function remember(before: Graph, events: readonly Batched[]): Remembered {
+  return rememberWith(graphFold.reduce, UNDO, before, events);
+}
+
+/**
+ * Whether a remembered step can still be undone in `now`: everything it
+ * touched is as it left it, so undoing it undoes nobody else's work.
+ */
+export function holds(now: Graph, remembered: Remembered): boolean {
+  return holdsWith(now, remembered);
 }
 
 /** An event as the fold is handed one. */

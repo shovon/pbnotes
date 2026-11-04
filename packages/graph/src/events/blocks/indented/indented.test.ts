@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { NAMESPACE } from "../../events.ts";
-import { graphFold, holds, invert } from "../../../graph.ts";
+import { graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Batched, Graph } from "../../../graph.ts";
 import { reduce } from "../slice.ts";
 import { blockCreated } from "../created/created.ts";
@@ -68,7 +68,8 @@ test("an indent under the sibling above is undone by an outdent after it; elsewh
 
 test("an indent holds until the block moves again", () => {
   const before = fold(empty(), blockCreated("Foo", "A", undefined, "a"), blockCreated("Foo", "B", "a", "b"));
-  const step = { before, events: [blockIndented({ id: "b", parent: "a" })], after: fold(before, blockIndented({ id: "b", parent: "a" })) };
-  assert.equal(holds(fold(step.after, blockEdited("b", "B!")), step), true, "a text change");
-  assert.equal(holds(fold(step.after, blockOutdented({ id: "b", after: "a" })), step), false);
+  const after = fold(before, blockIndented({ id: "b", parent: "a" }));
+  const step = remember(before, [blockIndented({ id: "b", parent: "a" })]);
+  assert.equal(holds(fold(after, blockEdited("b", "B!")), step), true, "a text change");
+  assert.equal(holds(fold(after, blockOutdented({ id: "b", after: "a" })), step), false);
 });
