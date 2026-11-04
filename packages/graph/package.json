@@ -7,7 +7,8 @@
   "main": "./src/graph.ts",
   "exports": "./src/graph.ts",
   "scripts": {
-    "test": "node --test '**/*.test.ts'"
+    "test": "node --test '**/*.test.ts'",
+    "typecheck": "tsc"
   },
   "dependencies": {
     "mdast-util-gfm-autolink-literal": "^2.0.1",
@@ -17,7 +18,9 @@
     "unified": "^11.0.5"
   },
   "devDependencies": {
-    "@types/mdast": "^4.0.4"
+    "@types/mdast": "^4.0.4",
+    "@types/node": "^26.4.1",
+    "typescript": "^5.9.3"
   },
   "license": "MIT"
 }
