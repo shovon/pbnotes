@@ -9,7 +9,9 @@ import assert from "node:assert/strict";
 import { NAMESPACE } from "../events/events.ts";
 import { addBlock, getProperties, graphFold, searchPages } from "../graph.ts";
 import type { Graph, GraphView } from "../graph.ts";
-import { predictProperties, propertyRemoved, propertySet, reduce } from "./properties.ts";
+import { predictProperties, reduce } from "./slice.ts";
+import { propertySet } from "./set/set.ts";
+import { propertyRemoved } from "./removed/removed.ts";
 
 type Event = { type: string; v: number; payload: unknown };
 
@@ -19,25 +21,6 @@ const fold = (events: Event[], from: Graph = graphFold.initial): Graph =>
 
 const set = (page: string, key: string, value: string): Event => propertySet(page, key, value);
 const removed = (page: string, key: string): Event => propertyRemoved(page, key);
-
-test("a set gives the page that property, and names both the page and the key", () => {
-  const state = fold([set("Bar", "Widget", "blue")]);
-  assert.deepEqual(getProperties(state, "bar"), [{ key: "Widget", value: "blue" }]);
-  assert.equal(state.titles.get("bar"), "Bar");
-  assert.equal(state.titles.get("widget"), "Widget");
-  assert.equal(state.blocks.size, 0);
-});
-
-test("a set over a populated state keeps what was there", async () => {
-  const view = memory();
-  await addBlock(view, "Foo", "see [[Baz]]", undefined, "f");
-  const before = view.state;
-  const state = fold([set("Bar", "Widget", "blue"), set("Foo", "Status", "done")], before);
-  assert.equal(state.blocks, before.blocks);
-  assert.deepEqual(getProperties(state, "Foo"), [{ key: "Status", value: "done" }]);
-  assert.deepEqual(getProperties(state, "Bar"), [{ key: "Widget", value: "blue" }]);
-  assert.equal(state.titles.get("baz"), "Baz");
-});
 
 test("the later of two events on one key wins", () => {
   assert.deepEqual(getProperties(fold([set("Bar", "K", "1"), set("Bar", "K", "2")]), "Bar"), [
@@ -89,29 +72,6 @@ test("a key that is also written on stays a page when the property goes", async 
   await addBlock(view, "Widget", "notes", undefined, "w");
   const state = fold([set("Bar", "Widget", "blue"), removed("Bar", "Widget")], view.state);
   assert.deepEqual(searchPages(state, ""), ["Widget"]);
-});
-
-test("removing a page's last property deletes its entry; removing one of two keeps the other", () => {
-  const two = fold([set("Bar", "A", "1"), set("Bar", "B", "2")]);
-  assert.deepEqual(getProperties(fold([removed("Bar", "A")], two), "Bar"), [{ key: "B", value: "2" }]);
-  assert.equal(fold([removed("Bar", "A"), removed("Bar", "B")], two).properties.has("bar"), false);
-});
-
-test("removing a key the page lacks changes nothing but the spellings", () => {
-  const state = fold([set("Bar", "A", "1"), set("Other", "B", "2")]);
-  assert.equal(graphFold.reduce(state, removed("bar", "b")), state);
-  const named = graphFold.reduce(state, removed("Bar", "Nothing"));
-  assert.equal(named.properties, state.properties);
-  assert.equal(named.titles.get("nothing"), "Nothing");
-});
-
-test("a value is a plain string: empty is kept, and a link in it names nothing", () => {
-  const state = fold([set("Bar", "Empty", ""), set("Bar", "Link", "[[Gadget]]")]);
-  assert.deepEqual(getProperties(state, "Bar"), [
-    { key: "Empty", value: "" },
-    { key: "Link", value: "[[Gadget]]" },
-  ]);
-  assert.equal(state.titles.has("gadget"), false);
 });
 
 test("properties list by canonicalize(key), whatever order they were set in", () => {

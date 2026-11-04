@@ -7,10 +7,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { NAMESPACE } from "../events/events.ts";
-import { addBlock, getAliases, getEdited, graphFold, hasContent, pageDeleted } from "../graph.ts";
-import type { Graph, GraphView } from "../graph.ts";
+import { getAliases, getEdited, graphFold, hasContent, pageDeleted } from "../graph.ts";
+import type { Graph } from "../graph.ts";
 import { aliasAdded } from "./added/added.ts";
 import { aliasRemoved } from "./removed/removed.ts";
 import { reduce } from "./slice.ts";
@@ -23,19 +22,6 @@ const fold = (events: Event[], from: Graph = graphFold.initial): Graph =>
 
 const added = (page: string, alias: string): Event => aliasAdded(page, alias);
 const removed = (page: string, alias: string): Event => aliasRemoved(page, alias);
-
-/** A view over the fold alone, for writing blocks with the app's commands. */
-function memory(): GraphView {
-  let state: Graph = graphFold.initial;
-  return {
-    get state() {
-      return state;
-    },
-    async dispatch(v, type, payload) {
-      state = graphFold.reduce(state, { type, v, payload });
-    },
-  };
-}
 
 test("a page holds an alias once, and the later event on one alias wins", () => {
   const once = fold([added("JavaScript", "JS")]);
@@ -92,24 +78,4 @@ test("an alias is something on its page: it counts as content, an edit, and a de
   const deleted = fold([pageDeleted("A")], state);
   assert.equal(deleted.aliases.has("a"), false);
   assert.equal(hasContent(deleted, "a"), false);
-});
-
-/**
- * `added/` and `removed/` import each other, since each is undone by the
- * other. That is safe only while neither builds an event as it loads. Each
- * order is a fresh process, so neither module is already loaded.
- */
-test("the alias events load in either order to the same slice", () => {
-  const here = new URL(".", import.meta.url);
-  const slice = (first: string) =>
-    execFileSync(process.execPath, [
-      "--input-type=module",
-      "-e",
-      `await import(${JSON.stringify(new URL(first, here).href)});
-       const { ALIAS_HANDLES, ALIAS_UNDO } = await import(${JSON.stringify(new URL("slice.ts", here).href)});
-       console.log(JSON.stringify([ALIAS_HANDLES, Object.keys(ALIAS_UNDO)]));`,
-    ]).toString();
-  const added = slice("added/added.ts");
-  assert.equal(slice("removed/removed.ts"), added);
-  assert.deepEqual(JSON.parse(added)[1].length, 2);
 });

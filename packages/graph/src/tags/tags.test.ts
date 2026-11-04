@@ -17,7 +17,10 @@ import {
   searchPages,
 } from "../graph.ts";
 import type { Graph, GraphView } from "../graph.ts";
-import { getTaggedBy, getTags, predictTags, reduce, tagAdded, tagRemoved } from "./tags.ts";
+import { getTaggedBy, getTags } from "./tags.ts";
+import { predictTags, reduce } from "./slice.ts";
+import { tagAdded } from "./added/added.ts";
+import { tagRemoved } from "./removed/removed.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -27,26 +30,6 @@ const fold = (events: Event[], from: Graph = graphFold.initial): Graph =>
 
 const added = (page: string, tag: string): Event => tagAdded(page, tag);
 const removed = (page: string, tag: string): Event => tagRemoved(page, tag);
-
-test("an added gives the page that tag, and names both pages", () => {
-  const state = fold([added("Foo", "Work")]);
-  assert.deepEqual(getTags(state, "foo"), ["Work"]);
-  assert.deepEqual(getTaggedBy(state, "work"), ["Foo"]);
-  assert.equal(state.titles.get("foo"), "Foo");
-  assert.equal(state.titles.get("work"), "Work");
-  assert.equal(state.blocks.size, 0);
-});
-
-test("an added over a populated state keeps what was there", async () => {
-  const view = memory();
-  await addBlock(view, "Foo", "see [[Baz]]", undefined, "f");
-  const before = fold([added("Foo", "Work")], view.state);
-  const state = fold([added("Foo", "Home"), added("Bar", "Work")], before);
-  assert.equal(state.blocks, before.blocks);
-  assert.deepEqual(getTags(state, "Foo"), ["Home", "Work"]);
-  assert.deepEqual(getTags(state, "Bar"), ["Work"]);
-  assert.equal(state.titles.get("baz"), "Baz");
-});
 
 test("a page holds a tag once, and the later event on one tag wins", () => {
   const twice = fold([added("Foo", "Work")]);
@@ -96,20 +79,6 @@ test("getTaggedBy lists every page tagging a page, and drops one when its tag go
   assert.deepEqual(getTaggedBy(state, "Work"), ["A", "b"]);
   assert.deepEqual(getTaggedBy(fold([removed("A", "Work")], state), "Work"), ["b"]);
   assert.deepEqual(getTaggedBy(state, "Nothing"), []);
-});
-
-test("removing a page's last tag deletes its entry; removing one of two keeps the other", () => {
-  const two = fold([added("Foo", "A"), added("Foo", "B")]);
-  assert.deepEqual(getTags(fold([removed("Foo", "A")], two), "Foo"), ["B"]);
-  assert.equal(fold([removed("Foo", "A"), removed("Foo", "B")], two).tags.has("foo"), false);
-});
-
-test("removing a tag the page lacks changes nothing but the spellings", () => {
-  const state = fold([added("Foo", "A"), added("Other", "B")]);
-  assert.equal(graphFold.reduce(state, removed("foo", "b")), state);
-  const named = graphFold.reduce(state, removed("Foo", "Nothing"));
-  assert.equal(named.tags, state.tags);
-  assert.equal(named.titles.get("nothing"), "Nothing");
 });
 
 test("a page may tag itself", () => {

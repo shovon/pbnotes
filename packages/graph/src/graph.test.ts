@@ -6,6 +6,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 import {
   addBlock,
   batch,
@@ -19,6 +21,7 @@ import {
   getPages,
   HANDLES,
   inCode,
+  UNDO,
   listPages,
   indentBlock,
   NAMESPACE,
@@ -237,4 +240,42 @@ test("today is the local calendar day of the moment it is handed", () => {
   // Built from local parts, so this holds in any time zone.
   assert.equal(today(new Date(2026, 9, 27, 23, 59)), "2026-10-27");
   assert.equal(today(new Date(2026, 0, 5, 0, 0)), "2026-01-05");
+});
+
+/**
+ * Every event module: `<slice>/<event>/<event>.ts`, found on disk so a new
+ * one is covered without being listed here.
+ */
+function eventModules(): string[] {
+  const src = new URL(".", import.meta.url);
+  const folders = (at: URL) =>
+    readdirSync(at, { withFileTypes: true })
+      .filter((it) => it.isDirectory())
+      .map((it) => it.name);
+  return folders(src)
+    .flatMap((slice) => folders(new URL(`${slice}/`, src)).map((event) => `${slice}/${event}/${event}.ts`))
+    .filter((path) => existsSync(new URL(path, src)))
+    .sort();
+}
+
+/**
+ * Events that undo each other import each other, which is safe only while no
+ * event module builds an event as it loads (#238). Each module is imported
+ * first in a fresh process, so none is loaded already, and the graph that
+ * results has to be the same every time.
+ */
+test("every event module loads first to the same HANDLES and UNDO", () => {
+  const src = new URL(".", import.meta.url);
+  const tables = (first: string) =>
+    execFileSync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      `await import(${JSON.stringify(new URL(first, src).href)});
+       const { HANDLES, UNDO } = await import(${JSON.stringify(new URL("graph.ts", src).href)});
+       console.log(JSON.stringify([HANDLES, Object.keys(UNDO).sort()]));`,
+    ]).toString();
+  const modules = eventModules();
+  assert.ok(modules.length >= 7, `found ${modules.join(", ")}`);
+  const expected = JSON.stringify([HANDLES, Object.keys(UNDO).sort()]) + "\n";
+  for (const module of modules) assert.equal(tables(module), expected, module);
 });

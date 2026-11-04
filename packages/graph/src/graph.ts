@@ -21,21 +21,24 @@ import type { Page } from "./blocks/blocks.ts";
 import {
   getProperties as getPropertiesOn,
   named as namedByProperties,
+} from "./properties/properties.ts";
+import type { Property, PropertyState } from "./properties/properties.ts";
+import {
   PROPERTY_HANDLES,
+  PROPERTY_UNDO,
   reads as readsProperties,
   reduce as reduceProperties,
-} from "./properties/properties.ts";
-import type { Property, PropertyEvent, PropertyState } from "./properties/properties.ts";
+} from "./properties/slice.ts";
+import type { PropertyEvent } from "./properties/slice.ts";
 import {
   countTaggedBy,
   getTaggedBy as getTaggedByAt,
   getTags as getTagsOn,
   named as namedByTags,
-  TAG_HANDLES,
-  reads as readsTags,
-  reduce as reduceTags,
 } from "./tags/tags.ts";
-import type { TagEvent, TagState } from "./tags/tags.ts";
+import type { TagState } from "./tags/tags.ts";
+import { TAG_HANDLES, TAG_UNDO, reads as readsTags, reduce as reduceTags } from "./tags/slice.ts";
+import type { TagEvent } from "./tags/slice.ts";
 import { named as namedByAliases } from "./aliases/aliases.ts";
 import type { AliasState } from "./aliases/aliases.ts";
 import {
@@ -47,17 +50,20 @@ import {
 import type { AliasEvent } from "./aliases/slice.ts";
 import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
-import { DELETE_HANDLES, reads as readsDeletes, reduce as reduceDeletes } from "./deletes/deletes.ts";
+import {
+  DELETE_HANDLES,
+  DELETE_UNDO,
+  reads as readsDeletes,
+  reduce as reduceDeletes,
+} from "./deletes/slice.ts";
 import { all, BATCH_HANDLES, unbatch } from "./batch/batch.ts";
 import type { BatchEvent, Batched } from "./batch/batch.ts";
 import { holds as holdsWith, invert as invertWith } from "./undo/undo.ts";
 import type { Step, Undo } from "./undo/undo.ts";
 import { admits } from "./over/over.ts";
 import { BLOCK_UNDO } from "./blocks/undo.ts";
-import { PROPERTY_UNDO } from "./properties/undo.ts";
-import { TAG_UNDO } from "./tags/undo.ts";
-import { DELETE_UNDO } from "./deletes/undo.ts";
-import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
+import type { DeleteState } from "./deletes/deletes.ts";
+import type { DeleteEvent } from "./deletes/slice.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
 import type { EditedState } from "./edited/edited.ts";
 import { search } from "./search/search.ts";
@@ -97,29 +103,27 @@ export type {
 } from "./blocks/blocks.ts";
 export { getPages, getPreviews, linking, locateBlock, searchBlocks } from "./blocks/queries.ts";
 export type { BlockMatch } from "./blocks/queries.ts";
-export { predictProperties, propertyRemoved, propertySet } from "./properties/properties.ts";
-export type {
-  Property,
-  PropertyEvent,
-  PropertyRemoved,
-  PropertySet,
-} from "./properties/properties.ts";
+export { propertySet } from "./properties/set/set.ts";
+export { propertyRemoved } from "./properties/removed/removed.ts";
+export { predictProperties } from "./properties/slice.ts";
+export type { Property, PropertyRemoved, PropertySet } from "./properties/properties.ts";
+export type { PropertyEvent } from "./properties/slice.ts";
 export { removeProperty, renameProperty, setProperty } from "./properties/commands.ts";
-export { predictTags, tagAdded, tagRemoved } from "./tags/tags.ts";
+export { tagAdded } from "./tags/added/added.ts";
+export { tagRemoved } from "./tags/removed/removed.ts";
+export { predictTags } from "./tags/slice.ts";
 export { addTag, removeTag } from "./tags/commands.ts";
-export type { TagAdded, TagEvent, TagRemoved } from "./tags/tags.ts";
+export type { TagAdded, TagRemoved } from "./tags/tags.ts";
+export type { TagEvent } from "./tags/slice.ts";
 export { aliasAdded } from "./aliases/added/added.ts";
 export { aliasRemoved } from "./aliases/removed/removed.ts";
 export type { AliasAdded, AliasRemoved } from "./aliases/aliases.ts";
 export type { AliasEvent } from "./aliases/slice.ts";
-export {
-  deletePage,
-  getDeletions,
-  getRefsTo,
-  hasContent,
-  pageDeleted,
-} from "./deletes/deletes.ts";
-export type { DeleteEvent, PageDeleted } from "./deletes/deletes.ts";
+export { getDeletions, getRefsTo, hasContent } from "./deletes/deletes.ts";
+export { deletePage } from "./deletes/commands.ts";
+export { pageDeleted } from "./deletes/deleted/deleted.ts";
+export type { PageDeleted } from "./deletes/deletes.ts";
+export type { DeleteEvent } from "./deletes/slice.ts";
 export {
   addBlock,
   blockCreated,
@@ -268,10 +272,14 @@ function one(state: Graph, event: Incoming): Graph {
 
 /** Each slice's fold in turn. The delete fold empties what the others hold. */
 function behindTheGate(state: Graph, event: { type: string; payload: unknown }): Graph {
-  return [reduce, reduceProperties, reduceTags, reduceAliases, reduceDeletes].reduce<Graph>(
-    (folded, slice) => slice(folded, event),
-    state,
-  );
+  const slices: ((state: Graph, event: { type: string; payload: unknown }) => Graph)[] = [
+    reduce,
+    reduceProperties,
+    reduceTags,
+    reduceAliases,
+    reduceDeletes,
+  ];
+  return slices.reduce((folded, slice) => slice(folded, event), state);
 }
 
 /** Every title something names now: blocks, links, properties, tags and aliases. */

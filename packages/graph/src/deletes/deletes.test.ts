@@ -16,7 +16,6 @@ import {
   getPage,
   getProperties,
   indentBlock,
-  NAMESPACE,
   pageDeleted,
   graphFold,
   propertySet,
@@ -176,17 +175,6 @@ test("refs to the page's blocks are counted from other pages only, once per bloc
   await addBlock(view, "Baz", `((${crypto.randomUUID()}))`, undefined, id());
   assert.equal(getRefsTo(view.state, "foo"), 2);
   assert.equal(getRefsTo(view.state, "Nowhere"), 0);
-});
-
-test("a malformed delete is skipped whole", () => {
-  const state = graphFold.reduce(
-    graphFold.initial,
-    blockCreated("Foo", "x", undefined, id()),
-  );
-  for (const payload of [null, "Foo", {}, { page: 7 }, { page: "  " }]) {
-    const event = { type: `${NAMESPACE}page.deleted`, v: 1, payload };
-    assert.equal(graphFold.reduce(state, event), state, JSON.stringify(payload));
-  }
 });
 
 test("a delete at a `v` this build does not read is skipped", () => {

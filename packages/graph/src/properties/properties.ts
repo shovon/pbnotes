@@ -1,6 +1,6 @@
 /**
  * Page properties: a key and a string value on a page, and everything that
- * knows what one is: the event schema, the fold, the builders and the read.
+ * knows what one is.
  *
  * A key is a page title, compared through `canonicalize` like any other, so
  * setting `Status` on `Foo` names two pages, `Foo` and `Status`. Naming is
@@ -8,13 +8,16 @@
  * name stops being one when the last of them goes, as a page that only a
  * link names does when the link goes.
  *
+ * This file holds what both property events share: the state, the payloads,
+ * and how a page's value for a key is read and written. Each event is its own
+ * module (`set/`, `removed/`), and `slice.ts` puts them together (#238).
+ *
  * Nothing here reads blocks, and nothing in the block fold reads this.
  */
 
 import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { field, NAMESPACE, unnamed } from "../events/events.ts";
-import { each } from "../batch/batch.ts";
-import type { Named } from "../events/events.ts";
+import { field } from "../events/events.ts";
+import { over } from "../over/over.ts";
 import { spell, titleOf } from "../titles/titles.ts";
 import type { Titles } from "../titles/titles.ts";
 
@@ -31,7 +34,10 @@ export type PropertyState = {
   readonly titles: Titles;
 };
 
-// ── The events ──────────────────────────────────────────────────────────────
+/** `define` and `slice` for the property events. */
+export const PROPERTY = over<PropertyState>();
+
+// ── The payloads ────────────────────────────────────────────────────────────
 
 /**
  * `page`'s `key` is now `value`. A value is a plain string: it is not read for
@@ -42,30 +48,6 @@ export type PropertySet = { page: string; key: string; value: string };
 /** `page` no longer has `key`. */
 export type PropertyRemoved = { page: string; key: string };
 
-/** Every event this fold understands, and its payload. */
-export type PropertyEvent =
-  | { type: Named<"property.set">; payload: PropertySet }
-  | { type: Named<"property.removed">; payload: PropertyRemoved };
-
-/** A `PropertyEvent` with the namespace off its type. */
-type Bare<E = PropertyEvent> = E extends {
-  type: `${typeof NAMESPACE}${infer T}`;
-  payload: infer P;
-}
-  ? { type: T; payload: P }
-  : never;
-
-/**
- * Event type → the payload `v` this build folds and writes. The property half
- * of `HANDLES`; the gate that reads it is `graphFold`.
- */
-export const PROPERTY_HANDLES: Record<PropertyEvent["type"], number> = {
-  [`${NAMESPACE}property.set`]: 1,
-  [`${NAMESPACE}property.removed`]: 1,
-};
-
-// ── The fold: parse, then apply ─────────────────────────────────────────────
-
 /** A string field that is not blank once trimmed, or undefined. */
 function title(payload: object, name: string): string | undefined {
   const value = field(payload, name);
@@ -73,44 +55,45 @@ function title(payload: object, name: string): string | undefined {
 }
 
 /**
- * A property event as this build reads it, or undefined for anything else:
- * not one of ours, or malformed. Malformed is skipped whole. Any field the
- * payload has beyond these is ignored.
+ * The page and key both property events carry, or undefined when the payload
+ * is malformed: not an object, or a `page` or `key` that is not a string or is
+ * blank once trimmed. Malformed is skipped whole. Any field the payload has
+ * beyond what an event reads is ignored.
  */
-function parse(event: { type: string; payload: unknown }): Bare | undefined {
-  const name = unnamed(event.type);
-  const payload = event.payload;
-  if (!name || typeof payload !== "object" || payload === null) return undefined;
+export function readKey(payload: unknown): PropertyRemoved | undefined {
+  if (typeof payload !== "object" || payload === null) return undefined;
   const page = title(payload, "page");
   const key = title(payload, "key");
-  if (!page || !key) return undefined;
-
-  switch (name) {
-    case "property.set": {
-      const value = field(payload, "value");
-      return typeof value === "string"
-        ? { type: name, payload: { page, key, value } }
-        : undefined;
-    }
-    case "property.removed":
-      return { type: name, payload: { page, key } };
-    default:
-      return undefined;
-  }
+  return page && key ? { page, key } : undefined;
 }
 
-/** One parsed event applied. Pure, and never changes what it is handed. */
-function apply<S extends PropertyState>(state: S, it: Bare): S {
-  const { page, key } = it.payload;
+// ── A page's value for a key ────────────────────────────────────────────────
+
+/** `page`'s value for `key`, or undefined for none. */
+export function valueOf(state: PropertyState, page: string, key: string): string | undefined {
+  return state.properties.get(canonicalize(page))?.get(canonicalize(key));
+}
+
+/**
+ * `state` with `page`'s `key` set to `value`, or removed when `value` is
+ * undefined. Both names are spelled either way. Pure, and never changes what
+ * it is handed: removing a key the page lacks hands back `state` itself
+ * unless a spelling is new. Setting always writes, a value the key already
+ * had included.
+ */
+export function setValue<S extends PropertyState>(
+  state: S,
+  page: string,
+  key: string,
+  value: string | undefined,
+): S {
   const titles = spell(state.titles, [page, key]);
   const at = canonicalize(page);
   const held = state.properties.get(at);
-
-  if (it.type === "property.set") {
-    const next = new Map(held).set(canonicalize(key), it.payload.value);
+  if (value !== undefined) {
+    const next = new Map(held).set(canonicalize(key), value);
     return { ...state, titles, properties: new Map(state.properties).set(at, next) };
   }
-
   if (!held?.has(canonicalize(key))) {
     return titles === state.titles ? state : { ...state, titles };
   }
@@ -120,49 +103,6 @@ function apply<S extends PropertyState>(state: S, it: Bare): S {
   if (next.size === 0) properties.delete(at);
   else properties.set(at, next);
   return { ...state, titles, properties };
-}
-
-/**
- * Whether `event` is a property event this fold reads: one of its types, well formed.
- * A batch asks it of every event it holds before it folds any (#225).
- */
-export function reads(event: { type: string; payload: unknown }): boolean {
-  return parse(event) !== undefined;
-}
-
-/**
- * The property fold: one event in, the state out. Hands back `state` itself
- * for any event that is not a well-formed property event.
- */
-export function reduce<S extends PropertyState>(
-  state: S,
-  event: { type: string; payload: unknown },
-): S {
-  const parsed = parse(event);
-  return parsed ? apply(state, parsed) : state;
-}
-
-// ── Builders ────────────────────────────────────────────────────────────────
-
-/** One event as it is written, with the `v` the gate reads. */
-type Built<T extends Bare["type"]> = Extract<PropertyEvent, { type: Named<T> }> & { v: number };
-
-function build<T extends Bare["type"]>(
-  name: T,
-  payload: Extract<Bare, { type: T }>["payload"],
-): Built<T> {
-  const type = `${NAMESPACE}${name}` as Named<T>;
-  return { v: PROPERTY_HANDLES[type], type, payload } as Built<T>;
-}
-
-/** The `property.set` event: `page`'s `key` is now `value`. */
-export function propertySet(page: string, key: string, value: string): Built<"property.set"> {
-  return build("property.set", { page, key, value });
-}
-
-/** The `property.removed` event: `page` no longer has `key`. */
-export function propertyRemoved(page: string, key: string): Built<"property.removed"> {
-  return build("property.removed", { page, key });
 }
 
 // ── Reads ───────────────────────────────────────────────────────────────────
@@ -180,34 +120,6 @@ export function getProperties(state: PropertyState, page: string): Property[] {
   return [...held]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, value]) => ({ key: titleOf(state, key), value }));
-}
-
-/**
- * `page`'s properties as they will stand once `events` are recorded: a view's
- * writes still in flight, folded over the properties main last sent for it. A
- * guess, thrown away as each write settles.
- *
- * Folded with `reduce`, so what is drawn is what will be recorded. Both events
- * are safe to fold twice, so one the properties already show changes nothing.
- * Any event that is not a property event on `page` is passed over.
- */
-export function predictProperties(
-  properties: readonly Property[],
-  page: string,
-  events: readonly { type: string; payload: unknown }[],
-): Property[] {
-  if (events.length === 0) return [...properties];
-  const at = canonicalize(page);
-  const held = new Map(properties.map(({ key, value }) => [canonicalize(key), value]));
-  let state: PropertyState = {
-    properties: held.size === 0 ? new Map() : new Map([[at, held]]),
-    titles: new Map([
-      [at, page],
-      ...properties.map(({ key }): [string, string] => [canonicalize(key), key]),
-    ]),
-  };
-  for (const event of each(events)) state = reduce(state, event);
-  return getProperties(state, page);
 }
 
 /** Every title the properties name: each page that has one, and each key. */
