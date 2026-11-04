@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { NAMESPACE } from "../../events.ts";
-import { getPage, graphFold, holds, invert } from "../../../graph.ts";
+import { getPage, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Batched, Graph } from "../../../graph.ts";
 import type { Block } from "../../../blocks/blocks.ts";
 import { predict, reduce } from "../slice.ts";
@@ -141,7 +141,7 @@ test("a creation is undone by a delete, and holds until someone writes under it"
   const made = blockCreated("Foo", "B", "a", "b");
   const after = fold(before, made);
   assert.deepEqual(invert(before, [made]), [blockDeleted("b")]);
-  const step = { before, events: [made], after };
+  const step = remember(before, [made]);
   assert.equal(holds(after, step), true);
   assert.equal(holds(fold(after, blockCreated("Foo", "C", undefined, "c", "b")), step), false);
   assert.equal(holds(fold(after, blockEdited("b", "theirs")), step), false);

@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { graphFold, holds, invert } from "../../../graph.ts";
+import { graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Batched, Graph } from "../../../graph.ts";
 import { blockCreated } from "../created/created.ts";
 import { blockOutdented } from "../outdented/outdented.ts";
@@ -44,7 +44,7 @@ test("an edit holds until someone else changes the text, and through a move", ()
     blockCreated("Foo", "B", undefined, "b", "a"),
   );
   const after = fold(before, blockEdited("b", "B!"));
-  const step = { before, events: [blockEdited("b", "B!")], after };
+  const step = remember(before, [blockEdited("b", "B!")]);
   assert.equal(holds(fold(after, blockOutdented({ id: "b", after: "a" })), step), true);
   assert.equal(holds(fold(after, blockEdited("b", "theirs")), step), false);
 });

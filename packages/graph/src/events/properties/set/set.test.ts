@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBlock, getProperties, graphFold, holds, invert } from "../../../graph.ts";
+import { addBlock, getProperties, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph, GraphView } from "../../../graph.ts";
 import { PROPERTY_SET, propertySet } from "./set.ts";
 import { propertyRemoved } from "../removed/removed.ts";
@@ -78,7 +78,7 @@ test("a set is undone back to the old value, by a removed when there was none, a
 
 test("a set holds until someone else changes that key", () => {
   const after = fold([set("Bar", "K", "1")]);
-  const step = { before: graphFold.initial, events: [set("Bar", "K", "1")], after };
+  const step = remember(graphFold.initial, [set("Bar", "K", "1")]);
   assert.equal(holds(fold([set("Bar", "Other", "x")], after), step), true, "another key");
   assert.equal(holds(fold([set("Bar", "K", "2")], after), step), false);
   assert.equal(holds(fold([removed("Bar", "K")], after), step), false);

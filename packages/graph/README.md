@@ -24,7 +24,7 @@ A page is deleted with `deletePage`, whose builder is `pageDeleted`.
 
 Several events that must land together go in one `batch` (below), built from the other builders' results.
 
-Undo is `invert` and `holds` (below): the events that take a step back, and whether a step can still be taken back.
+Undo is `remember`, `holds` and `invert` (below): a step remembered as what takes it back, whether it can still be taken back, and the events alone.
 
 A view that draws its writes before they are recorded folds them with `predict` for blocks, `predictProperties` for a page's properties and `predictTags` for its tags. Each passes over events that are not its own, and reads a batch as the events it holds, so a view can hand all three everything it has in flight.
 
@@ -171,7 +171,9 @@ Some things a user does take more than one event. Each event is its own record, 
 
 ## Undoing
 
-A step is what one command wrote: the graph before it (`before`), its events, and the graph after it (`after`). Nothing here keeps a history; that is the caller's (#224).
+A step is what one command wrote: its events, on the graph before it. Nothing here keeps a history; that is the caller's (#224).
+
+**`remember(before, events)`** is how a caller keeps a step (#242). It is called once, when the step is written, and gives the step's `inverse` (what `invert` gives) and, for each thing the step touched, a reading and the value it gave on the graph right after. It keeps no graph, so `before` and the graph after can be let go once it returns, and what a step costs does not grow with the project.
 
 - **`invert(before, events)`** gives the events that undo `events`, to be written as one `batch`. They are plain events that any build reads, never an "undo" event: the log only grows, and what was undone stays on disk.
 - **The last event is undone first,** each against the graph as it stood just before it. A batch is the events it holds.
@@ -181,7 +183,7 @@ A step is what one command wrote: the graph before it (`before`), its events, an
 - **An indent under the sibling above is undone by an outdent after it,** and an outdent by an indent under the old parent, then an outdent for each sibling it took along, last first.
 - **Titles and delete counts are not undone.** A spelling, once seen, stays, and `getDeletions` still counts a delete that was undone.
 
-**`holds(now, step)`** is whether a step can still be undone: everything it touched is in `now` as the step left it in `after`. False means someone else changed it since, and undoing it would undo their work too. Only what the step touched is compared:
+**`holds(now, remembered)`** is whether a step can still be undone: every reading gives in `now` what it gave right after the step. False means someone else changed it since, and undoing it would undo their work too. Only what the step touched is read:
 
 | The step | Compared |
 |---|---|
@@ -195,6 +197,8 @@ A step is what one command wrote: the graph before it (`before`), its events, an
 
 ### Where an event's undo lives
 
-In the event's own module, under `src/events/`: `inverse`, the events that undo it from the graph just before it, and `touched`, what `holds` compares for it. An event that cannot be undone says `undo: "cannot"`, never nothing.
+In the event's own module, under `src/events/`: `inverse`, the events that undo it from the graph just before it, and `touched`, the readings `holds` compares for it. An event that cannot be undone says `undo: "cannot"`, never nothing.
+
+**A reading** is a function from a graph to a plain value (a string, a number, a boolean or `undefined`), compared with `===`. A remembered step holds on to its readings, so a reading keeps ids, a title or a key, never the graph it was made from: one that kept the graph would keep it alive for as long as the step is remembered. Each event makes its readings with `same(…)`.
 
 `UNDO` in `graph.ts` is every subject's undo table put together, keyed on every type in `HANDLES` but `batch`, so an event type with no entry stops the build. `undo/` holds only the walk, which knows no event: it is handed the fold and the table.

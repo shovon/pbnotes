@@ -16,6 +16,7 @@ import {
   invert,
   NAMESPACE,
   propertySet,
+  remember,
   tagAdded,
 } from "../../../graph.ts";
 import type { Batched, Graph } from "../../../graph.ts";
@@ -72,7 +73,7 @@ test("a delete is undone in one batch: blocks in place, then properties, tags an
 
 test("a delete holds until one of its blocks comes back, and not because the page gained one", () => {
   const after = fold(FOO, pageDeleted("Foo"));
-  const step = { before: FOO, events: [pageDeleted("Foo")], after };
+  const step = remember(FOO, [pageDeleted("Foo")]);
   assert.equal(holds(fold(after, blockCreated("Foo", "new", undefined, "n")), step), true);
   assert.equal(holds(fold(after, blockCreated("Foo", "A", undefined, "a")), step), false);
   assert.equal(holds(fold(after, blockEdited("x", "y")), step), true, "an unrelated change");

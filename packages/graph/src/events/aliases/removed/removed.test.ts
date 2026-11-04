@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { graphFold, holds, invert } from "../../../graph.ts";
+import { graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph } from "../../../graph.ts";
 import { aliasAdded } from "../added/added.ts";
 import { ALIAS_REMOVED, aliasRemoved } from "./removed.ts";
@@ -52,7 +52,7 @@ test("a removed is undone by an added, spelled as written, and not at all when t
 test("a removed holds until someone else gives the alias back", () => {
   const before = fold([added("A", "B")]);
   const after = fold([removed("A", "B")], before);
-  const step = { before, events: [removed("A", "B")], after };
+  const step = remember(before, [removed("A", "B")]);
   assert.equal(holds(after, step), true);
   assert.equal(holds(fold([added("A", "B")], after), step), false);
 });

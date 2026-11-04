@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { graphFold, holds, invert } from "../../../graph.ts";
+import { graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph } from "../../../graph.ts";
 import { getTags } from "../../../tags/tags.ts";
 import { tagAdded } from "../added/added.ts";
@@ -54,7 +54,7 @@ test("a removed is undone by an added, and not at all when the page lacked it", 
 test("a removed holds until someone else gives the tag back", () => {
   const before = fold([added("Foo", "Work")]);
   const after = fold([removed("Foo", "Work")], before);
-  const step = { before, events: [removed("Foo", "Work")], after };
+  const step = remember(before, [removed("Foo", "Work")]);
   assert.equal(holds(after, step), true);
   assert.equal(holds(fold([added("Foo", "Work")], after), step), false);
 });
