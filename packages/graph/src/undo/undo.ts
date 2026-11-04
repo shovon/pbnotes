@@ -11,8 +11,8 @@
  * events it owns (an `Undo` per event type), and the graph hands the fold and
  * the table of them in. This walks a step and puts the answers together.
  */
-import { each } from "../batch/batch.ts";
-import type { Batched } from "../batch/batch.ts";
+import { each } from "../events/batch/batch.ts";
+import type { Batched } from "../events/batch/batch.ts";
 
 /**
  * Whether one thing a step touched is in `now` as the step left it in

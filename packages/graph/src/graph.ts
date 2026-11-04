@@ -8,8 +8,9 @@
  * module, because the app's renderer bundles this too. A caller hands the
  * commands a view whose `dispatch` writes to its own log.
  */
-import { BLOCK_HANDLES, reads as readsBlocks, reduce } from "./blocks/blocks.ts";
-import type { BlockState, PageEvent } from "./blocks/blocks.ts";
+import type { BlockState } from "./blocks/blocks.ts";
+import { BLOCK_HANDLES, BLOCK_UNDO, reads as readsBlocks, reduce } from "./events/blocks/slice.ts";
+import type { PageEvent } from "./events/blocks/slice.ts";
 import {
   countBlocks,
   countLinks,
@@ -21,41 +22,48 @@ import type { Page } from "./blocks/blocks.ts";
 import {
   getProperties as getPropertiesOn,
   named as namedByProperties,
+} from "./properties/properties.ts";
+import type { Property, PropertyState } from "./properties/properties.ts";
+import {
   PROPERTY_HANDLES,
+  PROPERTY_UNDO,
   reads as readsProperties,
   reduce as reduceProperties,
-} from "./properties/properties.ts";
-import type { Property, PropertyEvent, PropertyState } from "./properties/properties.ts";
+} from "./events/properties/slice.ts";
+import type { PropertyEvent } from "./events/properties/slice.ts";
 import {
   countTaggedBy,
   getTaggedBy as getTaggedByAt,
   getTags as getTagsOn,
   named as namedByTags,
-  TAG_HANDLES,
-  reads as readsTags,
-  reduce as reduceTags,
 } from "./tags/tags.ts";
-import type { TagEvent, TagState } from "./tags/tags.ts";
+import type { TagState } from "./tags/tags.ts";
+import { TAG_HANDLES, TAG_UNDO, reads as readsTags, reduce as reduceTags } from "./events/tags/slice.ts";
+import type { TagEvent } from "./events/tags/slice.ts";
+import { named as namedByAliases } from "./aliases/aliases.ts";
+import type { AliasState } from "./aliases/aliases.ts";
 import {
   ALIAS_HANDLES,
-  named as namedByAliases,
+  ALIAS_UNDO,
   reads as readsAliases,
   reduce as reduceAliases,
-} from "./aliases/aliases.ts";
-import type { AliasEvent, AliasState } from "./aliases/aliases.ts";
+} from "./events/aliases/slice.ts";
+import type { AliasEvent } from "./events/aliases/slice.ts";
 import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
-import { DELETE_HANDLES, reads as readsDeletes, reduce as reduceDeletes } from "./deletes/deletes.ts";
-import { all, BATCH_HANDLES, unbatch } from "./batch/batch.ts";
-import type { BatchEvent, Batched } from "./batch/batch.ts";
+import {
+  DELETE_HANDLES,
+  DELETE_UNDO,
+  reads as readsDeletes,
+  reduce as reduceDeletes,
+} from "./events/pages/slice.ts";
+import { all, BATCH_HANDLES, unbatch } from "./events/batch/batch.ts";
+import type { BatchEvent, Batched } from "./events/batch/batch.ts";
 import { holds as holdsWith, invert as invertWith } from "./undo/undo.ts";
 import type { Step, Undo } from "./undo/undo.ts";
-import { BLOCK_UNDO } from "./blocks/undo.ts";
-import { PROPERTY_UNDO } from "./properties/undo.ts";
-import { TAG_UNDO } from "./tags/undo.ts";
-import { ALIAS_UNDO } from "./aliases/undo.ts";
-import { DELETE_UNDO } from "./deletes/undo.ts";
-import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
+import { admits } from "./over/over.ts";
+import type { DeleteState } from "./deletes/deletes.ts";
+import type { DeleteEvent } from "./events/pages/slice.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
 import type { EditedState } from "./edited/edited.ts";
 import { search } from "./search/search.ts";
@@ -64,10 +72,10 @@ import { canonicalize } from "./canonicalize/canonicalize.ts";
 
 export { canonicalize } from "./canonicalize/canonicalize.ts";
 export { NAMESPACE } from "./events/events.ts";
-export { batch, each } from "./batch/batch.ts";
+export { batch, each } from "./events/batch/batch.ts";
 export { CANNOT } from "./undo/undo.ts";
 export type { Check, Undo } from "./undo/undo.ts";
-export type { BatchEvent, Batched } from "./batch/batch.ts";
+export type { BatchEvent, Batched } from "./events/batch/batch.ts";
 export { DATE_PATTERN, dateOf, namesOf, today } from "./journal/journal.ts";
 export { titleOf } from "./titles/titles.ts";
 export {
@@ -78,10 +86,9 @@ export {
   lastLeaf,
   locate,
   outdented,
-  predict,
-  reduce,
   without,
 } from "./blocks/blocks.ts";
+export { predict, reduce } from "./events/blocks/slice.ts";
 export type {
   Block,
   BlockCreated,
@@ -91,38 +98,38 @@ export type {
   BlockOutdented,
   Found,
   Page,
-  PageEvent,
 } from "./blocks/blocks.ts";
+export type { PageEvent } from "./events/blocks/slice.ts";
 export { getPages, getPreviews, linking, locateBlock, searchBlocks } from "./blocks/queries.ts";
 export type { BlockMatch } from "./blocks/queries.ts";
-export { predictProperties, propertyRemoved, propertySet } from "./properties/properties.ts";
-export type {
-  Property,
-  PropertyEvent,
-  PropertyRemoved,
-  PropertySet,
-} from "./properties/properties.ts";
+export { propertySet } from "./events/properties/set/set.ts";
+export { propertyRemoved } from "./events/properties/removed/removed.ts";
+export { predictProperties } from "./events/properties/slice.ts";
+export type { Property, PropertyRemoved, PropertySet } from "./properties/properties.ts";
+export type { PropertyEvent } from "./events/properties/slice.ts";
 export { removeProperty, renameProperty, setProperty } from "./properties/commands.ts";
-export { predictTags, tagAdded, tagRemoved } from "./tags/tags.ts";
+export { tagAdded } from "./events/tags/added/added.ts";
+export { tagRemoved } from "./events/tags/removed/removed.ts";
+export { predictTags } from "./events/tags/slice.ts";
 export { addTag, removeTag } from "./tags/commands.ts";
-export type { TagAdded, TagEvent, TagRemoved } from "./tags/tags.ts";
-export { aliasAdded, aliasRemoved } from "./aliases/aliases.ts";
-export type { AliasAdded, AliasEvent, AliasRemoved } from "./aliases/aliases.ts";
-export {
-  deletePage,
-  getDeletions,
-  getRefsTo,
-  hasContent,
-  pageDeleted,
-} from "./deletes/deletes.ts";
-export type { DeleteEvent, PageDeleted } from "./deletes/deletes.ts";
+export type { TagAdded, TagRemoved } from "./tags/tags.ts";
+export type { TagEvent } from "./events/tags/slice.ts";
+export { aliasAdded } from "./events/aliases/added/added.ts";
+export { aliasRemoved } from "./events/aliases/removed/removed.ts";
+export type { AliasAdded, AliasRemoved } from "./aliases/aliases.ts";
+export type { AliasEvent } from "./events/aliases/slice.ts";
+export { getDeletions, getRefsTo, hasContent } from "./deletes/deletes.ts";
+export { deletePage } from "./deletes/commands.ts";
+export { pageDeleted } from "./events/pages/deleted/deleted.ts";
+export type { PageDeleted } from "./deletes/deletes.ts";
+export type { DeleteEvent } from "./events/pages/slice.ts";
+export { blockCreated } from "./events/blocks/created/created.ts";
+export { blockEdited } from "./events/blocks/edited/edited.ts";
+export { blockDeleted } from "./events/blocks/deleted/deleted.ts";
+export { blockIndented } from "./events/blocks/indented/indented.ts";
+export { blockOutdented } from "./events/blocks/outdented/outdented.ts";
 export {
   addBlock,
-  blockCreated,
-  blockDeleted,
-  blockEdited,
-  blockIndented,
-  blockOutdented,
   deleteBlock,
   editBlock,
   indentBlock,
@@ -244,10 +251,7 @@ type Incoming = { type: string; v: number; at?: unknown; payload: unknown };
 
 /** Whether this build has `event`'s type, at a `v` it reads. */
 function gated(event: Incoming): boolean {
-  return (
-    Object.hasOwn(HANDLES, event.type) &&
-    event.v <= HANDLES[event.type as keyof typeof HANDLES]
-  );
+  return admits(HANDLES, event);
 }
 
 /** Through the gate, and well formed for the slice whose type it is. */
@@ -267,10 +271,14 @@ function one(state: Graph, event: Incoming): Graph {
 
 /** Each slice's fold in turn. The delete fold empties what the others hold. */
 function behindTheGate(state: Graph, event: { type: string; payload: unknown }): Graph {
-  return [reduce, reduceProperties, reduceTags, reduceAliases, reduceDeletes].reduce<Graph>(
-    (folded, slice) => slice(folded, event),
-    state,
-  );
+  const slices: ((state: Graph, event: { type: string; payload: unknown }) => Graph)[] = [
+    reduce,
+    reduceProperties,
+    reduceTags,
+    reduceAliases,
+    reduceDeletes,
+  ];
+  return slices.reduce((folded, slice) => slice(folded, event), state);
 }
 
 /** Every title something names now: blocks, links, properties, tags and aliases. */

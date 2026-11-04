@@ -19,8 +19,8 @@ import {
   predictProperties,
   propertyRemoved,
   propertySet,
-} from "../graph.ts";
-import type { Graph } from "../graph.ts";
+} from "../../graph.ts";
+import type { Graph } from "../../graph.ts";
 
 const BATCH = `${NAMESPACE}batch`;
 

@@ -42,6 +42,13 @@ Every event type is `NAMESPACE` followed by a name, for example `github.com/shov
 - **A name and a `v` never get a new meaning.** Once a log holds an event, it stays on disk forever, and every reader of that folder will see it. A payload that changes shape gets a new `v`, and a new kind of event gets a new name.
 - **The namespace is an identifier, not a link.** Do not change its bytes, even if the repository moves.
 - **`graphFold` is the gate.** It skips a type that is not in `HANDLES` and a `v` higher than `HANDLES` gives, so an older reader passes over what it cannot read and does not fold it wrongly. Do not call `reduce` on events from a log without the gate in front of it.
+- **One test pins every name and its `v`** ("the event names and their v are exactly these", in `graph.test.ts`). Changing either fails it, which is the point: it should only change on purpose.
+
+## Where the events are
+
+Every event is one module under [`src/events/`](src/events/README.md), grouped by subject: its name, its `v`, how its payload is read, its fold, its builder and its undo, together. Each subject's `slice.ts` there lists its events, and `HANDLES`, `UNDO`, the fold and the predictions are built from those lists. What a subject's events share (its state, the helpers that change it, its queries and its commands) is in the subject's own folder: `blocks/`, `properties/`, `tags/`, `aliases/` and `deletes/`.
+
+That folder's README says what an event module holds, and how to add, change or remove an event.
 
 ## Page titles are a contract
 
@@ -188,8 +195,6 @@ A step is what one command wrote: the graph before it (`before`), its events, an
 
 ### Where an event's undo lives
 
-In the slice that owns the event, beside its fold and its builders: `BLOCK_UNDO` in `blocks/undo.ts`, `PROPERTY_UNDO`, `TAG_UNDO`, `ALIAS_UNDO` and `DELETE_UNDO` the same way. Each holds one `Undo` per event type: `inverse`, the events that undo it from the graph just before it, and `touched`, what `holds` compares for it.
+In the event's own module, under `src/events/`: `inverse`, the events that undo it from the graph just before it, and `touched`, what `holds` compares for it. An event that cannot be undone says `undo: "cannot"`, never nothing.
 
-`UNDO` in `graph.ts` puts them together, keyed on every type in `HANDLES` but `batch`, so an event type with no entry stops the build. An event that cannot be undone says so with `CANNOT`, never by having no entry. `undo/` holds only the walk, which knows no event: it is handed the fold and the table.
-
-A new event's undo is an entry in its own slice's table, and nothing outside the slice changes.
+`UNDO` in `graph.ts` is every subject's undo table put together, keyed on every type in `HANDLES` but `batch`, so an event type with no entry stops the build. `undo/` holds only the walk, which knows no event: it is handed the fold and the table.

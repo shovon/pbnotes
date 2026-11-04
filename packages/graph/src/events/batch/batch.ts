@@ -7,8 +7,8 @@
  * Nothing here knows what the events inside mean. The fold that does decides
  * which it reads, and `all` folds them only if it reads every one.
  */
-import { field, NAMESPACE } from "../events/events.ts";
-import type { Named } from "../events/events.ts";
+import { field, NAMESPACE } from "../events.ts";
+import type { Named } from "../events.ts";
 
 /** An event as a batch holds it, and as a builder returns one. */
 export type Batched = { type: string; v: number; payload: unknown };

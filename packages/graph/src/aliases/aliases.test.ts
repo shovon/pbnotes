@@ -8,9 +8,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { NAMESPACE } from "../events/events.ts";
-import { addBlock, getAliases, getEdited, graphFold, hasContent, pageDeleted } from "../graph.ts";
-import type { Graph, GraphView } from "../graph.ts";
-import { aliasAdded, aliasRemoved, reduce } from "./aliases.ts";
+import { getAliases, getEdited, graphFold, hasContent, pageDeleted } from "../graph.ts";
+import type { Graph } from "../graph.ts";
+import { aliasAdded } from "../events/aliases/added/added.ts";
+import { aliasRemoved } from "../events/aliases/removed/removed.ts";
+import { reduce } from "../events/aliases/slice.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -20,38 +22,6 @@ const fold = (events: Event[], from: Graph = graphFold.initial): Graph =>
 
 const added = (page: string, alias: string): Event => aliasAdded(page, alias);
 const removed = (page: string, alias: string): Event => aliasRemoved(page, alias);
-
-/** A view over the fold alone, for writing blocks with the app's commands. */
-function memory(): GraphView {
-  let state: Graph = graphFold.initial;
-  return {
-    get state() {
-      return state;
-    },
-    async dispatch(v, type, payload) {
-      state = graphFold.reduce(state, { type, v, payload });
-    },
-  };
-}
-
-test("an added gives the page that alias, and names both", () => {
-  const state = fold([added("JavaScript", "JS")]);
-  assert.deepEqual(state.aliases, new Map([["javascript", new Set(["js"])]]));
-  assert.deepEqual(getAliases(state, "javascript"), ["JS"]);
-  assert.equal(state.titles.get("javascript"), "JavaScript");
-  assert.equal(state.titles.get("js"), "JS");
-  assert.equal(state.blocks.size, 0);
-});
-
-test("an added over a populated state keeps what was there", async () => {
-  const view = memory();
-  await addBlock(view, "JavaScript", "see [[Node]]", undefined, "j");
-  const before = view.state;
-  const state = fold([added("JavaScript", "JS"), added("JavaScript", "ECMAScript")], before);
-  assert.equal(state.blocks, before.blocks);
-  assert.deepEqual(getAliases(state, "JavaScript"), ["ECMAScript", "JS"]);
-  assert.equal(state.titles.get("node"), "Node");
-});
 
 test("a page holds an alias once, and the later event on one alias wins", () => {
   const once = fold([added("JavaScript", "JS")]);
@@ -65,19 +35,6 @@ test("an added and a removed from two writers end with whichever folds later, al
   const b = removed("A", "B");
   assert.deepEqual(getAliases(fold([a, b]), "A"), []);
   assert.deepEqual(getAliases(fold([b, a]), "A"), ["B"]);
-});
-
-test("removing an alias the page lacks changes nothing but the spelling", () => {
-  const before = fold([added("A", "B")]);
-  const after = graphFold.reduce(before, removed("A", "C"));
-  assert.equal(after.aliases, before.aliases);
-  assert.equal(after.titles.get("c"), "C");
-  assert.equal(graphFold.reduce(after, removed("a", "c")), after);
-});
-
-test("removing a page's last alias deletes its entry", () => {
-  const state = fold([added("A", "B"), added("A", "C"), removed("A", "B"), removed("A", "C")]);
-  assert.equal(state.aliases.has("a"), false);
 });
 
 test("a malformed alias event is skipped whole, and extra fields are ignored", () => {

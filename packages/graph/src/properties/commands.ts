@@ -8,10 +8,13 @@
  * the log does not collect events that mean nothing.
  */
 import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { getProperties, propertyRemoved, propertySet } from "./properties.ts";
-import type { Property, PropertyEvent, PropertyState } from "./properties.ts";
-import { batch } from "../batch/batch.ts";
-import type { BatchEvent } from "../batch/batch.ts";
+import { getProperties, valueOf } from "./properties.ts";
+import type { Property, PropertyState } from "./properties.ts";
+import type { PropertyEvent } from "../events/properties/slice.ts";
+import { propertySet } from "../events/properties/set/set.ts";
+import { propertyRemoved } from "../events/properties/removed/removed.ts";
+import { batch } from "../events/batch/batch.ts";
+import type { BatchEvent } from "../events/batch/batch.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of
@@ -32,11 +35,6 @@ function append(
   event: ReturnType<typeof propertySet | typeof propertyRemoved | typeof batch>,
 ): Promise<unknown> {
   return view.dispatch(event.v, event.type, event.payload);
-}
-
-/** `page`'s value for `key` as the fold holds it, or undefined for none. */
-function valueOf(state: PropertyState, page: string, key: string): string | undefined {
-  return state.properties.get(canonicalize(page))?.get(canonicalize(key));
 }
 
 /** The fold's rule for a page or a key: something, once trimmed. */

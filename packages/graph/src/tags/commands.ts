@@ -8,8 +8,11 @@
  * the log does not collect events that mean nothing.
  */
 import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { getTags, tagAdded, tagRemoved } from "./tags.ts";
-import type { TagEvent, TagState } from "./tags.ts";
+import { getTags } from "./tags.ts";
+import type { TagState } from "./tags.ts";
+import type { TagEvent } from "../events/tags/slice.ts";
+import { tagAdded } from "../events/tags/added/added.ts";
+import { tagRemoved } from "../events/tags/removed/removed.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of

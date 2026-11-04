@@ -8,13 +8,18 @@
  * `JS`. Naming is all the fold does: whether `JS` opens `JavaScript` is read
  * later, so removing an alias undoes everything it did at once.
  *
+ * This file holds what both alias events share: the state, the payload, and
+ * how a page gains or loses an alias. The events themselves are in
+ * `events/aliases/`, one module each, with the list that puts them together
+ * (#238).
+ *
  * Nothing here reads blocks, properties or tags, and nothing in those folds
  * reads this.
  */
 
 import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { field, NAMESPACE, unnamed } from "../events/events.ts";
-import type { Named } from "../events/events.ts";
+import { field } from "../events/events.ts";
+import { over } from "../over/over.ts";
 import { spell } from "../titles/titles.ts";
 import type { Titles } from "../titles/titles.ts";
 
@@ -31,37 +36,16 @@ export type AliasState = {
   readonly titles: Titles;
 };
 
-// ── The events ──────────────────────────────────────────────────────────────
+/** `define` and `slice` for the alias events. */
+export const ALIAS = over<AliasState>();
+
+// ── The payload both events share ───────────────────────────────────────────
 
 /** `page` answers to `alias`. */
 export type AliasAdded = { page: string; alias: string };
 
 /** `page` no longer answers to `alias`. */
 export type AliasRemoved = { page: string; alias: string };
-
-/** Every event this fold understands, and its payload. */
-export type AliasEvent =
-  | { type: Named<"alias.added">; payload: AliasAdded }
-  | { type: Named<"alias.removed">; payload: AliasRemoved };
-
-/** An `AliasEvent` with the namespace off its type. */
-type Bare<E = AliasEvent> = E extends {
-  type: `${typeof NAMESPACE}${infer T}`;
-  payload: infer P;
-}
-  ? { type: T; payload: P }
-  : never;
-
-/**
- * Event type → the payload `v` this build folds and writes. The alias part of
- * `HANDLES`; the gate that reads it is `graphFold`.
- */
-export const ALIAS_HANDLES: Record<AliasEvent["type"], number> = {
-  [`${NAMESPACE}alias.added`]: 1,
-  [`${NAMESPACE}alias.removed`]: 1,
-};
-
-// ── The fold: parse, then apply ─────────────────────────────────────────────
 
 /** A string field that is not blank once trimmed, or undefined. */
 function title(payload: object, name: string): string | undefined {
@@ -70,81 +54,45 @@ function title(payload: object, name: string): string | undefined {
 }
 
 /**
- * An alias event as this build reads it, or undefined for anything else: not
- * one of ours, or malformed. Malformed is skipped whole. Any field the
- * payload has beyond these is ignored.
+ * An alias payload as this build reads it, or undefined when it is
+ * malformed: not an object, or a `page` or `alias` that is not a string or is
+ * blank once trimmed. Malformed is skipped whole. Any field beyond these is
+ * ignored.
  */
-function parse(event: { type: string; payload: unknown }): Bare | undefined {
-  const name = unnamed(event.type);
-  if (name !== "alias.added" && name !== "alias.removed") return undefined;
-  const payload = event.payload;
+export function readAlias(payload: unknown): AliasAdded | undefined {
   if (typeof payload !== "object" || payload === null) return undefined;
   const page = title(payload, "page");
   const alias = title(payload, "alias");
-  return page && alias ? { type: name, payload: { page, alias } } : undefined;
+  return page && alias ? { page, alias } : undefined;
 }
 
-/** One parsed event applied. Pure, and never changes what it is handed. */
-function apply<S extends AliasState>(state: S, it: Bare): S {
-  const { page, alias } = it.payload;
-  const titles = spell(state.titles, [page, alias]);
-  const at = canonicalize(page);
-  const to = canonicalize(alias);
-  const held = state.aliases.get(at);
-  const has = held?.has(to) ?? false;
+// ── Gaining and losing an alias ─────────────────────────────────────────────
 
-  // Adding an alias the page has, or removing one it lacks, changes nothing.
-  if (has === (it.type === "alias.added")) {
+/** Whether `page` answers to `alias`. */
+export function answersTo(state: AliasState, page: string, alias: string): boolean {
+  return state.aliases.get(canonicalize(page))?.has(canonicalize(alias)) ?? false;
+}
+
+/**
+ * `state` with `page` answering to `alias` when `on`, and not when not. Both
+ * names are spelled either way. Pure, and never changes what it is handed:
+ * adding an alias the page has, or removing one it lacks, hands back `state`
+ * itself unless a spelling is new.
+ */
+export function setAlias<S extends AliasState>(state: S, it: AliasAdded, on: boolean): S {
+  const { page, alias } = it;
+  const titles = spell(state.titles, [page, alias]);
+  if (answersTo(state, page, alias) === on) {
     return titles === state.titles ? state : { ...state, titles };
   }
-  const next = new Set(held);
-  if (it.type === "alias.added") next.add(to);
-  else next.delete(to);
+  const at = canonicalize(page);
+  const next = new Set(state.aliases.get(at));
+  if (on) next.add(canonicalize(alias));
+  else next.delete(canonicalize(alias));
   const aliases = new Map(state.aliases);
   if (next.size === 0) aliases.delete(at);
   else aliases.set(at, next);
   return { ...state, titles, aliases };
-}
-
-/**
- * Whether `event` is an alias event this fold reads: one of its types, well formed.
- * A batch asks it of every event it holds before it folds any (#225).
- */
-export function reads(event: { type: string; payload: unknown }): boolean {
-  return parse(event) !== undefined;
-}
-
-/**
- * The alias fold: one event in, the state out. Hands back `state` itself for
- * any event that is not a well-formed alias event, or one that changes
- * nothing.
- */
-export function reduce<S extends AliasState>(
-  state: S,
-  event: { type: string; payload: unknown },
-): S {
-  const parsed = parse(event);
-  return parsed ? apply(state, parsed) : state;
-}
-
-// ── Builders ────────────────────────────────────────────────────────────────
-
-/** One event as it is written, with the `v` the gate reads. */
-type Built<T extends Bare["type"]> = Extract<AliasEvent, { type: Named<T> }> & { v: number };
-
-function build<T extends Bare["type"]>(name: T, page: string, alias: string): Built<T> {
-  const type = `${NAMESPACE}${name}` as Named<T>;
-  return { v: ALIAS_HANDLES[type], type, payload: { page, alias } } as Built<T>;
-}
-
-/** The `alias.added` event: `page` answers to `alias`. */
-export function aliasAdded(page: string, alias: string): Built<"alias.added"> {
-  return build("alias.added", page, alias);
-}
-
-/** The `alias.removed` event: `page` no longer answers to `alias`. */
-export function aliasRemoved(page: string, alias: string): Built<"alias.removed"> {
-  return build("alias.removed", page, alias);
 }
 
 // ── Reads ───────────────────────────────────────────────────────────────────

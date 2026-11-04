@@ -17,6 +17,11 @@ export const NAMESPACE = "github.com/shovon/pbnotes#";
 /** An event type as it is written: under the namespace. */
 export type Named<T extends string> = `${typeof NAMESPACE}${T}`;
 
+/** `name` under the namespace, typed as exactly that string. */
+export function namespaced<const T extends string>(name: T): Named<T> {
+  return `${NAMESPACE}${name}`;
+}
+
 /**
  * The name under the namespace, or undefined for a type outside it. A bare
  * `block.created` is not one of ours (#40).
