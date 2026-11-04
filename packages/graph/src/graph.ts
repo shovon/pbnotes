@@ -8,8 +8,9 @@
  * module, because the app's renderer bundles this too. A caller hands the
  * commands a view whose `dispatch` writes to its own log.
  */
-import { BLOCK_HANDLES, reads as readsBlocks, reduce } from "./blocks/blocks.ts";
-import type { BlockState, PageEvent } from "./blocks/blocks.ts";
+import type { BlockState } from "./blocks/blocks.ts";
+import { BLOCK_HANDLES, BLOCK_UNDO, reads as readsBlocks, reduce } from "./blocks/slice.ts";
+import type { PageEvent } from "./blocks/slice.ts";
 import {
   countBlocks,
   countLinks,
@@ -61,7 +62,6 @@ import type { BatchEvent, Batched } from "./batch/batch.ts";
 import { holds as holdsWith, invert as invertWith } from "./undo/undo.ts";
 import type { Step, Undo } from "./undo/undo.ts";
 import { admits } from "./over/over.ts";
-import { BLOCK_UNDO } from "./blocks/undo.ts";
 import type { DeleteState } from "./deletes/deletes.ts";
 import type { DeleteEvent } from "./deletes/slice.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
@@ -86,10 +86,9 @@ export {
   lastLeaf,
   locate,
   outdented,
-  predict,
-  reduce,
   without,
 } from "./blocks/blocks.ts";
+export { predict, reduce } from "./blocks/slice.ts";
 export type {
   Block,
   BlockCreated,
@@ -99,8 +98,8 @@ export type {
   BlockOutdented,
   Found,
   Page,
-  PageEvent,
 } from "./blocks/blocks.ts";
+export type { PageEvent } from "./blocks/slice.ts";
 export { getPages, getPreviews, linking, locateBlock, searchBlocks } from "./blocks/queries.ts";
 export type { BlockMatch } from "./blocks/queries.ts";
 export { propertySet } from "./properties/set/set.ts";
@@ -124,13 +123,13 @@ export { deletePage } from "./deletes/commands.ts";
 export { pageDeleted } from "./deletes/deleted/deleted.ts";
 export type { PageDeleted } from "./deletes/deletes.ts";
 export type { DeleteEvent } from "./deletes/slice.ts";
+export { blockCreated } from "./blocks/created/created.ts";
+export { blockEdited } from "./blocks/edited/edited.ts";
+export { blockDeleted } from "./blocks/deleted/deleted.ts";
+export { blockIndented } from "./blocks/indented/indented.ts";
+export { blockOutdented } from "./blocks/outdented/outdented.ts";
 export {
   addBlock,
-  blockCreated,
-  blockDeleted,
-  blockEdited,
-  blockIndented,
-  blockOutdented,
   deleteBlock,
   editBlock,
   indentBlock,

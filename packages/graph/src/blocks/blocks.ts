@@ -1,6 +1,8 @@
 /**
- * The block is the primitive, and this is everything that knows what one is:
- * the event schema, the tree operations a fold is made of, and the fold.
+ * The block is the primitive, and this is what every block event shares: the
+ * tree, the payloads, where a new block goes, and the moves. Each event is its
+ * own module (`created/`, `edited/`, `deleted/`, `indented/`, `outdented/`),
+ * and `slice.ts` puts them together as the fold (#238).
  *
  * A page is not a record anywhere: it is a title that blocks carry, so pages
  * come into being by being named and go away by having nothing left on them.
@@ -14,11 +16,9 @@
  */
 
 import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { field, NAMESPACE, unnamed } from "../events/events.ts";
-import { each } from "../batch/batch.ts";
-import type { Named } from "../events/events.ts";
-import { read } from "../reading/reading.ts";
-import { spell } from "../titles/titles.ts";
+import { field } from "../events/events.ts";
+import { over } from "../over/over.ts";
+import type { Check } from "../undo/undo.ts";
 import type { Titles } from "../titles/titles.ts";
 
 export type Block = {
@@ -127,7 +127,7 @@ export function without(blocks: Block[], id: string): Block[] {
 }
 
 /** One block's text replaced, wherever in the tree it is. */
-function retext(blocks: Block[], id: string, text: string): Block[] {
+export function retext(blocks: Block[], id: string, text: string): Block[] {
   return blocks.map((block) =>
     block.id === id
       ? { ...block, text }
@@ -136,7 +136,7 @@ function retext(blocks: Block[], id: string, text: string): Block[] {
 }
 
 /** `parent`'s children put through `next`, wherever `parent` is. */
-function mapChildren(
+export function mapChildren(
   blocks: Block[],
   parent: string,
   next: (children: Block[]) => Block[],
@@ -177,7 +177,10 @@ export function find(state: BlockState, id: string): Found | undefined {
   return undefined;
 }
 
-// ── The events ──────────────────────────────────────────────────────────────
+// ── The payloads ────────────────────────────────────────────────────────────
+
+/** `define` and `slice` for the block events. */
+export const BLOCK = over<BlockState>();
 
 /** Where the user wrote a block. The only event that carries a page. */
 export type BlockCreated = {
@@ -218,108 +221,29 @@ export type BlockIndented = { id: string; parent: string };
 export type BlockOutdented = { id: string; after: string };
 
 /**
- * Every event this fold understands, and its payload. The four after a
- * creation were once written with a `page` too; it is not read, so a `v1`
- * payload still folds (`blocks.test.ts` pins that).
+ * A string field of `payload`, `""` included, or undefined for anything else.
+ * Every block event reads its fields through this; one that names a block
+ * also refuses `""`, since no block is named that.
  */
-export type PageEvent =
-  | { type: Named<"block.created">; payload: BlockCreated }
-  | { type: Named<"block.edited">; payload: BlockEdited }
-  | { type: Named<"block.deleted">; payload: BlockDeleted }
-  | { type: Named<"block.indented">; payload: BlockIndented }
-  | { type: Named<"block.outdented">; payload: BlockOutdented };
-
-/** A `PageEvent` with the namespace off its type. */
-export type Bare<E = PageEvent> = E extends {
-  type: `${typeof NAMESPACE}${infer T}`;
-  payload: infer P;
-}
-  ? { type: T; payload: P }
-  : never;
-
-/**
- * Event type → the payload `v` this build folds, which is also the `v` it
- * writes. Keyed on `PageEvent['type']`, so it cannot drift from the schema.
- * The block half of `HANDLES`; the gate that reads it is `graphFold`.
- */
-export const BLOCK_HANDLES: Record<PageEvent["type"], number> = {
-  // Still 1 with `parent` (#226) and `first` (#231): an older build ignores
-  // either field and shows the block at the end of the page. At 2 it would skip the block, and every
-  // later edit to it, entirely.
-  [`${NAMESPACE}block.created`]: 1,
-  // 2 since the page came off the payload: an older build handed one would
-  // look up a page of `undefined` and drop the text without a word. At `v: 2`
-  // its own gate refuses the event instead.
-  [`${NAMESPACE}block.edited`]: 2,
-  [`${NAMESPACE}block.deleted`]: 2,
-  [`${NAMESPACE}block.indented`]: 2,
-  [`${NAMESPACE}block.outdented`]: 2,
-};
-
-// ── The fold: parse, then apply ─────────────────────────────────────────────
-
-/** A string field of the payload, or undefined for anything else. */
-function string(payload: object, name: string): string | undefined {
+export function stringField(payload: object, name: string): string | undefined {
   const value = field(payload, name);
   return typeof value === "string" ? value : undefined;
 }
 
 /**
- * A block event as this build reads it, or undefined for anything else: not
- * one of ours, or malformed. A malformed event is skipped whole, never folded
- * in part. The types say what *this build writes*; what arrives in a shared
- * folder was written by something else, and may be anything.
- *
- * Two leniencies, both so that a block is never dropped that could be shown:
- * a page that is not a string is filed under its `String` (it always was),
- * an `after` or `parent` that is not a string is as if it were absent, and
- * so is a `first` that is anything but `true`.
+ * The payload and the block it names, or undefined when it is not an object
+ * or has no `id` that is a string. Every block event names a block. Any field
+ * an event does not read is ignored, the `page` the four after a creation
+ * were once written with among them, so a `v: 1` payload still folds
+ * (`blocks.test.ts` pins that).
  */
-function parse(event: { type: string; payload: unknown }): Bare | undefined {
-  const name = unnamed(event.type);
-  const payload = event.payload;
-  if (!name || typeof payload !== "object" || payload === null) return undefined;
-  const id = string(payload, "id");
-  if (!id) return undefined;
-
-  switch (name) {
-    case "block.created": {
-      const text = string(payload, "text");
-      if (text === undefined) return undefined;
-      const page = String(field(payload, "page"));
-      const after = string(payload, "after");
-      const parent = string(payload, "parent");
-      const first = field(payload, "first") === true;
-      return {
-        type: name,
-        payload: {
-          page,
-          id,
-          text,
-          ...(after ? { after } : {}),
-          ...(parent ? { parent } : {}),
-          ...(first ? { first } : {}),
-        },
-      };
-    }
-    case "block.edited": {
-      const text = string(payload, "text");
-      return text === undefined ? undefined : { type: name, payload: { id, text } };
-    }
-    case "block.deleted":
-      return { type: name, payload: { id } };
-    case "block.indented": {
-      const parent = string(payload, "parent");
-      return parent ? { type: name, payload: { id, parent } } : undefined;
-    }
-    case "block.outdented": {
-      const after = string(payload, "after");
-      return after ? { type: name, payload: { id, after } } : undefined;
-    }
-    default:
-      return undefined;
-  }
+export function withId(payload: unknown): { payload: object; id: string } | undefined {
+  if (typeof payload !== "object" || payload === null) return undefined;
+  const id = stringField(payload, "id");
+  return id ? { payload, id } : undefined;
 }
+
+// ── Folding onto the page a block is on ─────────────────────────────────────
 
 /**
  * Applies `change` to the page the block turned out to be on. A block that is
@@ -331,7 +255,7 @@ function parse(event: { type: string; payload: unknown }): Bare | undefined {
  * the user's text. This is the only place that chooses which page a fold
  * writes to.
  */
-function onBlock<S extends BlockState>(
+export function onBlock<S extends BlockState>(
   state: S,
   id: string,
   change: (found: Found) => Block[] | undefined,
@@ -344,17 +268,16 @@ function onBlock<S extends BlockState>(
     : state;
 }
 
+/** Where `block.created` puts a block: after a sibling, under a parent, or first. */
+export type Place = Pick<BlockCreated, "after" | "parent" | "first">;
+
 /**
  * `blocks` with a new `block` in it: beneath `after` when that is one of
  * `parent`'s children (or there is no `parent`), else first under `parent`,
  * else at the end. `first`, with neither of the others, is the top of the
  * page. Never fails, so a creation always shows somewhere.
  */
-function placed(
-  blocks: Block[],
-  block: Block,
-  { after, parent, first }: Pick<BlockCreated, "after" | "parent" | "first">,
-): Block[] {
+export function placed(blocks: Block[], block: Block, { after, parent, first }: Place): Block[] {
   if (first && !after && !parent) return [block, ...blocks];
   const fits = after && (!parent || locate(blocks, after)?.parent?.id === parent);
   return (
@@ -364,180 +287,69 @@ function placed(
   );
 }
 
-/** Adding a type to `PageEvent` without a case for it stops the build here. */
-function foreign(_event: never, state: unknown): never {
-  return state as never;
-}
-
-/** One parsed event applied. Pure, and never changes what it is handed. */
-function apply<S extends BlockState>(state: S, it: Bare): S {
-  switch (it.type) {
-    case "block.created": {
-      const { page, id, text } = it.payload;
-      const blocks = blocksOn(state, page);
-      const block: Block = { id, text, children: [] };
-      // `addBlock` refuses an `after` or `parent` the page lacks, so a miss
-      // here is a log written by something else. Fall back rather than drop:
-      // a block in the wrong place can be moved, one the fold discarded is gone.
-      const next = placed(blocks, block, it.payload);
-      return {
-        ...state,
-        blocks: new Map(state.blocks).set(canonicalize(page), next),
-        // The page before its links: it is where the user was writing.
-        titles: spell(state.titles, [page, ...read(text).links]),
-      };
-    }
-
-    case "block.edited": {
-      const { id, text } = it.payload;
-      const next = onBlock(state, id, ({ blocks }) => retext(blocks, id, text));
-      // An edit to a block the ledger lacks names nothing either.
-      if (next === state) return state;
-      return { ...next, titles: spell(next.titles, read(text).links) };
-    }
-
-    case "block.deleted": {
-      // A plain filter, no tombstone, and the subtree goes with it. Every
-      // event that built them is still on disk.
-      const { id } = it.payload;
-      return onBlock(state, id, ({ blocks }) => without(blocks, id));
-    }
-
-    case "block.indented": {
-      const { id, parent } = it.payload;
-      return onBlock(state, id, (found) => {
-        // A parent on another page would be a move across pages, and there
-        // is no such event yet.
-        if (!locate(found.blocks, parent)) return undefined;
-        // Read before the detach, so the whole subtree moves.
-        const moving = found.siblings[found.at];
-        // Under itself or its own subtree: two machines each indenting one
-        // block under the other before they sync writes this (#62).
-        if (parent === id || locate(moving.children, parent)) return undefined;
-        return mapChildren(without(found.blocks, id), parent, (children) => [
-          ...children,
-          moving,
-        ]);
-      });
-    }
-
-    case "block.outdented": {
-      const { id, after } = it.payload;
-      return onBlock(state, id, (found) => {
-        if (!found.parent) return undefined;
-        // The siblings below it come along as its own children, or they would
-        // be stranded above it and the page would read in a different order.
-        const moving = found.siblings[found.at];
-        const trailing = found.siblings.slice(found.at + 1);
-        const outdented = { ...moving, children: [...moving.children, ...trailing] };
-        const trimmed = mapChildren(found.blocks, found.parent.id, (children) =>
-          children.slice(0, found.at),
-        );
-        return beside(trimmed, after, outdented) ?? [...trimmed, outdented];
-      });
-    }
-
-    default:
-      return foreign(it, state);
-  }
-}
-
-/**
- * Whether `event` is a block event this fold reads: one of its types, well formed.
- * A batch asks it of every event it holds before it folds any (#225).
- */
-export function reads(event: { type: string; payload: unknown }): boolean {
-  return parse(event) !== undefined;
-}
-
-/**
- * The block fold: one event in, the state out. Hands back `state` itself for
- * any event that is not a well-formed block event. Whatever else `state`
- * holds is carried through as it is.
- */
-export function reduce<S extends BlockState>(
-  state: S,
-  event: { type: string; payload: unknown },
-): S {
-  const parsed = parse(event);
-  return parsed ? apply(state, parsed) : state;
-}
-
-// ── Moves, and predicting them ──────────────────────────────────────────────
+// ── Moves ───────────────────────────────────────────────────────────────────
 
 /**
  * What indenting a block is: filed under the sibling above it. Undefined for
  * a block first among its siblings, or one the page lacks. Here, because
  * whoever predicts a move has to resolve it exactly as whoever records it.
  */
-export function indented(
-  blocks: Block[],
-  id: string,
-): BlockIndented | undefined {
+export function indented(blocks: Block[], id: string): BlockIndented | undefined {
   const found = locate(blocks, id);
-  return found && found.at > 0
-    ? { id, parent: found.siblings[found.at - 1].id }
-    : undefined;
+  return found && found.at > 0 ? { id, parent: found.siblings[found.at - 1].id } : undefined;
 }
 
 /** What outdenting is: directly beneath the block it hangs under. */
-export function outdented(
-  blocks: Block[],
-  id: string,
-): BlockOutdented | undefined {
+export function outdented(blocks: Block[], id: string): BlockOutdented | undefined {
   const parent = locate(blocks, id)?.parent;
   return parent ? { id, after: parent.id } : undefined;
 }
 
-/** One of this fold's event types, with a payload `landed` can read. */
-function isBlockEvent(event: { type: string; payload: unknown }): event is PageEvent {
-  return (
-    Object.hasOwn(BLOCK_HANDLES, event.type) &&
-    typeof event.payload === "object" &&
-    event.payload !== null
-  );
+// ── What undo reads (#233) ──────────────────────────────────────────────────
+
+/** Where the block `id` sits in `state`, as a `block.created` would put it back there. */
+export function placeOf(state: BlockState, id: string): Place | undefined {
+  const found = find(state, id);
+  if (!found) return undefined;
+  const above = found.siblings[found.at - 1];
+  const parent = found.parent?.id;
+  if (above) return { after: above.id, ...(parent ? { parent } : {}) };
+  return parent ? { parent } : { first: true };
 }
 
-/**
- * Whether the page already shows what `event` did. Asked only of the events
- * that are not safe to fold twice.
- */
-function landed(state: BlockState, event: PageEvent): boolean {
-  const found = find(state, event.payload.id);
-  switch (event.type) {
-    case `${NAMESPACE}block.created`:
-      return !!found;
-    case `${NAMESPACE}block.indented`:
-      return found?.parent?.id === event.payload.parent;
-    case `${NAMESPACE}block.outdented`:
-      return found?.siblings[found.at - 1]?.id === event.payload.after;
-    default:
-      return false;
-  }
+/** The text of the block `id`, or undefined when it is gone. */
+export function textOf(state: BlockState, id: string): string | undefined {
+  const found = find(state, id);
+  return found?.siblings[found.at].text;
 }
 
-/**
- * The page as it will stand once `events` are recorded: the renderer's unsent
- * writes, folded over the page main last sent. A guess, thrown away when each
- * write settles. `landed` keeps an event the page already holds from being
- * drawn twice in the moment before it is dropped.
- *
- * Any other event is passed over, so a view can hand over every write it has
- * in flight, a property's among them, without sorting them first.
- */
-export function predict(
-  page: Page,
-  events: readonly { type: string; payload: unknown }[],
-): Page {
-  if (events.length === 0) return page;
-  const key = canonicalize(page.title);
-  let state: BlockState = {
-    blocks: new Map([[key, page.blocks]]),
-    titles: new Map([[key, page.title]]),
-  };
-  for (const event of each(events)) {
-    if (!isBlockEvent(event)) continue;
-    if (!landed(state, event)) state = reduce(state, event);
-  }
-  return { ...page, blocks: blocksOn(state, page.title) };
+/** Where a block is: its page, parent, and the siblings either side. Undefined when it is gone. */
+export function position(state: BlockState, id: string): string | undefined {
+  const found = find(state, id);
+  if (!found) return undefined;
+  const { siblings, at } = found;
+  return JSON.stringify([
+    canonicalize(found.page),
+    found.parent?.id ?? null,
+    siblings[at - 1]?.id ?? null,
+    siblings[at + 1]?.id ?? null,
+  ]);
+}
+
+/** A block's text and its whole subtree, ids and text. Undefined when it is gone. */
+export function tree(state: BlockState, id: string): string | undefined {
+  const found = find(state, id);
+  if (!found) return undefined;
+  const shape = (block: Block): unknown => [block.id, block.text, block.children.map(shape)];
+  return JSON.stringify(shape(found.siblings[found.at]));
+}
+
+/** Every id in `blocks`, at every depth. */
+export function ids(blocks: readonly Block[]): string[] {
+  return blocks.flatMap((block) => [block.id, ...ids(block.children)]);
+}
+
+/** A check that none of `gone` is anywhere in `now`: nobody brought them back. */
+export function stillGone(gone: readonly string[]): Check<BlockState> {
+  return (now) => gone.every((id) => !find(now, id));
 }

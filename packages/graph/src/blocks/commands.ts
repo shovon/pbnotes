@@ -1,12 +1,17 @@
 /**
- * Writing blocks: a pure builder per event, and a command per keystroke that
- * checks the page before it builds and dispatches.
+ * Writing blocks: a command per keystroke that checks the page before it
+ * builds and dispatches. Each event's builder is its own module.
  */
-import { NAMESPACE } from "../events/events.ts";
-import type { Named } from "../events/events.ts";
-import { BLOCK_HANDLES, blocksOn, find, indented, locate, outdented } from "./blocks.ts";
-import type { Bare, BlockIndented, BlockOutdented, BlockState, Found, Page, PageEvent } from "./blocks.ts";
+import type { Written } from "../over/over.ts";
+import { blocksOn, find, indented, locate, outdented } from "./blocks.ts";
+import type { BlockState, Found, Page } from "./blocks.ts";
 import { getPage } from "./queries.ts";
+import type { PageEvent } from "./slice.ts";
+import { blockCreated } from "./created/created.ts";
+import { blockEdited } from "./edited/edited.ts";
+import { blockDeleted } from "./deleted/deleted.ts";
+import { blockIndented } from "./indented/indented.ts";
+import { blockOutdented } from "./outdented/outdented.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of
@@ -18,69 +23,10 @@ export type BlocksView = {
   dispatch(v: number, type: PageEvent["type"], payload: unknown): Promise<unknown>;
 };
 
-/** One event as it is written: schema type and payload, plus the `v` the gate reads. */
-type Built<T extends string> = Extract<PageEvent, { type: Named<T> }> & { v: number };
+/** A block event as a builder hands it back. */
+type Built = Written<PageEvent["type"], unknown>;
 
-/**
- * The one place an event is put together. The payload is typed against the
- * schema and `v` comes from `BLOCK_HANDLES`, because a payload that drifts
- * folds to nothing and a hand-typed `v` the gate refuses skips this build's
- * own writes. Reads no clock and no randomness.
- */
-function build<T extends Bare["type"]>(
-  name: T,
-  payload: Extract<Bare, { type: T }>["payload"],
-): Built<T> {
-  const type = `${NAMESPACE}${name}` as Named<T>;
-  return { v: BLOCK_HANDLES[type], type, payload } as Built<T>;
-}
-
-/**
- * The `block.created` event: the same bytes `addBlock` writes. A writer with
- * no fold (the CLI) can write a valid one if it trusts its own `after`,
- * `parent` and `id`. An absent `after` or `parent`, and a `first` that is not
- * `true`, is left off, so a block written without one writes the bytes it
- * always did.
- */
-export function blockCreated(
-  page: string,
-  text: string,
-  after: string | undefined,
-  id: string,
-  parent?: string,
-  first?: boolean,
-): Built<"block.created"> {
-  return build("block.created", {
-    page,
-    id,
-    text,
-    ...(after ? { after } : {}),
-    ...(parent ? { parent } : {}),
-    ...(first ? { first: true as const } : {}),
-  });
-}
-
-/** The `block.edited` event: `id`'s text is now `text`. */
-export function blockEdited(id: string, text: string): Built<"block.edited"> {
-  return build("block.edited", { id, text });
-}
-
-/** The `block.deleted` event: the user is done with `id`. */
-export function blockDeleted(id: string): Built<"block.deleted"> {
-  return build("block.deleted", { id });
-}
-
-/** The `block.indented` event for a move `indented` resolved. */
-export function blockIndented(payload: BlockIndented): Built<"block.indented"> {
-  return build("block.indented", payload);
-}
-
-/** The `block.outdented` event for a move `outdented` resolved. */
-export function blockOutdented(payload: BlockOutdented): Built<"block.outdented"> {
-  return build("block.outdented", payload);
-}
-
-function append(view: BlocksView, event: Built<string>): Promise<unknown> {
+function append(view: BlocksView, event: Built): Promise<unknown> {
   return view.dispatch(event.v, event.type, event.payload);
 }
 
@@ -93,7 +39,7 @@ function append(view: BlocksView, event: Built<string>): Promise<unknown> {
 async function onExisting(
   view: BlocksView,
   blockId: string,
-  eventFor: (found: Found) => Built<string> | undefined,
+  eventFor: (found: Found) => Built | undefined,
 ): Promise<Page> {
   const found = find(view.state, blockId);
   if (!found) throw new Error("No such block");

@@ -275,7 +275,35 @@ test("every event module loads first to the same HANDLES and UNDO", () => {
        console.log(JSON.stringify([HANDLES, Object.keys(UNDO).sort()]));`,
     ]).toString();
   const modules = eventModules();
-  assert.ok(modules.length >= 7, `found ${modules.join(", ")}`);
+  assert.ok(modules.length >= 12, `found ${modules.join(", ")}`);
   const expected = JSON.stringify([HANDLES, Object.keys(UNDO).sort()]) + "\n";
   for (const module of modules) assert.equal(tables(module), expected, module);
+});
+
+/**
+ * Every event type and the `v` this build reads and writes, written out. A
+ * name and a `v` never get a new meaning (README), and an event's `v` now
+ * lives in its own module, so nothing else would notice one changing: the
+ * builders read it from the same place.
+ */
+test("the event names and their v are exactly these", () => {
+  const v = (name: string, at: number) => [`${NAMESPACE}${name}`, at] as const;
+  assert.deepEqual(
+    HANDLES,
+    Object.fromEntries([
+      v("block.created", 1),
+      v("block.edited", 2),
+      v("block.deleted", 2),
+      v("block.indented", 2),
+      v("block.outdented", 2),
+      v("property.set", 1),
+      v("property.removed", 1),
+      v("tag.added", 1),
+      v("tag.removed", 1),
+      v("alias.added", 1),
+      v("alias.removed", 1),
+      v("page.deleted", 1),
+      v("batch", 1),
+    ]),
+  );
 });
