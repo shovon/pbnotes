@@ -47,7 +47,9 @@ import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
 import { DELETE_HANDLES, reads as readsDeletes, reduce as reduceDeletes } from "./deletes/deletes.ts";
 import { all, BATCH_HANDLES, unbatch } from "./batch/batch.ts";
-import type { BatchEvent } from "./batch/batch.ts";
+import type { BatchEvent, Batched } from "./batch/batch.ts";
+import { holds as holdsWith, invert as invertWith } from "./undo/undo.ts";
+import type { Step } from "./undo/undo.ts";
 import type { DeleteEvent, DeleteState } from "./deletes/deletes.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
 import type { EditedState } from "./edited/edited.ts";
@@ -193,6 +195,27 @@ export const graphFold = {
     edited: new Map(),
   } as Graph,
 };
+
+// ── Undo (#233) ─────────────────────────────────────────────────────────────
+
+/** What one command wrote: the graph before it, its events, and the graph after. */
+export type UndoStep = Step<Graph>;
+
+/**
+ * The events that undo `events`, written on `before`, to be written as one
+ * `batch`. Empty when nothing in them changed anything. See the README.
+ */
+export function invert(before: Graph, events: readonly Batched[]): Batched[] {
+  return invertWith(graphFold.reduce, before, events);
+}
+
+/**
+ * Whether `step` can still be undone in `now`: everything it touched is as it
+ * left it, so undoing it undoes nobody else's work.
+ */
+export function holds(now: Graph, step: UndoStep): boolean {
+  return holdsWith(graphFold.reduce, now, step);
+}
 
 /** An event as the fold is handed one. */
 type Incoming = { type: string; v: number; at?: unknown; payload: unknown };

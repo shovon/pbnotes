@@ -24,6 +24,8 @@ A page is deleted with `deletePage`, whose builder is `pageDeleted`.
 
 Several events that must land together go in one `batch` (below), built from the other builders' results.
 
+Undo is `invert` and `holds` (below): the events that take a step back, and whether a step can still be taken back.
+
 A view that draws its writes before they are recorded folds them with `predict` for blocks, `predictProperties` for a page's properties and `predictTags` for its tags. Each passes over events that are not its own, and reads a batch as the events it holds, so a view can hand all three everything it has in flight.
 
 The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperties`, `getTags`, `getTaggedBy`, `getAliases`, `getAliasOf`, `resolve`, `getDeletions`, `getRefsTo`, `hasContent`, `searchPages`, `searchNames`, `listPages` and `locateBlock`) take the folded graph alone, since they never write. The ones that take a page's title resolve it first (see "What a name opens"), so `getPage(graph, "JS")` is the page `JS` opens.
@@ -159,3 +161,26 @@ Some things a user does take more than one event. Each event is its own record, 
 - **An event in a batch means what it means alone.** An edit to a block the fold lacks changes nothing, in a batch or not.
 - **Why not in the ledger.** A batch could be one record holding several envelopes, below every fold. That changes the record format, so every older build would have to refuse the folder. As a graph event nothing on disk changes: an older build skips `batch` as a type it does not know, and so loses the whole action, never half of it.
 - **`batch(events)`** takes builder results and returns `{ v, type, payload }`. It throws for no events or a batch among them, which is a bug in the caller. `renameProperty` writes its `property.set` and `property.removed` as one batch.
+
+## Undoing
+
+A step is what one command wrote: the graph before it (`before`), its events, and the graph after it (`after`). Nothing here keeps a history; that is the caller's (#224).
+
+- **`invert(before, events)`** gives the events that undo `events`, to be written as one `batch`. They are plain events that any build reads, never an "undo" event: the log only grows, and what was undone stays on disk.
+- **The last event is undone first,** each against the graph as it stood just before it. A batch is the events it holds.
+- **What changed nothing has no inverse:** an edit to a block that isn't there, a tag a page already has. Empty means there is nothing to undo.
+- **A deleted block comes back with its subtree,** with the same ids and text, so a `((id))` to any of them resolves again: a page's first block with `first`, a first child with `parent`, the rest with `after`. A deleted page comes back the same way, then its properties, tags and aliases, spelled as they were.
+- **An indent is undone by an outdent after the block it went under,** and an outdent by an indent under the old parent, then an outdent for each sibling it took along, last first.
+- **Titles and delete counts are not undone.** A spelling, once seen, stays, and `getDeletions` still counts a delete that was undone.
+
+**`holds(now, step)`** is whether a step can still be undone: everything it touched is in `now` as the step left it in `after`. False means someone else changed it since, and undoing it would undo their work too. Only what the step touched is compared:
+
+| The step | Compared |
+|---|---|
+| Created a block | The block's text, its whole subtree, and where it sits |
+| Edited a block | Its text, so a block moved since still holds |
+| Indented or outdented a block | Where it sits (page, parent, the siblings either side), and where each sibling an outdent took along sits |
+| Deleted a block | That none of the deleted ids exist again |
+| Deleted a page | That none of its blocks' ids exist again. A page that gained new blocks since still holds |
+| Set or removed a property | The page's value for that key |
+| Added or removed a tag or an alias | Whether the page has it |
