@@ -100,6 +100,11 @@ export const GRAPH_CHANNELS = {
   view: 'graph:view',
   /** Main to renderer: the fold's version, and nothing else. */
   changed: 'graph:changed',
+  /**
+   * Main to renderer: the menu's Undo or Redo was chosen, by click or key,
+   * with this window focused (#247). Carries the way, and nothing else.
+   */
+  take: 'graph:take',
   locate: 'graph:locate',
   search: 'graph:search',
   find: 'graph:find',
@@ -136,6 +141,12 @@ export type GraphApi = {
    * under a sync tool. Returns an unsubscribe.
    */
   onChanged(listener: (version: number) => void): () => void;
+  /**
+   * Calls `listener` with `'undo'` or `'redo'` when the menu's Undo or Redo
+   * is chosen with this window focused (#247). The window decides whether
+   * the open field or main takes the step. Returns an unsubscribe.
+   */
+  onTake(listener: (way: 'undo' | 'redo') => void): () => void;
   /**
    * The page a block is on, found by its id alone — an id is unique across
    * the project. Undefined for an id the project does not have, including

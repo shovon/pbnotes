@@ -4,6 +4,7 @@
 import {
   app,
   BrowserWindow,
+  Menu,
   nativeTheme,
   protocol,
   screen,
@@ -13,6 +14,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import started from "electron-squirrel-startup";
 import { openDatabase } from "./db";
+import { appMenu } from "./features/menu/menu";
 import { createOpenBench } from "./features/bench/bench";
 import { registerBenchIpc } from "./features/bench/bench-ipc";
 import { benchFiles } from "./features/bench/bench-store";
@@ -33,7 +35,7 @@ import {
 } from "./features/projects/graph/graph-ipc";
 import { createGraphSession } from "./features/projects/graph/graph-session/graph-session";
 import { findImage, saveImage } from "./features/projects/graph/images/images";
-import { IMAGE_SCHEME } from "../shared/graph";
+import { GRAPH_CHANNELS, IMAGE_SCHEME } from "../shared/graph";
 import {
   MIN_SIZE,
   createWindowState,
@@ -139,6 +141,16 @@ const createWindow = (windowState: WindowState) => {
 // Some APIs can only be used once Electron is ready, so everything is built
 // here, and the handlers that need what was built are attached here too.
 app.on("ready", () => {
+  // The app's own menu (#247): Electron's default, but with Undo and Redo
+  // telling the focused window, which decides whether the open field or
+  // main takes the step. The default's would call the browser's undo.
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      appMenu(process.platform === "darwin", (way) =>
+        BrowserWindow.getFocusedWindow()?.webContents.send(GRAPH_CHANNELS.take, way),
+      ),
+    ),
+  );
   const db = openDatabase(path.join(app.getPath("userData"), "notes.db"));
   // The displays attached now: `screen` is only usable once the app is ready.
   const windowState = createWindowState(

@@ -147,6 +147,7 @@ export default function Tags({ tags, findTags, onAdd, onRemove }: Props) {
             aria-label="Tag"
             placeholder="Tag"
             value={typed}
+            data-undo="document"
             role="combobox"
             aria-expanded={shown.length > 0}
             aria-controls={listId}
