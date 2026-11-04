@@ -168,9 +168,10 @@ A step is what one command wrote: the graph before it (`before`), its events, an
 
 - **`invert(before, events)`** gives the events that undo `events`, to be written as one `batch`. They are plain events that any build reads, never an "undo" event: the log only grows, and what was undone stays on disk.
 - **The last event is undone first,** each against the graph as it stood just before it. A batch is the events it holds.
-- **What changed nothing has no inverse:** an edit to a block that isn't there, a tag a page already has. Empty means there is nothing to undo.
+- **What changed nothing has no inverse:** an edit to a block that isn't there, a tag a page already has. `[]` means there is nothing to undo.
+- **`undefined` means the step cannot be undone.** One event in it that cannot be undone makes the whole step `undefined`, never half undone. Today that is only an indent under anything but the sibling above, which no command writes: no event moves a block to an arbitrary place.
 - **A deleted block comes back with its subtree,** with the same ids and text, so a `((id))` to any of them resolves again: a page's first block with `first`, a first child with `parent`, the rest with `after`. A deleted page comes back the same way, then its properties, tags and aliases, spelled as they were.
-- **An indent is undone by an outdent after the block it went under,** and an outdent by an indent under the old parent, then an outdent for each sibling it took along, last first.
+- **An indent under the sibling above is undone by an outdent after it,** and an outdent by an indent under the old parent, then an outdent for each sibling it took along, last first.
 - **Titles and delete counts are not undone.** A spelling, once seen, stays, and `getDeletions` still counts a delete that was undone.
 
 **`holds(now, step)`** is whether a step can still be undone: everything it touched is in `now` as the step left it in `after`. False means someone else changed it since, and undoing it would undo their work too. Only what the step touched is compared:
@@ -184,3 +185,11 @@ A step is what one command wrote: the graph before it (`before`), its events, an
 | Deleted a page | That none of its blocks' ids exist again. A page that gained new blocks since still holds |
 | Set or removed a property | The page's value for that key |
 | Added or removed a tag or an alias | Whether the page has it |
+
+### Where an event's undo lives
+
+In the slice that owns the event, beside its fold and its builders: `BLOCK_UNDO` in `blocks/undo.ts`, `PROPERTY_UNDO`, `TAG_UNDO`, `ALIAS_UNDO` and `DELETE_UNDO` the same way. Each holds one `Undo` per event type: `inverse`, the events that undo it from the graph just before it, and `touched`, what `holds` compares for it.
+
+`UNDO` in `graph.ts` puts them together, keyed on every type in `HANDLES` but `batch`, so an event type with no entry stops the build. An event that cannot be undone says so with `CANNOT`, never by having no entry. `undo/` holds only the walk, which knows no event: it is handed the fold and the table.
+
+A new event's undo is an entry in its own slice's table, and nothing outside the slice changes.

@@ -31,3 +31,13 @@ export function field(payload: object, name: string): unknown {
     ? (payload as Record<string, unknown>)[name]
     : undefined;
 }
+
+/**
+ * A string field the payload holds itself, or "" for anything else. For a
+ * payload a fold has already read, where a missing field means none.
+ */
+export function stringOf(payload: unknown, name: string): string {
+  if (typeof payload !== "object" || payload === null) return "";
+  const value = field(payload, name);
+  return typeof value === "string" ? value : "";
+}

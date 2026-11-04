@@ -18,6 +18,9 @@ import {
   blockOutdented,
   each,
   getPage,
+  HANDLES,
+  NAMESPACE,
+  UNDO,
   graphFold,
   holds,
   invert,
@@ -28,6 +31,15 @@ import {
   tagRemoved,
 } from "../graph.ts";
 import type { Batched, Graph } from "../graph.ts";
+import { CANNOT, holds as holdsWith, invert as invertWith, same } from "./undo.ts";
+import type { Undo, UndoTable } from "./undo.ts";
+
+/** `invert`'s answer for a step that can be undone: never `undefined`. */
+function inverseOf(before: Graph, events: Batched[]): Batched[] {
+  const inverse = invert(before, events);
+  assert.ok(inverse, "can be undone");
+  return inverse;
+}
 
 /** `events` folded onto `state`. */
 function fold(state: Graph, ...events: Batched[]): Graph {
@@ -80,7 +92,7 @@ function shape(graph: Graph, page = "Foo"): string {
 function roundTrip(name: string, events: Batched[], start = START) {
   const after = fold(start, ...events);
   assert.notDeepEqual(held(after), held(start), `${name}: the step changes something`);
-  const inverse = invert(start, events);
+  const inverse = inverseOf(start, events);
   assert.ok(inverse.length > 0, `${name}: has an inverse`);
   const undone = fold(after, batch(inverse));
   assert.deepEqual(held(undone), held(start), `${name}: undone`);
@@ -141,13 +153,13 @@ test("a deleted page comes back whole, spelled as it was", () => {
   const { undone } = roundTrip("delete Foo", [pageDeleted("foo")]);
   assert.equal(shape(undone), "a(a1 a2) b(b1) c");
   assert.deepEqual(undone.properties.get("foo"), new Map([["owner", "Mira"]]));
-  const inverse = invert(START, [pageDeleted("foo")]);
+  const inverse = inverseOf(START, [pageDeleted("foo")]);
   assert.ok(inverse.every((it) => (it.payload as { page: string }).page === "Foo"));
 });
 
 test("a step undone in reverse: the last event first", () => {
   const events = [blockEdited("a", "A!"), blockDeleted("a")];
-  const inverse = invert(START, events);
+  const inverse = inverseOf(START, events);
   assert.equal(inverse[0].type.endsWith("block.created"), true, "the delete is undone first");
   assert.deepEqual(inverse.at(-1), blockEdited("a", "A"), "then the edit");
   assert.equal(getPage(fold(fold(START, ...events), ...inverse), "Foo").blocks[0].text, "A");
@@ -248,8 +260,56 @@ test("an edit still holds when its block was moved, and a page delete when the p
 
 test("a redo is a step like any other: it holds over the undo it follows", () => {
   const done = step(blockDeleted("a"));
-  const inverse = invert(done.before, done.events);
+  const inverse = inverseOf(done.before, [...done.events]);
   const undo = { before: done.after, events: inverse, after: fold(done.after, ...inverse) };
   assert.equal(holds(undo.after, undo), true);
   assert.equal(holds(fold(undo.after, blockEdited("a1", "theirs")), undo), false);
+});
+
+test("every event type but batch has an undo entry, and only those", () => {
+  const types = Object.keys(HANDLES).filter((type) => type !== `${NAMESPACE}batch`);
+  assert.deepEqual(Object.keys(UNDO).sort(), types.sort());
+});
+
+test("an indent anywhere but under the sibling above cannot be undone, and takes its step with it", () => {
+  // `c`'s sibling above is `b`: under `a` is not an indent a command writes.
+  const elsewhere = blockIndented({ id: "c", parent: "a" });
+  assert.notDeepEqual(held(fold(START, elsewhere)), held(START), "the indent changes something");
+  assert.equal(invert(START, [elsewhere]), undefined);
+  assert.equal(invert(START, [tagAdded("Foo", "Play"), elsewhere]), undefined, "never half undone");
+  assert.equal(invert(START, [batch([tagAdded("Foo", "Play"), elsewhere])]), undefined, "in a batch too");
+});
+
+// ── The generic walk, over a fold that knows nothing of the graph ───────────
+
+/** A counter: `add` adds its payload, `stuck` adds 1 and cannot be undone. */
+type Count = { n: number };
+const add = (n: number): Batched => ({ type: "add", v: 1, payload: n });
+const stuck: Batched = { type: "stuck", v: 1, payload: null };
+const count = (state: Count, event: Batched): Count =>
+  event.type === "add" && event.payload !== 0
+    ? { n: state.n + (event.payload as number) }
+    : event.type === "stuck"
+      ? { n: state.n + 1 }
+      : state;
+const adding: Undo<Count> = {
+  inverse: (_, event) => [add(-(event.payload as number))],
+  touched: () => [same((it: Count) => it.n)],
+};
+const TABLE: UndoTable<Count> = { add: adding, stuck: CANNOT };
+
+test("the walk undoes in reverse, and passes over what changed nothing", () => {
+  assert.deepEqual(invertWith(count, TABLE, { n: 0 }, [add(2), add(0), add(5)]), [add(-5), add(-2)]);
+  assert.deepEqual(invertWith(count, TABLE, { n: 0 }, [add(0)]), []);
+});
+
+test("one event that cannot be undone, or that has no entry, makes the whole step undefined", () => {
+  assert.equal(invertWith(count, TABLE, { n: 0 }, [add(2), stuck]), undefined);
+  assert.equal(invertWith(count, { stuck: CANNOT }, { n: 0 }, [add(2)]), undefined, "no entry");
+});
+
+test("a step holds while what it touched is as it left it", () => {
+  const step = { before: { n: 0 }, events: [add(2)], after: { n: 2 } };
+  assert.equal(holdsWith(count, TABLE, { n: 2 }, step), true);
+  assert.equal(holdsWith(count, TABLE, { n: 3 }, step), false);
 });
