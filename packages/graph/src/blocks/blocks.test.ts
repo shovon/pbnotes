@@ -9,20 +9,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BLOCK_HANDLES, indented, outdented, predict, reduce } from "./blocks.ts";
 import { NAMESPACE } from "../events/events.ts";
-import { getPage, getReferences, read, searchBlocks, searchPages } from "../graph.ts";
+import { getPage, getReferences, graphFold, read, searchBlocks, searchPages } from "../graph.ts";
 import type { Graph } from "../graph.ts";
 import type { Block, PageEvent } from "./blocks.ts";
 
 const TODAY = "2026-09-21";
 
-/** Nothing written yet. */
-const empty = (): Graph => ({
-  blocks: new Map(),
-  titles: new Map(),
-  properties: new Map(),
-  tags: new Map(),
-  aliases: new Map(),
-});
+/** Nothing written yet: the fold's own start, so it has every field `Graph` does. */
+const empty = (): Graph => graphFold.initial;
 
 /** One event, straight into `reduce`, with no log or device around it. */
 function event(type: string, v: number, payload: unknown) {
@@ -95,11 +89,9 @@ test("an event is folded under its namespaced name and no other", () => {
   const none = empty();
 
   assert.deepEqual(reduce(none, event(`${NAMESPACE}block.created`, 1, payload)), {
+    ...none,
     blocks: new Map([[TODAY, [{ id: "b1", text: "first", children: [] }]]]),
     titles: new Map([[TODAY, TODAY]]),
-    properties: new Map(),
-    tags: new Map(),
-    aliases: new Map(),
   });
   assert.equal(reduce(none, event("block.created", 1, payload)), none);
   // Only the exact prefix. A slash is what #37 first proposed and is not it.
