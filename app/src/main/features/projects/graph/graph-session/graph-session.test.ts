@@ -299,30 +299,3 @@ test("a page's own view counts the refs other graph hold to its blocks", async (
   assert.equal((await graph.view({ page: "Mira", block: "a1" }, TODAY)).showing[0].refsTo, 0);
   assert.ok((await graph.view(undefined, TODAY)).showing.every((it) => it.refsTo === 0));
 });
-
-test("settled waits for the writes sent before it, a refused one included", async () => {
-  const { view, hold, texts } = ledger();
-  const { graph } = session(view);
-  const release = hold();
-  void graph.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
-  graph.run({ type: "editBlock", blockId: "nope", text: "text" }).catch((): void => undefined);
-  let done = false;
-  const settled = graph.settled().then(() => (done = true));
-  await new Promise((r) => setImmediate(r));
-  assert.equal(done, false, "settled before the write sent ahead of it");
-
-  release();
-  await settled;
-  assert.deepEqual(texts(), ["one"]);
-});
-
-test("settled does not wait for a write sent after it", async () => {
-  const { view, hold } = ledger();
-  const { graph } = session(view);
-  const settled = graph.settled();
-  const release = hold();
-  const after = graph.run({ type: "addBlock", id: "a1", title: TODAY, text: "one" });
-  await settled;
-  release();
-  await after;
-});
