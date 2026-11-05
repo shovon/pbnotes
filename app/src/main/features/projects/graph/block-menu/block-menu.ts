@@ -9,12 +9,17 @@ import type { BlockMenuOffer } from "../../../../../shared/graph";
  */
 export function readOffer(offer: unknown): BlockMenuOffer {
   if (typeof offer !== "object" || offer === null) return {};
-  const { delete: remove, count } = offer as Record<string, unknown>;
-  if (remove !== true) return {};
+  const { delete: remove, count, reference } = offer as Record<string, unknown>;
+  // Only a plain `false` hides it: anything else leaves the one item every
+  // block's menu has always had.
+  const hidden = reference === false ? { reference: false } : {};
+  if (remove !== true) return hidden;
   // A count is only for several: one, or anything not a whole number, is
   // the block alone.
   const several = Number.isSafeInteger(count) && (count as number) > 1;
-  return several ? { delete: true, count: count as number } : { delete: true };
+  return several
+    ? { ...hidden, delete: true, count: count as number }
+    : { ...hidden, delete: true };
 }
 
 /** What the delete item says: the block alone, or how many go. */

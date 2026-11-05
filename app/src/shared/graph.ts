@@ -111,6 +111,8 @@ export const GRAPH_CHANNELS = {
   pages: 'graph:pages',
   command: 'graph:command',
   addImage: 'graph:add-image',
+  image: 'graph:image',
+  copy: 'graph:copy',
   blockMenu: 'graph:block-menu',
   pageMenu: 'graph:page-menu',
   status: 'graph:status',
@@ -201,8 +203,21 @@ export type GraphApi = {
    */
   addImage(bytes: Uint8Array, mime: string): Promise<string>;
   /**
+   * The bytes of the image a note links as `images/<name>`, and its type,
+   * out of what is open: for a copy that carries the image with it (#261).
+   * Undefined for one that is not there, not synced yet or never was.
+   */
+  image(name: string): Promise<{ bytes: Uint8Array; mime: string } | undefined>;
+  /**
+   * Puts `text` and `html` on the system clipboard as one copy, each for
+   * whatever pastes it to take the one it reads (#261). Main writes it, as
+   * it writes Copy Block Reference, so the window's focus has no say.
+   */
+  copy(clip: Clip): Promise<void>;
+  /**
    * Pops the native menu for a block at the pointer. Copy Block Reference is
-   * always there, and puts `((blockId))` on the clipboard in main. What else
+   * there unless `offer` hides it, and puts `((blockId))` on the clipboard in
+   * main. What else
    * it offers is `offer`'s, and what is picked from that comes back for the
    * window to do: it knows what is open and where it is, and main does not.
    * Resolves once the menu closes, to the pick, or null for anything else —
@@ -230,8 +245,16 @@ export type PageMenuOffer = {
 /** An item of the page menu the user picked. */
 export type PageMenuPick = 'delete';
 
+/** One copy, in the formats it goes on the clipboard in. */
+export type Clip = { text: string; html: string };
+
 /** What a block's menu offers beyond copying its reference. */
 export type BlockMenuOffer = {
+  /**
+   * Copy Block Reference, which is there unless this is `false`: hidden on
+   * a dot among several selected (#261), where it would copy one of them.
+   */
+  reference?: boolean;
   /** Delete Block, which takes the block and every block under it. */
   delete?: boolean;
   /**
@@ -243,6 +266,9 @@ export type BlockMenuOffer = {
 
 /** An item of `BlockMenuOffer` the user picked. */
 export type BlockMenuPick = 'delete';
+
+/** A block as a paste writes it: a new id, its text, and what goes under it. */
+export type Pasted = { id: string; text: string; children: Pasted[] };
 
 /**
  * Every write the window can ask main to record, tagged by `type`. Each runs
@@ -298,6 +324,23 @@ export type Command =
    * resolves rather than throws, like `outdentBlock`.
    */
   | { type: 'outdentBlocks'; blockIds: readonly string[] }
+  /**
+   * Copied blocks written on `title` as new ones (#261), nested as they were
+   * copied, as one record and one undo step. Every id is a fresh UUID of the
+   * caller's, as `addBlock`'s is. `after`, `parent` and `first` place the
+   * first block as they place a new one, and each next one goes directly
+   * beneath the one before; or `into` names an empty block on the page,
+   * which the first pasted block replaces, keeping its id.
+   */
+  | {
+      type: 'pasteBlocks';
+      title: string;
+      blocks: readonly Pasted[];
+      after?: string;
+      parent?: string;
+      first?: true;
+      into?: string;
+    }
   /**
    * Appends a `block.indented` event: the block becomes the last child of the
    * sibling above it, bringing its own children along.

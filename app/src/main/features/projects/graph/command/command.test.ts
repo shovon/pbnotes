@@ -123,3 +123,49 @@ test("today is a day as YYYY-MM-DD, and nothing else", () => {
     assert.throws(() => requireDay(bad), TypeError);
   }
 });
+
+const ID2 = "1f8fad5b-d9cb-469f-a165-70867728950e";
+const paste = (fields: Record<string, unknown>) => ({
+  type: "pasteBlocks",
+  title: "Mira",
+  blocks: [{ id: ID, text: "one", children: [{ id: ID2, text: "two", children: [] as unknown[] }] }],
+  ...fields,
+});
+
+test("a paste passes with its blocks and one way of placing them (#261)", () => {
+  for (const fields of [{}, { after: "b1" }, { after: "b1", parent: "b0" }, { parent: "b0" }, { first: true }, { into: "b1" }]) {
+    const command = paste(fields);
+    assert.deepEqual(requireCommand(command), command, JSON.stringify(fields));
+  }
+});
+
+test("a paste's blocks are built fresh, from the fields they read", () => {
+  const command = requireCommand({
+    ...paste({}),
+    blocks: [{ id: ID, text: "x", children: [], page: "Elsewhere", __proto__: { evil: 1 } }],
+  });
+  assert.deepEqual(command, { type: "pasteBlocks", title: "Mira", blocks: [{ id: ID, text: "x", children: [] }] });
+});
+
+test("a paste that is malformed, too big or too deep is refused", () => {
+  type Leaf = { id: string; text: string; children: Leaf[] };
+  const leaf = (id: string): Leaf => ({ id, text: "", children: [] });
+  for (const bad of [
+    paste({ blocks: [] }),
+    paste({ blocks: "x" }),
+    paste({ blocks: [null] }),
+    paste({ blocks: [{ id: "not-a-uuid", text: "x", children: [] }] }),
+    paste({ blocks: [{ id: ID, text: 1, children: [] }] }),
+    paste({ blocks: [{ id: ID, text: "x" }] }),
+    paste({ title: " Mira" }),
+    paste({ first: false }),
+    paste({ after: 3 }),
+    paste({ into: "b1", after: "b0" }),
+    paste({ blocks: Array.from({ length: 10_001 }, () => leaf(ID)) }),
+  ]) {
+    assert.throws(() => requireCommand(bad), TypeError);
+  }
+  let deep = leaf(ID);
+  for (let i = 0; i < 100; i++) deep = { ...leaf(ID), children: [deep] };
+  assert.throws(() => requireCommand(paste({ blocks: [deep] })), /too deep/);
+});

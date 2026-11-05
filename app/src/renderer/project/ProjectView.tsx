@@ -37,6 +37,12 @@ import { watchDrag } from './selection/sweep/watch';
 import type { Entry } from './selection/shown';
 import { covered, roots } from './selection/roots/roots';
 import { command, picks } from './selection/shortcut/shortcut';
+import { decode } from './selection/clip/clip';
+import type { Copied } from './selection/clip/clip';
+import { asText, dataUrl, imageNames, picked } from './selection/copy/copy';
+import { asHtml } from './selection/copy/html/html';
+import { beneath, endOf, withIds } from './selection/paste/paste';
+import type { Spot } from './selection/paste/paste';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -52,6 +58,8 @@ export type ProjectViewGraph = PageViewGraph &
     | 'find'
     | 'pages'
     | 'addImage'
+    | 'image'
+    | 'copy'
     | 'pageMenu'
   >;
 
@@ -85,6 +93,12 @@ export type Kept<T> = {
 /** The image files in a paste or a drop. */
 const images = (data: DataTransfer): File[] =>
   [...data.files].filter((file) => file.type.startsWith('image/'));
+
+/** Whether `element` is somewhere text is typed, which takes a paste as its own. */
+const typesText = (element: Element | null): boolean =>
+  element instanceof HTMLInputElement ||
+  element instanceof HTMLTextAreaElement ||
+  (element instanceof HTMLElement && element.isContentEditable);
 
 type Props = {
   act: Act;
@@ -754,6 +768,81 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
     return chosen?.keys.includes(slot) ? roots(onScreen(), chosen.keys).length : undefined;
   };
 
+  /**
+   * Cmd/Ctrl+C, or Edit → Copy, with blocks selected (#261): the top-most
+   * selected blocks, each with its subtree and once, as main last sent them,
+   * go on the clipboard as a Markdown list, as HTML with the project's images
+   * carried in it, and as blocks riding in that HTML for a paste into
+   * pbnotes. The selection stays. Read off every page and cut on screen,
+   * since a selection spans them, and written by main.
+   */
+  const copyChosen = () => {
+    const chosen = latestChosen.current;
+    if (!chosen || !held) return;
+    const trees = held.view.showing.flatMap(({ page, references }) => [
+      page.blocks,
+      ...references.map((it) => it.blocks),
+    ]);
+    const blocks = picked(trees, roots(onScreen(), chosen.keys).map((it) => it.id));
+    if (blocks.length === 0) return;
+    act(async () => {
+      const carried = await Promise.all(
+        imageNames(blocks, previews).map(async (name) => {
+          const image = await graph.image(name);
+          return image ? [[name, dataUrl(image)] as const] : [];
+        }),
+      );
+      await graph.copy({
+        text: asText(blocks, previews),
+        html: asHtml(blocks, previews, new Map(carried.flat())),
+      });
+    });
+  };
+  const copying = useRef(copyChosen);
+  copying.current = copyChosen;
+
+  /**
+   * The copy event, not the key: Cmd/Ctrl+C and the menu's Copy both raise
+   * it. With blocks selected nothing is being typed, since a field taking
+   * focus clears the selection, so the copy is theirs.
+   */
+  useEffect(() => {
+    const onCopy = (event: ClipboardEvent) => {
+      if (!latestChosen.current || typesText(document.activeElement)) return;
+      event.preventDefault();
+      copying.current();
+    };
+    document.addEventListener('copy', onCopy);
+    return () => document.removeEventListener('copy', onCopy);
+  }, []);
+
+  /**
+   * Blocks from a pbnotes copy, pasted with no box open (#261): beneath the
+   * last selected block, at its depth, or with none selected where a pasted
+   * image goes, at the end of what is in view. New blocks, named here, as
+   * one write and one undo step. A box open takes the paste itself
+   * (`PageView`).
+   */
+  const pasteHere = (blocks: Copied[]) => {
+    const chosen = latestChosen.current;
+    const last = chosen ? roots(onScreen(), chosen.keys).at(-1) : undefined;
+    const zoomed = zoom ? held?.view.showing[0]?.page : undefined;
+    const found = zoom && zoomed ? locate(zoomed.blocks, zoom) : undefined;
+    const target = last
+      ? { page: last.page, spot: beneath(last.id, found?.siblings[found.at]) as Spot }
+      : (() => {
+          const { page, root } = imageTarget({
+            title,
+            today: today(now()),
+            showing: held?.view.showing.map((it) => it.page) ?? [],
+            zoom,
+          });
+          return { page, spot: endOf(root) };
+        })();
+    const pasting = withIds(blocks, () => crypto.randomUUID());
+    act(() => bridge.run({ type: 'pasteBlocks', title: target.page, blocks: pasting, ...target.spot }));
+  };
+
   const selecting = useMemo<Selecting>(
     () => ({
       mac,
@@ -827,6 +916,17 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
       const data = event.clipboardData;
+      if (!data || event.defaultPrevented) return;
+      // A box, or any field, takes blocks as its own: into a box they are
+      // `PageView`'s, and into anything else the text they also carry.
+      const blocks = typesText(document.activeElement)
+        ? undefined
+        : decode(data.getData('text/html'));
+      if (blocks) {
+        event.preventDefault();
+        pasteHere(blocks);
+        return;
+      }
       // Text copied out of a word processor comes with a picture of itself.
       // That is a paste of text.
       if (!data || ['text/plain', 'text/html'].every((it) => data.types.includes(it))) {

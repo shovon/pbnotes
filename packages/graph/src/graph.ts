@@ -140,10 +140,15 @@ export {
   indentBlock,
   moveBlock,
   outdentBlock,
+  pasteBlocks,
 } from "./blocks/commands.ts";
+export { pasted } from "./blocks/paste/paste.ts";
+export type { PasteAt } from "./blocks/paste/paste.ts";
 export { getEdited } from "./edited/edited.ts";
 export { countBlocks, countLinks } from "./blocks/queries.ts";
 export { inCode, read } from "./reading/reading.ts";
+export { spans } from "./spans/spans.ts";
+export type { Span } from "./spans/spans.ts";
 export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
 
 /**

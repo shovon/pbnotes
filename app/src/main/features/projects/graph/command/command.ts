@@ -8,7 +8,7 @@
  *
  * Free of `electron` imports, so it runs under `node --test`.
  */
-import type { Command } from "../../../../../shared/graph.ts";
+import type { Command, Pasted } from "../../../../../shared/graph.ts";
 import { requireString, requireStringArray } from "../../../../ipc.ts";
 
 /**
@@ -68,6 +68,45 @@ function someIds(raw: Raw): string[] {
 }
 
 /**
+ * How many blocks one paste may write, and how deep they may nest. The
+ * blocks come off the clipboard, which any app can write, and every one of
+ * them stays in the log forever: a paste past either is refused whole, not
+ * cut down to what fits.
+ */
+export const PASTE_LIMITS = { blocks: 10_000, depth: 100 };
+
+/**
+ * The blocks a paste writes, each built fresh from the three fields it
+ * reads: a new id, checked as one; its text; and what goes under it.
+ */
+function requirePasted(value: unknown): Pasted[] {
+  let count = 0;
+  const read = (raw: unknown, depth: number): Pasted[] => {
+    if (!Array.isArray(raw)) throw new TypeError("Expected blocks to be an array");
+    if (depth > PASTE_LIMITS.depth) throw new TypeError("Blocks nest too deep to paste");
+    return raw.map((it: unknown) => {
+      if (typeof it !== "object" || it === null) throw new TypeError("Expected a block");
+      count += 1;
+      if (count > PASTE_LIMITS.blocks) throw new TypeError("Too many blocks to paste");
+      return {
+        id: requireBlockId(own(it, "id")),
+        text: requireString(own(it, "text"), "text"),
+        children: read(own(it, "children"), depth + 1),
+      };
+    });
+  };
+  const blocks = read(value, 1);
+  if (blocks.length === 0) throw new TypeError("Expected a block");
+  return blocks;
+}
+
+/** An optional block id field: absent, or a string. */
+function optionalId(raw: Raw, name: string): Record<string, string> {
+  const value = own(raw, name);
+  return value === undefined ? {} : { [name]: requireString(value, name) };
+}
+
+/**
  * One checker per command type. Keyed on `Command["type"]`, so a case added
  * to the union without a checker does not compile. Each builds its command
  * fresh from the fields it reads, so nothing else the window sent goes on.
@@ -101,6 +140,24 @@ const CHECKERS: {
   deleteBlocks: (raw) => ({ type: "deleteBlocks", blockIds: someIds(raw) }),
   indentBlocks: (raw) => ({ type: "indentBlocks", blockIds: someIds(raw) }),
   outdentBlocks: (raw) => ({ type: "outdentBlocks", blockIds: someIds(raw) }),
+  // Where a paste goes is a place or an empty block to fill, never both:
+  // the graph command would take one and the other would mean nothing.
+  pasteBlocks: (raw) => {
+    const first = own(raw, "first");
+    if (first !== undefined && first !== true) throw new TypeError("Expected first to be true");
+    const place = { ...optionalId(raw, "after"), ...optionalId(raw, "parent"), ...(first === true ? { first: true as const } : {}) };
+    const into = optionalId(raw, "into");
+    if (into.into !== undefined && Object.keys(place).length > 0) {
+      throw new TypeError("A paste into a block has no other place");
+    }
+    return {
+      type: "pasteBlocks",
+      title: requireTitle(own(raw, "title")),
+      blocks: requirePasted(own(raw, "blocks")),
+      ...place,
+      ...into,
+    };
+  },
   indentBlock: (raw) => ({
     type: "indentBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
