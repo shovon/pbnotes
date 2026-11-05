@@ -100,6 +100,7 @@ const CHECKERS: {
   }),
   deleteBlocks: (raw) => ({ type: "deleteBlocks", blockIds: someIds(raw) }),
   indentBlocks: (raw) => ({ type: "indentBlocks", blockIds: someIds(raw) }),
+  outdentBlocks: (raw) => ({ type: "outdentBlocks", blockIds: someIds(raw) }),
   indentBlock: (raw) => ({
     type: "indentBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),

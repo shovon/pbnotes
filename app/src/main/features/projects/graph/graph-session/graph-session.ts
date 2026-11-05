@@ -14,6 +14,7 @@ import {
   deleteBlock,
   deleteBlocks,
   indentBlocks,
+  outdentBlocks,
   deletePage,
   editBlock,
   indentBlock,
@@ -248,6 +249,8 @@ function apply(view: GraphView, command: Exclude<Command, Taking>): Promise<unkn
       return deleteBlocks(view, command.blockIds);
     case "indentBlocks":
       return indentBlocks(view, command.blockIds);
+    case "outdentBlocks":
+      return outdentBlocks(view, command.blockIds);
     case "indentBlock":
       return indentBlock(view, command.blockId);
     case "outdentBlock":

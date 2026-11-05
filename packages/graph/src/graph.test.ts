@@ -31,6 +31,7 @@ import {
   moveBlock,
   NAMESPACE,
   outdentBlock,
+  outdentBlocks,
   pageDeleted,
   graphFold,
   propertyRemoved,
@@ -226,6 +227,48 @@ test("indentBlocks files each block under the sibling above, in turn, all or not
     assert.equal(view.events.length, written, `${ids}: one first among its siblings, so nothing moves`);
   }
   await assert.rejects(indentBlocks(await start(), ["gone"]), Error);
+});
+
+test("outdentBlocks brings each block out a level, in turn, all or nothing (#260)", async () => {
+  /** Today: a(b c d) e(f); Elsewhere: g(h). */
+  const start = async () => {
+    const view = memory();
+    await addBlock(view, TODAY, "a", undefined, "a");
+    await addBlock(view, TODAY, "b", undefined, "b", "a");
+    await addBlock(view, TODAY, "c", "b", "c", "a");
+    await addBlock(view, TODAY, "d", "c", "d", "a");
+    await addBlock(view, TODAY, "e", "a", "e");
+    await addBlock(view, TODAY, "f", undefined, "f", "e");
+    await addBlock(view, "Elsewhere", "g", undefined, "g");
+    await addBlock(view, "Elsewhere", "h", undefined, "h", "g");
+    return view;
+  };
+  const shape = (blocks: { id: string; children: unknown[] }[]): string =>
+    blocks.map((it) => (it.children.length ? `${it.id}(${shape(it.children as never)})` : it.id)).join(" ");
+  const pages = (view: GraphView) => [shape(getPage(view.state, TODAY).blocks), shape(getPage(view.state, "Elsewhere").blocks)];
+  const cases: [string, string[], string[]][] = [
+    ["selected siblings come out in order, and one below goes under the last", ["b", "c"], ["a b c(d) e(f)", "g(h)"]],
+    ["a gap", ["b", "f"], ["a b(c d) e f", "g(h)"]],
+    ["across pages", ["d", "h"], ["a(b c) d e(f)", "g h"]],
+  ];
+  for (const [name, ids, expected] of cases) {
+    const view = await start();
+    const written = view.events.length;
+    await outdentBlocks(view, ids);
+    assert.equal(view.events.length, written + 1, `${name}: one record`);
+    assert.equal((view.events.at(-1) as { type: string }).type, `${NAMESPACE}batch`, name);
+    assert.deepEqual(pages(view), expected, name);
+  }
+  const one = await start();
+  await outdentBlocks(one, ["d"]);
+  assert.deepEqual(one.events.at(-1), blockOutdented({ id: "d", after: "a" }), "one block is its own event");
+  for (const ids of [["b", "e"], ["f", "g"], ["a"]]) {
+    const view = await start();
+    const written = view.events.length;
+    await outdentBlocks(view, ids);
+    assert.equal(view.events.length, written, `${ids}: one already top-level, so nothing moves`);
+  }
+  await assert.rejects(outdentBlocks(await start(), ["gone"]), Error);
 });
 
 test("moveBlock refuses what the fold would ignore, and writes nothing for a block already there", async () => {

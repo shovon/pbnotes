@@ -291,6 +291,14 @@ export type Command =
    */
   | { type: 'indentBlocks'; blockIds: readonly string[] }
   /**
+   * Shift+Tab on a selection (#260): each top-most block brought out a
+   * level, in the order given, taking the siblings below it along as its
+   * children, as one record and one undo step. All or nothing: when any of
+   * them is already top-level, on whatever page, nothing moves, and that
+   * resolves rather than throws, like `outdentBlock`.
+   */
+  | { type: 'outdentBlocks'; blockIds: readonly string[] }
+  /**
    * Appends a `block.indented` event: the block becomes the last child of the
    * sibling above it, bringing its own children along.
    *
