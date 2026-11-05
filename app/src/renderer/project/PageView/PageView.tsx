@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useContext, useEffect, useRef, useState } from 'react';
 import { locate, predict, predictProperties, predictTags } from '@pbnotes/graph';
 import type { Block as BlockType, Page, Property } from '@pbnotes/graph';
 import type { GraphApi } from '../../../shared/graph';
@@ -32,6 +32,8 @@ import {
 import type { Caret, Then } from './editing/editing';
 import { drawn, recorded, refused, unseen } from './pending/pending';
 import type { Pending } from './pending/pending';
+import { Selecting } from '../selection/Selecting';
+import { slot, slotKey } from '../selection/shown';
 
 /**
  * Where an unwritten block is waiting to be typed. `after` is the block it
@@ -91,6 +93,12 @@ type Props = {
    * the link would go nowhere.
    */
   linked?: boolean;
+  /**
+   * Which view this is, for selecting blocks (#253): the same block shows in
+   * more than one, and is selected in one at a time. The page's title when
+   * left off; a cut is `under` the view it is shown in.
+   */
+  scope?: string;
   act: Act;
 };
 
@@ -122,8 +130,12 @@ export default function PageView({
   zoom,
   onZoom,
   linked = false,
+  scope: scoped,
   act,
 }: Props) {
+  /** The selection, which `ProjectView` holds (#253). */
+  const selecting = useContext(Selecting);
+  const scope = scoped ?? sent.title;
   /**
    * The writes made here that main has not answered yet, as the events they
    * will be recorded as. The page is drawn with them folded over what main
@@ -372,11 +384,13 @@ export default function PageView({
    * events, because nothing can be filed under a block that was never
    * written. The user pressed one key, so the box reopens on what they were
    * typing in rather than closing.
+   *
+   * Hands back the block it wrote, if it wrote one.
    */
   const commitNew = (
     text: string,
     { then, caret }: { then: Then; caret?: number },
-  ) => {
+  ): string | undefined => {
     // Zoomed, the end of the view is the end of the root's children, not of
     // the page. A root with none yet takes two events, like Tab in a new box:
     // the block is written beside the root and then filed under it.
@@ -403,9 +417,9 @@ export default function PageView({
     setWriting(null);
     if (plan.kind === 'pop') {
       setWriting({ after: plan.after });
-      return;
+      return undefined;
     }
-    if (plan.kind === 'nothing') return;
+    if (plan.kind === 'nothing') return undefined;
 
     // Named here, so the block is drawn — and the next box opened beneath
     // it, or this one reopened on it — before main has heard of it.
@@ -432,6 +446,7 @@ export default function PageView({
       setEditingId(id);
     }
     act(() => write(...steps));
+    return id;
   };
 
   /**
@@ -494,8 +509,29 @@ export default function PageView({
       onIndent={(text, at, by) =>
         commitNew(text, { then: by === 1 ? 'indent' : 'outdent', caret: at })
       }
+      // Written as blur would write it, and then what was written is
+      // selected. Before it is drawn it is not in the order on screen yet,
+      // so it is selected alone, whichever key it was.
+      onSelect={(text) => {
+        const id = commitNew(text, { then: 'stop' });
+        if (id) selecting.fromBox(slotKey(scope, id), 'here');
+      }}
+      mac={selecting.mac}
     />
   );
+
+  /**
+   * Enter on a selection opens the box of the first block in it, caret at
+   * the end, when that block is in this view.
+   */
+  const opening = selecting.opening;
+  useEffect(() => {
+    if (opening?.scope !== scope) return;
+    setWriting(null);
+    setCaret(Number.MAX_SAFE_INTEGER);
+    setEditingId(opening.id);
+    selecting.onOpened();
+  }, [opening]);
 
   /**
    * The page, depth first. Children render in their own indented column
@@ -507,13 +543,20 @@ export default function PageView({
    * the focus key it is everywhere else: there is nowhere to add, and
    * nothing here to move a block under.
    */
-  const renderBlock = (block: BlockType) =>
-    editingId === block.id ? (
+  const renderBlock = (block: BlockType, parent: string | undefined, lit: boolean) => {
+    const data = slot(scope, title, block.id, parent);
+    return editingId === block.id ? (
       <BlockEditor
         initial={block.text}
         caret={caret}
         findPages={graph.search}
+        data={data}
+        mac={selecting.mac}
         onCancel={() => setEditingId(null)}
+        onSelect={(text, how) => {
+          commitEdit(block, text);
+          selecting.fromBox(data['data-slot'], how);
+        }}
         onCommit={(text) => commitEdit(block, text)}
         onBackspace={() => commitDelete(block)}
         onIndent={
@@ -534,6 +577,8 @@ export default function PageView({
       <Block
         id={block.id}
         text={block.text}
+        data={data}
+        selected={lit}
         onActivate={(at) => {
           setCaret(at);
           setEditingId(block.id);
@@ -541,18 +586,29 @@ export default function PageView({
         onMenu={() => openMenu(block)}
       />
     );
+  };
 
-  const renderBlocks = (blocks: BlockType[]) =>
-    blocks.map((block) => (
-      <Fragment key={block.id}>
-        {renderBlock(block)}
-        {block.children.length > 0 && (
-          // Its own column, since the gap between blocks does not inherit.
-          <div className="ml-indent flex flex-col gap-1">{renderBlocks(block.children)}</div>
-        )}
-        {writing?.after === block.id && newBlockEditor}
-      </Fragment>
-    ));
+  /**
+   * `parent` is the block they show under, if any. `lit` is whether that is
+   * selected: a block brings its subtree, so everything under a selected one
+   * is drawn selected too.
+   */
+  const renderBlocks = (blocks: BlockType[], parent?: string, lit = false) =>
+    blocks.map((block) => {
+      const on = lit || selecting.selected.has(slotKey(scope, block.id));
+      return (
+        <Fragment key={block.id}>
+          {renderBlock(block, parent, on)}
+          {block.children.length > 0 && (
+            // Its own column, since the gap between blocks does not inherit.
+            <div className="ml-indent flex flex-col gap-1">
+              {renderBlocks(block.children, block.id, on)}
+            </div>
+          )}
+          {writing?.after === block.id && newBlockEditor}
+        </Fragment>
+      );
+    });
 
   /**
    * The tail of a day is click-to-write, so it needs somewhere to click and a
@@ -561,6 +617,9 @@ export default function PageView({
    * under its heading like children under a parent, and its blank space is
    * not click-to-write, so no caret and no room kept.
    */
+  /** Whether the zoomed block is selected, and with it everything shown. */
+  const rootLit = root !== undefined && selecting.selected.has(slotKey(scope, root.id));
+
   const pageSpace = reference
     ? 'ml-indent cursor-default'
     : references?.length || taggedBy?.length
@@ -666,8 +725,8 @@ export default function PageView({
           // Keyed, or zooming out with a box open hands the new root the old
           // root's box — and its text, which blur would then commit over it.
           <Fragment key={root.id}>
-            {renderBlock(root)}
-            {renderBlocks(root.children)}
+            {renderBlock(root, undefined, rootLit)}
+            {renderBlocks(root.children, root.id, rootLit)}
           </Fragment>
         ) : (
           renderBlocks(page.blocks)
@@ -710,6 +769,7 @@ export default function PageView({
           graph={graph}
           references={references}
           version={version}
+          scope={scope}
           act={act}
         />
       )}

@@ -2,6 +2,7 @@ import type { Page } from '@pbnotes/graph';
 import type { Act } from '../../../ui';
 import PageView from '../PageView';
 import type { PageViewGraph } from '../PageView';
+import { under } from '../../selection/shown';
 
 /**
  * What links to the page above, under it: each page that names this one,
@@ -16,6 +17,7 @@ export default function LinkedReferences({
   graph,
   references,
   version,
+  scope,
   act,
 }: {
   /** Handed on whole to each cut, which is a `PageView`. */
@@ -23,6 +25,8 @@ export default function LinkedReferences({
   references: Page[];
   /** The fold version the cuts were read at, handed on to each. */
   version: number;
+  /** The view this is under: each cut is a view of its own within it (#253). */
+  scope: string;
   act: Act;
 }) {
   if (references.length === 0) return null;
@@ -40,6 +44,7 @@ export default function LinkedReferences({
           graph={graph}
           page={page}
           version={version}
+          scope={under(scope, page.title)}
           act={act}
           reference
         />

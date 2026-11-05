@@ -28,6 +28,14 @@ import { watchFields } from './undo/fields';
 import { landing } from './undo/landing/landing';
 import type { Fields } from './undo/fields';
 import { OwnEdit } from './undo/own-edit';
+import { Selecting } from './selection/Selecting';
+import type { FromBox } from './selection/Selecting';
+import { every, extend, follow as followShown, move, pick, toggle as flip } from './selection/selection';
+import type { Selection } from './selection/selection';
+import { shown as readShown } from './selection/shown';
+import type { Entry } from './selection/shown';
+import { covered } from './selection/roots/roots';
+import { command, picks } from './selection/shortcut/shortcut';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -437,6 +445,23 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    * comes back absolute and percent-encoded.
    */
   const follow = (event: React.MouseEvent) => {
+    // Cmd/Ctrl+click on a block selects it, or takes it out (#253), before
+    // anything in it is followed or opened. With a box open, that block is
+    // selected too, having written what was typed, as blur does.
+    const at = (event.target as Element).closest<HTMLElement>('[data-slot]');
+    const key = at?.dataset.slot;
+    if (key && picks(event, mac)) {
+      event.preventDefault();
+      event.stopPropagation();
+      openBox()?.blur();
+      const box = boxAtDown.current ?? openBox()?.closest<HTMLElement>('[data-slot]')?.dataset.slot;
+      boxAtDown.current = null;
+      const order = onScreen().map((it) => it.key);
+      setChosen((it) =>
+        box ? (box === key ? pick(key) : flip(pick(box), key, order)) : flip(it, key, order),
+      );
+      return;
+    }
     // A block ref, by the id it carries: a dot, or a rendered `((id))`.
     // A rendered ref goes to the block where it sits; a dot, or a crumb
     // above a zoomed block, zooms into it.
@@ -486,6 +511,152 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   }, [mac]);
 
   const wrapper = useRef<HTMLDivElement>(null);
+
+  /**
+   * The blocks selected (#253), across every page on screen, and a block
+   * whose box Enter on them opens. The order a selection runs in is the order
+   * the blocks show, read off the screen each time (`selection/shown.ts`):
+   * every day, and every linked reference under one, in one line.
+   */
+  const [chosen, setChosenState] = useState<Selection | null>(null);
+  /**
+   * The selection as of the last change, not the last render: a second key
+   * pressed before React draws the first one's result builds on it.
+   */
+  const latestChosen = useRef<Selection | null>(null);
+  const setChosen = (
+    next: Selection | null | ((it: Selection | null) => Selection | null),
+  ) => {
+    const it = typeof next === 'function' ? next(latestChosen.current) : next;
+    latestChosen.current = it;
+    setChosenState(it);
+  };
+  const [opening, setOpening] = useState<{ scope: string; id: string } | null>(null);
+  const onScreen = () => readShown(wrapper.current);
+  /** The box that was open when a Cmd/Ctrl+click went down, which it selects too. */
+  const boxAtDown = useRef<string | null>(null);
+
+  /** The slot of the box being written in, if there is one. */
+  const openBox = (): HTMLElement | null => {
+    const active = document.activeElement;
+    return active instanceof HTMLTextAreaElement && wrapper.current?.contains(active)
+      ? active
+      : null;
+  };
+
+  /**
+   * Shift+Up and Shift+Down, over what shows: the head stops only where a
+   * press shows something new, so not under a block already selected.
+   */
+  const grow = (selection: Selection, entries: Entry[], by: 1 | -1): Selection => {
+    const order = entries.map((it) => it.key);
+    const under = covered(entries, selection.keys);
+    const steps = order.filter((key) => key === selection.head || !under.has(key));
+    return extend(selection, order, by, steps);
+  };
+
+  /** Every block in the view `key` shows in: Cmd+A. */
+  const everyBeside = (key: string): Selection | null => {
+    const entries = onScreen();
+    const scope = entries.find((it) => it.key === key)?.scope;
+    return every(entries.filter((it) => it.scope === scope).map((it) => it.key));
+  };
+
+  /** A box handing over to a selection: it has written what was typed and is closing. */
+  const fromBox = (key: string, how: FromBox) => {
+    const entries = onScreen();
+    const here = pick(key);
+    // A block just written is not drawn yet: it is selected alone.
+    if (!entries.some((it) => it.key === key)) return setChosen(here);
+    if (how === 'up' || how === 'down') {
+      return setChosen(grow(here, entries, how === 'up' ? -1 : 1));
+    }
+    setChosen(how === 'all' ? (everyBeside(key) ?? here) : here);
+  };
+
+  /**
+   * The keys, with blocks selected. In the capture phase on the window, so a
+   * block with focus (one Cmd+clicked) does not take Enter as its own.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const chosen = latestChosen.current;
+      if (!chosen || event.isComposing) return;
+      const it = command(event, mac);
+      if (!it) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const entries = onScreen();
+      const order = entries.map((entry) => entry.key);
+      if (it.kind === 'move') setChosen(move(chosen, order, it.by));
+      else if (it.kind === 'extend') setChosen(grow(chosen, entries, it.by));
+      else if (it.kind === 'all') setChosen(everyBeside(chosen.anchor) ?? chosen);
+      else if (it.kind === 'clear') setChosen(null);
+      else {
+        const first = entries.find((entry) => entry.key === chosen.keys[0]);
+        setChosen(null);
+        if (first) setOpening({ scope: first.scope, id: first.id });
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [mac]);
+
+  /**
+   * A click without Cmd or Ctrl clears the selection, wherever it lands, and
+   * so does anything taking focus to type in: opening a box, the finder, a
+   * property. A Cmd/Ctrl+click notes the box it closes, which `follow` reads.
+   */
+  useEffect(() => {
+    const onDown = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      if (picks(event, mac)) {
+        boxAtDown.current = openBox()?.closest<HTMLElement>('[data-slot]')?.dataset.slot ?? null;
+        return;
+      }
+      setChosen(null);
+    };
+    const onFocus = (event: FocusEvent) => {
+      const target = event.target;
+      const typing =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
+      if (typing) setChosen(null);
+    };
+    document.addEventListener('mousedown', onDown, true);
+    document.addEventListener('focusin', onFocus);
+    return () => {
+      document.removeEventListener('mousedown', onDown, true);
+      document.removeEventListener('focusin', onFocus);
+    };
+  }, [mac]);
+
+  /** What shows has changed: what is gone drops out of the selection. */
+  useEffect(() => {
+    setChosen((it) => it && followShown(it, onScreen().map((entry) => entry.key)));
+  }, [held, browsing]);
+
+  /** Up and Down keep the block they reach in sight. */
+  useEffect(() => {
+    if (!chosen) return;
+    document
+      .querySelector(`[data-slot="${CSS.escape(chosen.head)}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [chosen?.head]);
+
+  const selected = useMemo(() => new Set(chosen?.keys), [chosen]);
+  const selecting = useMemo<Selecting>(
+    () => ({
+      mac,
+      selected,
+      opening,
+      onOpened: () => setOpening(null),
+      fromBox,
+    }),
+    // `fromBox` reads only refs and setters.
+    [mac, selected, opening],
+  );
 
   /**
    * Puts pasted or dropped images into the notes: each is stored in the
@@ -680,6 +851,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           />
         )}
 
+        <Selecting.Provider value={selecting}>
         <Previews value={previews}>
           {browsing ? null : held === null ? (
             <p className="mt-1 text-sm text-muted">Loading…</p>
@@ -709,6 +881,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
             ))
           )}
         </Previews>
+        </Selecting.Provider>
       </div>
     </OwnEdit.Provider>
   );

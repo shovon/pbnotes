@@ -28,7 +28,7 @@ const page = (title: string, blocks: Block[]): Page => ({ title, blocks });
  */
 const meta = {
   component: LinkedReferences,
-  args: { graph, version: 0, act: () => undefined },
+  args: { graph, version: 0, scope: 'Mira', act: () => undefined },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: '36rem' }}>
