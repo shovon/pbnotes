@@ -134,6 +134,7 @@ export {
   addBlock,
   deleteBlock,
   deleteBlocks,
+  indentBlocks,
   editBlock,
   indentBlock,
   moveBlock,

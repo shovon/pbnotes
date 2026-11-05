@@ -595,6 +595,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       else if (it.kind === 'all') setChosen(everyBeside(chosen.anchor) ?? chosen);
       else if (it.kind === 'clear') setChosen(null);
       else if (it.kind === 'delete') removing.current();
+      else if (it.kind === 'indent') indenting.current();
       else {
         const first = entries.find((entry) => entry.key === chosen.keys[0]);
         setChosen(null);
@@ -724,6 +725,22 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   /** `removeChosen` as of this render, for the key listener set up once. */
   const removing = useRef(removeChosen);
   removing.current = removeChosen;
+
+  /**
+   * Tab with blocks selected (#259): each top-most selected block goes under
+   * the sibling above it, in the order they show, as one write and one undo
+   * step, or none of them does when one is first among its siblings,
+   * wherever it is. The selection stays, so a second Tab indents again: a
+   * slot is a block in a view, and an indent keeps both.
+   */
+  const indentChosen = () => {
+    const chosen = latestChosen.current;
+    if (!chosen) return;
+    const blockIds = roots(onScreen(), chosen.keys).map((it) => it.id);
+    if (blockIds.length > 0) act(() => bridge.run({ type: 'indentBlocks', blockIds }));
+  };
+  const indenting = useRef(indentChosen);
+  indenting.current = indentChosen;
 
   /**
    * How many blocks a delete of the selection takes, when `slot` is one of

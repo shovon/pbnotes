@@ -284,6 +284,13 @@ export type Command =
    */
   | { type: 'deleteBlocks'; blockIds: readonly string[] }
   /**
+   * Tab on a selection (#259): each top-most block filed under the sibling
+   * above it, in the order given, as one record and one undo step. All or
+   * nothing: when any of them is first among its siblings, on whatever page,
+   * nothing moves, and that resolves rather than throws, like `indentBlock`.
+   */
+  | { type: 'indentBlocks'; blockIds: readonly string[] }
+  /**
    * Appends a `block.indented` event: the block becomes the last child of the
    * sibling above it, bringing its own children along.
    *

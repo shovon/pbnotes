@@ -60,6 +60,13 @@ function own(raw: Raw, name: string): unknown {
     : undefined;
 }
 
+/** The blocks a command on several names. An empty list names nothing, and is refused. */
+function someIds(raw: Raw): string[] {
+  const blockIds = requireStringArray(own(raw, "blockIds"), "blockIds");
+  if (blockIds.length === 0) throw new TypeError("Expected a block");
+  return blockIds;
+}
+
 /**
  * One checker per command type. Keyed on `Command["type"]`, so a case added
  * to the union without a checker does not compile. Each builds its command
@@ -91,12 +98,8 @@ const CHECKERS: {
     type: "deleteBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
   }),
-  // An empty list is refused here: it names nothing, and is no delete.
-  deleteBlocks: (raw) => {
-    const blockIds = requireStringArray(own(raw, "blockIds"), "blockIds");
-    if (blockIds.length === 0) throw new TypeError("Expected a block to delete");
-    return { type: "deleteBlocks", blockIds };
-  },
+  deleteBlocks: (raw) => ({ type: "deleteBlocks", blockIds: someIds(raw) }),
+  indentBlocks: (raw) => ({ type: "indentBlocks", blockIds: someIds(raw) }),
   indentBlock: (raw) => ({
     type: "indentBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
