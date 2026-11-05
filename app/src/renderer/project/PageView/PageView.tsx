@@ -140,7 +140,7 @@ export default function PageView({
 }: Props) {
   /** The selection, which `ProjectView` holds (#253). */
   const selecting = useContext(Selecting);
-  /** The block being dragged by its dot, which `ProjectView` runs (#251). */
+  /** The blocks being dragged by a dot, which `ProjectView` runs (#251, #269). */
   const dragging = useContext(Dragging);
   const scope = scoped ?? sent.title;
   /**
@@ -657,7 +657,7 @@ export default function PageView({
     blocks.map((block) => {
       const key = slotKey(scope, block.id);
       const on = lit || selecting.selected.has(key);
-      const going = moving || dragging === key;
+      const going = moving || dragging.has(key);
       return (
         <Fragment key={block.id}>
           {renderBlock(block, parent, on, going)}
@@ -682,7 +682,7 @@ export default function PageView({
   /** Whether the zoomed block is selected, and with it everything shown. */
   const rootLit = root !== undefined && selecting.selected.has(slotKey(scope, root.id));
   /** Whether the zoomed block is being dragged, and with it everything shown. */
-  const rootMoving = root !== undefined && dragging === slotKey(scope, root.id);
+  const rootMoving = root !== undefined && dragging.has(slotKey(scope, root.id));
 
   const pageSpace = reference
     ? 'ml-indent cursor-default'

@@ -361,6 +361,8 @@ test("every command is undone to the graph before it, and redone to the graph af
     { type: "moveBlock", blockId: A, title: "Bar", after: "d1" },
     { type: "moveBlock", blockId: C, title: "Foo", parent: A },
     { type: "moveBlock", blockId: C, title: "Never written", first: true },
+    { type: "moveBlocks", blockIds: [C, A], title: "Bar", after: "d1" },
+    { type: "moveBlocks", blockIds: [C, "d1"], title: "Never written" },
     { type: "setProperty", title: "Foo", key: "Owner", value: "Sal" },
     { type: "removeProperty", title: "Foo", key: "Owner" },
     { type: "renameProperty", title: "Foo", from: "Owner", to: "Author" },
@@ -449,6 +451,21 @@ test("a move takes the block and its subtree to another page, keeping its id (#2
   );
   const foo = (await graph.view({ page: "Foo" }, TODAY)).showing[0].page;
   assert.deepEqual(foo.blocks.map((it) => it.id), [C]);
+});
+
+test("a selection moved across pages is one record and one undo step (#269)", async () => {
+  const { graph, view, writes } = await written();
+  const before = held(view.state);
+  const count = writes();
+  await graph.run({ type: "moveBlocks", blockIds: [C, "d1"], title: "Foo", parent: A });
+  assert.equal(writes(), count + 1);
+  const foo = (await graph.view({ page: "Foo" }, TODAY)).showing[0].page;
+  assert.deepEqual(
+    foo.blocks.map((it) => [it.id, it.children.map((child) => child.id)]),
+    [[A, [C, "d1", B]]],
+  );
+  assert.equal((await graph.run({ type: "undo" })).result, "done");
+  assert.deepEqual(held(view.state), before);
 });
 
 test("a move onto a page nothing was written on is its first write (#251)", async () => {

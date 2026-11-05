@@ -1,10 +1,10 @@
 import { createContext } from 'react';
 
 /**
- * The slot of the block being dragged by its dot (#251), or null when none
- * is: from `ProjectView`, which runs the drag, to every page view, which
- * draws that block and everything under it as moving. A context, as
+ * The slots of the blocks being dragged by a dot (#251, #269), none when no
+ * drag is on: from `ProjectView`, which runs the drag, to every page view,
+ * which draws each of those blocks and everything under it as moving. A context, as
  * `Selecting` is, because a cut under a page is another page view, several
  * components down.
  */
-export const Dragging = createContext<string | null>(null);
+export const Dragging = createContext<ReadonlySet<string>>(new Set());

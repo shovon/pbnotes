@@ -187,6 +187,12 @@ const CHECKERS: {
     title: requireTitle(own(raw, "title")),
     ...requirePlace(raw),
   }),
+  moveBlocks: (raw) => ({
+    type: "moveBlocks",
+    blockIds: someIds(raw),
+    title: requireTitle(own(raw, "title")),
+    ...requirePlace(raw),
+  }),
   // A key is a page title, and checked as one: it goes into `titles` as the
   // key page's spelling if nothing has named that page yet.
   setProperty: (raw) => ({

@@ -610,8 +610,9 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const chosen = latestChosen.current;
-      // A drag-select going on has its own Escape, and nothing else moves it.
-      if (!chosen || event.isComposing || dragged.current) return;
+      // A drag going on, to select or to move, has its own Escape, and
+      // nothing else moves the selection under it.
+      if (!chosen || event.isComposing || dragged.current || draggingBlock.current) return;
       const it = command(event, mac);
       if (!it) return;
       event.preventDefault();
@@ -648,6 +649,10 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
         boxAtDown.current = openBox()?.closest<HTMLElement>('[data-slot]')?.dataset.slot ?? null;
         return;
       }
+      // A dot may be the start of a drag (#269), which leaves the selection
+      // to say what it moves. A click on it zooms, and what the zoom hides
+      // drops out of the selection then.
+      if (event.target instanceof Element && event.target.closest('[data-dot]')) return;
       setChosen(null);
     };
     const onFocus = (event: FocusEvent) => {
@@ -725,18 +730,35 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    * block can land on another page, which this window may show in another
    * view, so it moves when main's next view arrives, as a selection's
    * writes do.
+   *
+   * The dot of a selected block drags the whole selection (#269): its
+   * top-most blocks, which land together, in the order they show. Any
+   * other dot drags its block alone, and the selection stays as it was.
+   * After a drop within the view every moved block was in, the selection
+   * stays on them there; after one into another view it is dropped.
    */
   const [drop, setDrop] = useState<Drop | null>(null);
   /**
-   * The block being dragged: its slot, which every page view draws faded
-   * with its subtree, and its first line, which follows the pointer so it
-   * is plain what is moving. The pointer is in client coordinates.
+   * What is being dragged: the slots every page view draws faded, each with
+   * its subtree, and the pressed block's first line, which follows the
+   * pointer so it is plain what is moving, with how many more go with it.
+   * The pointer is in client coordinates.
    */
-  const [dragging, setDragging] = useState<{ key: string; text: string; at: Point } | null>(
-    null,
-  );
-  const moveTo = (blockId: string, { page, place }: Drop) =>
-    act(() => bridge.run({ type: 'moveBlock', blockId, title: page, ...place }));
+  const [dragging, setDragging] = useState<{
+    keys: readonly string[];
+    text: string;
+    more: number;
+    at: Point;
+  } | null>(null);
+  const draggingKeys = useMemo(() => new Set(dragging?.keys), [dragging?.keys]);
+  /** A block drag is on: the selection's keys leave Escape to it. */
+  const draggingBlock = useRef(false);
+  const moveTo = (blockIds: string[], selection: boolean, from: string[], { page, scope, place }: Drop) => {
+    // The moved blocks stay selected only where every one of them was:
+    // anywhere else, what is left of the selection would be a part of it.
+    if (selection && !from.every((it) => it === scope)) setChosen(null);
+    act(() => bridge.run({ type: 'moveBlocks', blockIds, title: page, ...place }));
+  };
   const movingTo = useRef(moveTo);
   movingTo.current = moveTo;
   useEffect(() => {
@@ -745,11 +767,21 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
     let latest: Drop | undefined;
     const stop = () => {
       latest = undefined;
+      draggingBlock.current = false;
       setDrop(null);
       setDragging(null);
       delete document.documentElement.dataset.draggingBlock;
     };
-    return watchGesture<{ id: string; key: string; text: string; indent: number }>({
+    type Press = {
+      ids: string[];
+      keys: string[];
+      /** The view each block dragged shows in. */
+      scopes: string[];
+      selection: boolean;
+      text: string;
+      indent: number;
+    };
+    return watchGesture<Press>({
       press: (event) => {
         // Ctrl+click on macOS is a right-click.
         if (mac && event.ctrlKey) return undefined;
@@ -758,31 +790,46 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
         const id = dot?.dataset.blockRef;
         const slot = dot?.closest<HTMLElement>('[data-slot]');
         const key = slot?.dataset.slot;
-        if (!dot || !id || !key || !root.contains(dot)) return undefined;
+        const scope = slot?.dataset.slotScope;
+        if (!dot || !id || !key || scope === undefined || !root.contains(dot)) return undefined;
         const box = slot.querySelector<HTMLElement>('[data-block-id]');
         const text = box?.innerText.trim().split('\n')[0] ?? '';
         // The dot is one level wide, whatever the font size.
-        return { id, key, text, indent: dot.getBoundingClientRect().width };
+        const indent = dot.getBoundingClientRect().width;
+        const chosen = latestChosen.current;
+        if (chosen?.keys.includes(key)) {
+          const picked = roots(onScreen(), chosen.keys);
+          return {
+            ids: picked.map((it) => it.id),
+            keys: [...chosen.keys],
+            scopes: picked.map((it) => it.scope),
+            selection: true,
+            text,
+            indent,
+          };
+        }
+        return { ids: [id], keys: [key], scopes: [scope], selection: false, text, indent };
       },
       begins: (_, from, to) => Math.hypot(to.x - from.x, to.y - from.y) >= THRESHOLD,
-      start: ({ key, text }) => {
+      start: ({ ids, keys, text }) => {
+        draggingBlock.current = true;
         // A closed hand, over everything, for as long as the drag lasts
         // (`index.css`): a block's own cursor would win over the page's.
         document.documentElement.dataset.draggingBlock = '';
-        setDragging({ key, text, at: { x: -1000, y: -1000 } });
+        setDragging({ keys, text, more: ids.length - 1, at: { x: -1000, y: -1000 } });
       },
-      move: ({ id, key, text, indent }, to) => {
-        setDragging({ key, text, at: to });
+      move: ({ ids, keys, text, indent }, to) => {
+        setDragging({ keys, text, more: ids.length - 1, at: to });
         const x = to.x + window.scrollX;
         const y = to.y + window.scrollY;
-        latest = dropAt(readDropRows(root), readEmptyPages(root), id, x, y, indent);
+        latest = dropAt(readDropRows(root), readEmptyPages(root), new Set(ids), x, y, indent);
         setDrop(latest ?? null);
       },
       cancel: stop,
-      end: ({ id }, dropped) => {
+      end: ({ ids, selection, scopes }, dropped) => {
         const it = latest;
         stop();
-        if (dropped && it) movingTo.current(id, it);
+        if (dropped && it) movingTo.current(ids, selection, scopes, it);
       },
     });
   }, [mac]);
@@ -1157,7 +1204,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
         )}
 
         <Selecting.Provider value={selecting}>
-        <Dragging.Provider value={dragging?.key ?? null}>
+        <Dragging.Provider value={draggingKeys}>
         <Previews value={previews}>
           {browsing ? null : held === null ? (
             <p className="mt-1 text-sm text-muted">Loading…</p>
@@ -1213,6 +1260,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
               style={{ top: dragging.at.y + 12, left: dragging.at.x + 12 }}
             >
               {dragging.text || '…'}
+              {dragging.more > 0 && <span className="ml-1.5 text-muted">+{dragging.more}</span>}
             </div>,
             document.body,
           )}

@@ -42,6 +42,8 @@ export type Place = { after?: string; parent?: string; first?: true };
 /** A drop: where the block goes, and the line that shows where. */
 export type Drop = {
   page: string;
+  /** The view the drop is in, or undefined for a page with no blocks yet. */
+  scope?: string;
   place: Place;
   line: { top: number; left: number; right: number };
 };
@@ -50,15 +52,18 @@ export type Drop = {
 export const SLACK = 8;
 
 /**
- * Where a drop of the block `moving` at `x`, `y` lands, or undefined where
- * it lands nowhere: away from every row, over the block's own subtree, or
+ * Where a drop of the blocks `moving` at `x`, `y` lands, or undefined where
+ * it lands nowhere: away from every row, over one of their subtrees, or
  * above the first row of a view that is not a whole page, which has no place
  * to name. `indent` is how far one level is from the next.
+ *
+ * Every row of what is moving is left out first, wherever it shows, so a
+ * gap closes over them: a drop never lands beside one of them (#269).
  */
 export function dropAt(
   rows: readonly Row[],
   empties: readonly Empty[],
-  moving: string,
+  moving: ReadonlySet<string>,
   x: number,
   y: number,
   indent: number,
@@ -76,9 +81,9 @@ export function dropAt(
     for (let it = up(row); it; it = up(it)) n++;
     return n;
   };
-  // The block and its subtree are where it is not going.
+  // The blocks and their subtrees are where they are not going.
   const inside = (row: Row) => {
-    for (let it: Row | undefined = row; it; it = up(it)) if (it.id === moving) return true;
+    for (let it: Row | undefined = row; it; it = up(it)) if (moving.has(it.id)) return true;
     return false;
   };
   const kept = rows.filter((row) => !inside(row));
@@ -96,6 +101,7 @@ export function dropAt(
     if (!over.whole) return undefined;
     return {
       page: over.page,
+      scope: over.scope,
       place: { first: true },
       line: { top: over.top, left: over.left, right: over.right },
     };
@@ -111,13 +117,15 @@ export function dropAt(
     left: base + level * indent,
     right: prev.right,
   };
-  if (level === deepest) return { page: prev.page, place: { parent: prev.id }, line };
+  const { page, scope } = prev;
+  if (level === deepest) return { page, scope, place: { parent: prev.id }, line };
 
   let sibling = prev;
   for (let d = depth(prev); d > level; d--) sibling = up(sibling) ?? sibling;
   const parent = up(sibling)?.id;
   return {
-    page: prev.page,
+    page,
+    scope,
     place: { after: sibling.id, ...(parent === undefined ? {} : { parent }) },
     line,
   };
