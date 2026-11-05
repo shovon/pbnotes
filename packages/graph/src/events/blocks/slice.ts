@@ -13,6 +13,7 @@ import { BLOCK_EDITED } from "./edited/edited.ts";
 import { BLOCK_DELETED } from "./deleted/deleted.ts";
 import { BLOCK_INDENTED } from "./indented/indented.ts";
 import { BLOCK_OUTDENTED } from "./outdented/outdented.ts";
+import { BLOCK_MOVED } from "./moved/moved.ts";
 
 /** Every block event. A new one is a module, and a line here. */
 const EVENTS = [
@@ -21,6 +22,7 @@ const EVENTS = [
   BLOCK_DELETED,
   BLOCK_INDENTED,
   BLOCK_OUTDENTED,
+  BLOCK_MOVED,
 ] as const;
 
 const BLOCKS = BLOCK.slice(EVENTS);

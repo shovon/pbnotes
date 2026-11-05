@@ -15,6 +15,7 @@ import {
   blockDeleted,
   blockEdited,
   blockIndented,
+  blockMoved,
   blockOutdented,
   deleteBlock,
   editBlock,
@@ -24,6 +25,7 @@ import {
   UNDO,
   listPages,
   indentBlock,
+  moveBlock,
   NAMESPACE,
   outdentBlock,
   pageDeleted,
@@ -147,6 +149,7 @@ test("each builder is the event its command writes, and folds to the same graph"
     ["delete", (view) => deleteBlock(view, "b"), blockDeleted("b")],
     ["indent", (view) => indentBlock(view, "b"), blockIndented({ id: "b", parent: "a" })],
     ["outdent", (view) => outdentBlock(view, "c"), blockOutdented({ id: "c", after: "b" })],
+    ["move", (view) => moveBlock(view, "b", "Elsewhere", { first: true }), blockMoved({ id: "b", page: "Elsewhere", first: true })],
   ];
   for (const [name, run, built] of cases) {
     const view = await outline();
@@ -158,6 +161,30 @@ test("each builder is the event its command writes, and folds to the same graph"
   }
 });
 
+test("moveBlock refuses what the fold would ignore, and writes nothing for a block already there", async () => {
+  // a, b(c)
+  const refused: [string, (view: GraphView) => Promise<unknown>][] = [
+    ["a block the graph lacks", (view) => moveBlock(view, "gone", TODAY)],
+    ["under itself", (view) => moveBlock(view, "b", TODAY, { parent: "b" })],
+    ["under its own child", (view) => moveBlock(view, "b", TODAY, { parent: "c" })],
+    ["after a block the page lacks", (view) => moveBlock(view, "a", TODAY, { after: "gone" })],
+    ["after a block on another page", (view) => moveBlock(view, "c", "Elsewhere", { after: "a" })],
+    ["after one not the parent's child", (view) => moveBlock(view, "a", TODAY, { after: "b", parent: "b" })],
+    ["first with a parent", (view) => moveBlock(view, "c", TODAY, { parent: "a", first: true })],
+  ];
+  for (const [name, run] of refused) {
+    const view = await outline();
+    const written = view.events.length;
+    await assert.rejects(run(view), Error, name);
+    assert.equal(view.events.length, written, name);
+  }
+  const view = await outline();
+  const written = view.events.length;
+  const page = await moveBlock(view, "c", TODAY, { parent: "b" });
+  assert.equal(view.events.length, written, "already there");
+  assert.equal(page.title, TODAY);
+});
+
 test("every builder writes the v its own gate reads, and there is one for every event", () => {
   const built = [
     blockCreated(TODAY, "x", undefined, "x"),
@@ -165,6 +192,7 @@ test("every builder writes the v its own gate reads, and there is one for every 
     blockDeleted("x"),
     blockIndented({ id: "x", parent: "y" }),
     blockOutdented({ id: "x", after: "y" }),
+    blockMoved({ id: "x", page: "y" }),
     propertySet("x", "y", "z"),
     propertyRemoved("x", "y"),
     tagAdded("x", "y"),
@@ -298,6 +326,7 @@ test("the event names and their v are exactly these", () => {
       v("block.deleted", 2),
       v("block.indented", 2),
       v("block.outdented", 2),
+      v("block.moved", 1),
       v("property.set", 1),
       v("property.removed", 1),
       v("tag.added", 1),

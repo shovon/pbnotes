@@ -12,9 +12,9 @@ for await (const graph of ledger.onEvent(graphFold.initial, graphFold.reduce)) {
 }
 ```
 
-To write, hand `addBlock`, `editBlock`, `deleteBlock`, `indentBlock` or `outdentBlock` a `GraphView`: the state you hold, and a `dispatch(v, type, payload)` wired to your own log. They run the same checks the app runs before they write anything.
+To write, hand `addBlock`, `editBlock`, `deleteBlock`, `indentBlock`, `outdentBlock` or `moveBlock` a `GraphView`: the state you hold, and a `dispatch(v, type, payload)` wired to your own log. They run the same checks the app runs before they write anything.
 
-Each of those writes one event, and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented` and `blockOutdented`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
+Each of those writes one event, and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented`, `blockOutdented` and `blockMoved`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
 
 Page properties have commands too, `setProperty`, `removeProperty` and `renameProperty`, and builders, `propertySet` and `propertyRemoved`.
 
@@ -154,6 +154,18 @@ A journal day answers to its date in words, with nothing written. A name, once `
 - **Malformed is skipped whole:** a payload that is not an object, or a `page` that is not a string or is blank once trimmed.
 - **`deletePage(view, page)`** writes nothing for a page with nothing on it (`hasContent`): the delete would change nothing. **`getRefsTo(graph, page)`** counts the blocks on other pages that hold a `((id))` to a block on it: what a delete would leave showing as missing. What links to it by title is `getReferences`.
 
+## Moving a block is a contract
+
+| Type | `v` | Payload | Meaning |
+|---|---|---|---|
+| `block.moved` | 1 | `{ id, page, after?, parent?, first? }` | The block, with its subtree, now sits at this place on `page` (#252). |
+
+- **The place means what it means on `block.created`:** after the sibling `after` (which, with `parent`, has to be one of `parent`'s children), first under `parent`, or first on the page with `first`. With none of them, the block goes at the end of the page. `after` and `parent` win over `first`.
+- **`page` is always written,** even for a move on the same page, so the payload says where the block ends up without reading the graph. A page with no blocks yet gets this one, spelled as written.
+- **A move that cannot be followed is ignored, never guessed at.** The block stays where it was when the graph lacks it, when it is already there, when the place is inside its own subtree (two writers each moving one block under the other before they sync, #62), or when the target page lacks the `after` or `parent`, or `after` is not `parent`'s child. Unlike `block.created`, which falls back so a block is never lost, a move can't lose a block, so it leaves it where its owner last saw it.
+- **`moveBlock(view, id, title, place)`** refuses what the fold would ignore, and writes nothing for a block already there. Several blocks moved as one are a `batch` of moves, each placed after the one before.
+- **An older build** does not know the type, so the block stays where it was for it, and every later edit to it still lands, since an edit finds a block by id.
+
 ## Batches are a contract
 
 Some things a user does take more than one event. Each event is its own record, so a crash or a sync that stops between two of them would leave the folder halfway through. A batch is several events written as one record, folded all together or not at all (#225).
@@ -178,9 +190,10 @@ A step is what one command wrote: its events, on the graph before it. Nothing he
 - **`invert(before, events)`** gives the events that undo `events`, to be written as one `batch`. They are plain events that any build reads, never an "undo" event: the log only grows, and what was undone stays on disk.
 - **The last event is undone first,** each against the graph as it stood just before it. A batch is the events it holds.
 - **What changed nothing has no inverse:** an edit to a block that isn't there, a tag a page already has. `[]` means there is nothing to undo.
-- **`undefined` means the step cannot be undone.** One event in it that cannot be undone makes the whole step `undefined`, never half undone. Today that is only an indent under anything but the sibling above, which no command writes: no event moves a block to an arbitrary place.
+- **`undefined` means the step cannot be undone.** One event in it that cannot be undone makes the whole step `undefined`, never half undone. No event says so today, since `block.moved` (#252) can put any block back where it was. The rule stays for an event that cannot be undone.
 - **A deleted block comes back with its subtree,** with the same ids and text, so a `((id))` to any of them resolves again: a page's first block with `first`, a first child with `parent`, the rest with `after`. A deleted page comes back the same way, then its properties, tags and aliases, spelled as they were.
-- **An indent under the sibling above is undone by an outdent after it,** and an outdent by an indent under the old parent, then an outdent for each sibling it took along, last first.
+- **An indent under the sibling above is undone by an outdent after it,** and an outdent by an indent under the old parent, then an outdent for each sibling it took along, last first. An indent anywhere else, which only another writer's log holds, is undone by a `block.moved` back.
+- **A move is undone by a move back:** to its page, under its parent, after the sibling that was above it (or first).
 - **Titles and delete counts are not undone.** A spelling, once seen, stays, and `getDeletions` still counts a delete that was undone.
 
 **`holds(now, remembered)`** is whether a step can still be undone: every reading gives in `now` what it gave right after the step. False means someone else changed it since, and undoing it would undo their work too. Only what the step touched is read:
@@ -189,7 +202,7 @@ A step is what one command wrote: its events, on the graph before it. Nothing he
 |---|---|
 | Created a block | The block's text, its whole subtree, and where it sits |
 | Edited a block | Its text, so a block moved since still holds |
-| Indented or outdented a block | Where it sits (page, parent, the siblings either side), and where each sibling an outdent took along sits |
+| Indented, outdented or moved a block | Where it sits (page, parent, the siblings either side), and where each sibling an outdent took along sits. A move still holds with a new text or new children |
 | Deleted a block | That none of the deleted ids exist again |
 | Deleted a page | That none of its blocks' ids exist again. A page that gained new blocks since still holds |
 | Set or removed a property | The page's value for that key |

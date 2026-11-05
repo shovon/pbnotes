@@ -77,9 +77,10 @@ test("a step someone else changed stops undo there, and stays until the change g
 test("a step that cannot be undone stops undo there, and a step after it still undoes", () => {
   const history = createHistory<object>();
   const view = {};
-  // `c`'s sibling above is `b`: under `a` is no indent a command writes.
-  const stuck = step(FOO, blockIndented({ id: "c", parent: "a" }));
-  assert.equal(stuck.entry.remembered.inverse, undefined);
+  // No event is impossible to undo since #252, so the step is made one by
+  // hand, as an event whose module says `undo: "cannot"` would make it.
+  const moved = step(FOO, blockIndented({ id: "c", parent: "b" }));
+  const stuck = { ...moved, entry: { ...moved.entry, remembered: { ...moved.entry.remembered, inverse: undefined as Batched[] | undefined } } };
   history.record(view, stuck.entry);
   const later = step(stuck.after, blockEdited("b", "B!"));
   history.record(view, later.entry);

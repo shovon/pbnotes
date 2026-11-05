@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { blockEdited, blockIndented, graphFold } from "@pbnotes/graph";
-import type { Graph } from "@pbnotes/graph";
+import type { Batched, Graph } from "@pbnotes/graph";
 import { createGraphSession } from "./graph-session.ts";
 import { createHistory, stepOf } from "../history/history.ts";
 import type { History } from "../history/history.ts";
@@ -437,13 +437,15 @@ test("a step that cannot be undone stops undo there; one after it still undoes, 
   await graph.run({ type: "addBlock", id: A, title: "Foo", text: "A" });
   await graph.run({ type: "addBlock", id: B, title: "Foo", text: "B", after: A });
   await graph.run({ type: "addBlock", id: C, title: "Foo", text: "C", after: B });
-  // No command writes this: `c1`'s sibling above is `b1`, not `a1`. Written
-  // as if another writer had, and kept as this session's step.
+  // No event is impossible to undo since #252, so the step is made one by
+  // hand, as an event whose module says `undo: "cannot"` would make it.
+  // Written as if another writer had, and kept as this session's step.
   const before = it.view.state;
-  const stuck = blockIndented({ id: C, parent: A });
+  const stuck = blockIndented({ id: C, parent: B });
   it.arrive(stuck);
-  const entry = stepOf(before, it.view.state, [stuck]);
-  assert.ok(entry);
+  const made = stepOf(before, it.view.state, [stuck]);
+  assert.ok(made);
+  const entry = { ...made, remembered: { ...made.remembered, inverse: undefined as Batched[] | undefined } };
   history.record(it.view, entry);
   await graph.run({ type: "editBlock", blockId: B, text: "B!" });
   assert.equal((await graph.run({ type: "undo" })).result, "done", "the step after it");

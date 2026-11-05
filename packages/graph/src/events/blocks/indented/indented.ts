@@ -19,6 +19,7 @@ import {
 } from "../../../blocks/blocks.ts";
 import type { BlockIndented } from "../../../blocks/blocks.ts";
 import { blockOutdented } from "../outdented/outdented.ts";
+import { movedBack } from "../moved/moved.ts";
 
 export const BLOCK_INDENTED = BLOCK.define({
   type: namespaced("block.indented"),
@@ -50,13 +51,14 @@ export const BLOCK_INDENTED = BLOCK.define({
     // A command indents under the sibling above, and coming back out after it
     // is where the block was: it is that sibling's last child, so the outdent
     // takes nothing along. An indent anywhere else, from another writer's
-    // log, cannot be undone: no event moves a block to an arbitrary place.
+    // log, is moved back (#252). The outdent stays for the usual case, since
+    // a build from before `block.moved` reads it.
     inverse: (state, { id, parent }) => {
       const found = find(state, id);
       if (!found) return [];
       return found.siblings[found.at - 1]?.id === parent
         ? [blockOutdented({ id, after: parent })]
-        : undefined;
+        : movedBack(state, id);
     },
     touched: (_, { id }) => [same((now) => position(now, id))],
   },

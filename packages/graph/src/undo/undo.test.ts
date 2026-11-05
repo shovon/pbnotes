@@ -15,6 +15,7 @@ import {
   blockDeleted,
   blockEdited,
   blockIndented,
+  blockMoved,
   blockOutdented,
   each,
   getPage,
@@ -118,6 +119,10 @@ test("every kind of step undoes to the graph before it, and redoes to the graph 
     ["indent a child", [blockIndented({ id: "a2", parent: "a1" })]],
     ["outdent a block with a sibling below", [blockOutdented({ id: "a1", after: "a" })]],
     ["outdent a last child", [blockOutdented({ id: "a2", after: "a" })]],
+    ["move a block with children lower", [blockMoved({ id: "a", page: "Foo", after: "c" })]],
+    ["move a first child under another block", [blockMoved({ id: "a1", page: "Foo", parent: "b" })]],
+    ["move a block onto a new page", [blockMoved({ id: "b", page: "Bar" })]],
+    ["move a page's last block away", [blockMoved({ id: "c", page: "Bar", first: true })]],
     ["set a new property", [propertySet("Foo", "Status", "done")]],
     ["change a property", [propertySet("Foo", "owner", "Sal")]],
     ["remove a property", [propertyRemoved("Foo", "Owner")]],
@@ -282,8 +287,6 @@ test("what remember keeps: the inverse invert gives, and a value per reading", (
   const remembered = remember(START, events);
   assert.deepEqual(remembered.inverse, invert(START, events));
   assert.equal(remembered.expected.length, 2);
-  // An indent not under the sibling above cannot be undone.
-  assert.equal(remember(START, [blockIndented({ id: "c", parent: "a" })]).inverse, undefined);
   const nothing = remember(START, [blockEdited("gone", "x")]);
   assert.deepEqual([nothing.inverse, nothing.expected], [[], []], "a step that changed nothing");
 });
@@ -340,13 +343,12 @@ test("every event type but batch has an undo entry, and only those", () => {
   assert.deepEqual(Object.keys(UNDO).sort(), types.sort());
 });
 
-test("an indent anywhere but under the sibling above cannot be undone, and takes its step with it", () => {
+test("an indent anywhere but under the sibling above is undone by moving it back (#252)", () => {
   // `c`'s sibling above is `b`: under `a` is not an indent a command writes.
   const elsewhere = blockIndented({ id: "c", parent: "a" });
-  assert.notDeepEqual(held(fold(START, elsewhere)), held(START), "the indent changes something");
-  assert.equal(invert(START, [elsewhere]), undefined);
-  assert.equal(invert(START, [tagAdded("Foo", "Play"), elsewhere]), undefined, "never half undone");
-  assert.equal(invert(START, [batch([tagAdded("Foo", "Play"), elsewhere])]), undefined, "in a batch too");
+  roundTrip("alone", [elsewhere]);
+  roundTrip("with another event", [tagAdded("Foo", "Play"), elsewhere]);
+  roundTrip("in a batch", [batch([tagAdded("Foo", "Play"), elsewhere])]);
 });
 
 // ── The generic walk, over a fold that knows nothing of the graph ───────────
