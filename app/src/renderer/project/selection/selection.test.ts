@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { every, extend, follow, move, pick, toggle } from "./selection.ts";
+import { every, extend, follow, move, pick, span, toggle } from "./selection.ts";
 import type { Selection } from "./selection.ts";
 
 const order = ["a", "b", "c", "d", "e", "f"];
@@ -104,4 +104,16 @@ test("the head stops only on steps, and the run still covers what is between", (
   assert.deepEqual(keys(it), ["a", "b", "c", "d"]);
   it = extend(it, order, -1, steps);
   assert.deepEqual(keys(it), ["a"]);
+});
+
+test("a drag is the run from where it started to where it is, kept apart from what Cmd/Ctrl+drag adds to (#262)", () => {
+  const order = ["a", "b", "c", "d", "e"];
+  const drag = must(span([], "b", "d", order));
+  assert.deepEqual(drag.keys, ["b", "c", "d"]);
+  assert.deepEqual([drag.anchor, drag.head], ["b", "d"]);
+  assert.deepEqual(must(span([], "d", "b", order)).keys, ["b", "c", "d"], "upward is the same run");
+  assert.deepEqual(must(span(["a", "e"], "c", "d", order)).keys, ["a", "c", "d", "e"], "added to what was there");
+  // Shift+Down after the drag grows it from where the drag ended.
+  assert.deepEqual(extend(drag, order, 1).keys, ["b", "c", "d", "e"]);
+  assert.equal(span([], "gone", "gone", order), null, "nothing that shows");
 });
