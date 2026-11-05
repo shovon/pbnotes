@@ -51,3 +51,18 @@ export function shown(root: ParentNode | null | undefined): Entry[] {
     return [{ key, scope, page, id, ...(parent === undefined ? {} : { parent }) }];
   });
 }
+
+/**
+ * Every block's own row under `root`, in the order it shows, in page
+ * coordinates: where a drag touches it (#262). A slot holds its row and dot,
+ * and never its children, which a view draws beside it.
+ */
+export function rows(root: ParentNode | null | undefined): { key: string; top: number; bottom: number }[] {
+  if (!root) return [];
+  return [...root.querySelectorAll<HTMLElement>('[data-slot]')].flatMap((element) => {
+    const key = element.dataset.slot;
+    if (key === undefined) return [];
+    const { top, bottom } = element.getBoundingClientRect();
+    return [{ key, top: top + window.scrollY, bottom: bottom + window.scrollY }];
+  });
+}

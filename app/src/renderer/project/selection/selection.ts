@@ -65,6 +65,20 @@ export function extend(
   return settle({ ...selection, head, run: true }, order) ?? selection;
 }
 
+/**
+ * A drag (#262): what was there to keep, `base`, plus the run from `anchor`
+ * to `head`. A plain drag keeps nothing; Cmd/Ctrl+drag keeps what was
+ * selected, as Finder does. Null when that selects nothing.
+ */
+export function span(
+  base: readonly string[],
+  anchor: string,
+  head: string,
+  order: readonly string[],
+): Selection | null {
+  return settle({ base, anchor, head, run: true }, order);
+}
+
 /** Up or Down: the key beside the head, alone. Stays put at either end. */
 export function move(
   selection: Selection,

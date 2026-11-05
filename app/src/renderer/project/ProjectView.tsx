@@ -30,9 +30,10 @@ import type { Fields } from './undo/fields';
 import { OwnEdit } from './undo/own-edit';
 import { Selecting } from './selection/Selecting';
 import type { FromBox } from './selection/Selecting';
-import { every, extend, follow as followShown, move, pick, toggle as flip } from './selection/selection';
+import { every, extend, follow as followShown, move, pick, span, toggle as flip } from './selection/selection';
 import type { Selection } from './selection/selection';
-import { shown as readShown } from './selection/shown';
+import { rows as readRows, shown as readShown } from './selection/shown';
+import { watchDrag } from './selection/sweep/watch';
 import type { Entry } from './selection/shown';
 import { covered, roots } from './selection/roots/roots';
 import { command, picks } from './selection/shortcut/shortcut';
@@ -581,7 +582,8 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const chosen = latestChosen.current;
-      if (!chosen || event.isComposing) return;
+      // A drag-select going on has its own Escape, and nothing else moves it.
+      if (!chosen || event.isComposing || dragged.current) return;
       const it = command(event, mac);
       if (!it) return;
       event.preventDefault();
@@ -632,6 +634,55 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       document.removeEventListener('mousedown', onDown, true);
       document.removeEventListener('focusin', onFocus);
     };
+  }, [mac]);
+
+  /**
+   * Dragging across blocks selects them (#262): from a blank area beside or
+   * below them at once, and from a block's row, open or not, once the
+   * pointer reaches another row. Cmd/Ctrl+drag adds to what is selected. The
+   * blank area is the page's surroundings, which are what holds `wrapper`:
+   * never the sidebar or the titlebar beside it. A dot is left for dragging
+   * the block (#251), and a link, an image or a control for its own use.
+   */
+  const dragged = useRef<{ base: readonly string[]; before: Selection | null } | null>(null);
+  useEffect(() => {
+    const root = wrapper.current;
+    if (!root) return;
+    return watchDrag({
+      rows: () => readRows(root),
+      press: (event) => {
+        // Ctrl+click on macOS is a right-click.
+        if (mac && event.ctrlKey) return undefined;
+        const target = event.target;
+        if (!(target instanceof Element)) return undefined;
+        const around = !root.contains(target) && target.contains(root);
+        if (!around && !root.contains(target)) return undefined;
+        const row = target.closest<HTMLElement>('[data-slot]')?.dataset.slot;
+        const own = target.closest(
+          '[data-block-ref], a, img, button, input, select, [contenteditable="true"], [role="button"]:not([data-block-id])',
+        );
+        if (own) return undefined;
+        if (target.closest('textarea') && row === undefined) return undefined;
+        return { start: row, add: picks(event, mac) };
+      },
+      start: (add) => {
+        const before = latestChosen.current;
+        dragged.current = { base: add ? (before?.keys ?? []) : [], before };
+      },
+      sweep: (run) => {
+        const drag = dragged.current;
+        if (!drag) return;
+        const order = onScreen().map((it) => it.key);
+        setChosen(run ? span(drag.base, run.anchor, run.head, order) : every(drag.base));
+      },
+      cancel: () => {
+        setChosen(dragged.current?.before ?? null);
+        dragged.current = null;
+      },
+      end: () => {
+        dragged.current = null;
+      },
+    });
   }, [mac]);
 
   /** What shows has changed: what is gone drops out of the selection. */
