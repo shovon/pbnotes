@@ -11,7 +11,7 @@ import type { Written } from "../../../over/over.ts";
 import { read } from "../../../reading/reading.ts";
 import { spell } from "../../../titles/titles.ts";
 import { same } from "../../../undo/undo.ts";
-import { BLOCK, blocksOn, find, placed, position, stringField, tree, withId } from "../../../blocks/blocks.ts";
+import { BLOCK, blocksOn, find, locate, placed, position, stringField, tree, withId } from "../../../blocks/blocks.ts";
 import type { Block, BlockCreated, Place } from "../../../blocks/blocks.ts";
 import { blockDeleted } from "../deleted/deleted.ts";
 
@@ -45,19 +45,32 @@ export const BLOCK_CREATED = BLOCK.define({
   },
   apply: (state, it) => {
     const { page, id, text } = it;
+    // An id the graph holds now is written once already (#273): two writers
+    // each pasting one cut, or each undoing one delete, before they sync.
+    // The first in fold order stands, the same on every machine, and this
+    // one changes nothing. Children written under the id land under it. An
+    // id that was deleted is not held, so it can be written again.
+    if (find(state, id)) return state;
     const block: Block = { id, text, children: [] };
+    // A parent on another page is followed there: it moved after the writer
+    // last saw it (#252), or a skipped create of it put it elsewhere (#273),
+    // and either way the block was written under it.
+    const away =
+      it.parent && !locate(blocksOn(state, page), it.parent) ? find(state, it.parent)?.page : undefined;
+    const lands = away ?? page;
     // `addBlock` refuses an `after` or `parent` the page lacks, so a miss
     // here is a log written by something else. Fall back rather than drop:
     // a block in the wrong place can be moved, one the fold discarded is gone.
-    const next = placed(blocksOn(state, page), block, it);
+    const next = placed(blocksOn(state, lands), block, it);
     return {
       ...state,
-      blocks: new Map(state.blocks).set(canonicalize(page), next),
+      blocks: new Map(state.blocks).set(canonicalize(lands), next),
       // The page before its links: it is where the user was writing.
-      titles: spell(state.titles, [page, ...read(text).links]),
+      titles: spell(state.titles, [lands, ...read(text).links]),
     };
   },
-  // Not safe to fold twice: a second creation would show the block twice.
+  // Safe to fold twice since #273, which changes nothing the second time;
+  // kept so a prediction says what is already drawn.
   landed: (state, { id }) => !!find(state, id),
   undo: {
     inverse: (state, { id }) => (find(state, id) ? [] : [blockDeleted(id)]),
