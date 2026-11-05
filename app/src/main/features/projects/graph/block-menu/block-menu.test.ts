@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readOffer } from "./block-menu.ts";
+import { deleteLabel, readOffer } from "./block-menu.ts";
 
 test("an offer to delete is read", () => {
   assert.deepEqual(readOffer({ delete: true }), { delete: true });
@@ -15,4 +15,17 @@ test("no offer, or one that does not parse, offers nothing more", () => {
 
 test("what an offer does not name is left out", () => {
   assert.deepEqual(readOffer({ delete: true, zoom: true }), { delete: true });
+});
+
+test("a delete of several carries its count, and one that is not several is the block alone (#258)", () => {
+  assert.deepEqual(readOffer({ delete: true, count: 3 }), { delete: true, count: 3 });
+  for (const count of [1, 0, -2, 2.5, "3", NaN, Infinity]) {
+    assert.deepEqual(readOffer({ delete: true, count }), { delete: true }, String(count));
+  }
+  assert.deepEqual(readOffer({ count: 3 }), {}, "a count with no delete offers nothing");
+});
+
+test("the delete item names how many blocks go", () => {
+  assert.equal(deleteLabel({ delete: true }), "Delete Block");
+  assert.equal(deleteLabel({ delete: true, count: 3 }), "Delete 3 Blocks");
 });

@@ -47,6 +47,14 @@ test("with blocks selected: arrows move, Shift+arrows extend, Enter opens, Escap
   assert.deepEqual(command(press("a", { metaKey: true }), true), { kind: "all" });
 });
 
+test("Delete and Backspace delete what is selected, and not with a modifier (#258)", () => {
+  assert.deepEqual(command(press("Backspace"), true), { kind: "delete" });
+  assert.deepEqual(command(press("Delete"), false), { kind: "delete" });
+  for (const mod of ["metaKey", "ctrlKey", "altKey", "shiftKey"]) {
+    assert.equal(command(press("Backspace", { [mod]: true }), true), undefined, mod);
+  }
+});
+
 test("any other key, or a key with another modifier, is not a selection command", () => {
   assert.equal(command(press("x"), true), undefined);
   assert.equal(command(press("Enter", { shiftKey: true }), true), undefined);

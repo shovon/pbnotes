@@ -34,7 +34,7 @@ import { every, extend, follow as followShown, move, pick, toggle as flip } from
 import type { Selection } from './selection/selection';
 import { shown as readShown } from './selection/shown';
 import type { Entry } from './selection/shown';
-import { covered } from './selection/roots/roots';
+import { covered, roots } from './selection/roots/roots';
 import { command, picks } from './selection/shortcut/shortcut';
 
 /**
@@ -592,6 +592,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       else if (it.kind === 'extend') setChosen(grow(chosen, entries, it.by));
       else if (it.kind === 'all') setChosen(everyBeside(chosen.anchor) ?? chosen);
       else if (it.kind === 'clear') setChosen(null);
+      else if (it.kind === 'delete') removing.current();
       else {
         const first = entries.find((entry) => entry.key === chosen.keys[0]);
         setChosen(null);
@@ -609,7 +610,8 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    */
   useEffect(() => {
     const onDown = (event: MouseEvent) => {
-      if (event.button !== 0) return;
+      // Ctrl+click on macOS is a right-click: its menu acts on the selection.
+      if (event.button !== 0 || (mac && event.ctrlKey)) return;
       if (picks(event, mac)) {
         boxAtDown.current = openBox()?.closest<HTMLElement>('[data-slot]')?.dataset.slot ?? null;
         return;
@@ -646,6 +648,42 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   }, [chosen?.head]);
 
   const selected = useMemo(() => new Set(chosen?.keys), [chosen]);
+  /**
+   * Delete or Backspace with blocks selected, or Delete N Blocks from a
+   * selected dot's menu (#258): the top-most selected blocks go, each with
+   * its subtree, as one write and one undo step, and the selection clears.
+   * Main works out which of them another holds, for the blocks a linked
+   * reference shows without their parent. Not drawn ahead of main: the
+   * blocks can be on several pages, each its own page view. The zoomed
+   * block going zooms out first, to what it hung under, as Delete Block's
+   * does, so the view is never rooted on nothing.
+   */
+  const removeChosen = () => {
+    const chosen = latestChosen.current;
+    if (!chosen) return;
+    const blockIds = roots(onScreen(), chosen.keys).map((it) => it.id);
+    setChosen(null);
+    if (blockIds.length === 0) return;
+    const zoomed = zoom ? held?.view.showing[0]?.page : undefined;
+    if (zoom && zoomed && blockIds.includes(zoom)) {
+      setTrail((trail) => rezoom(trail, locate(zoomed.blocks, zoom)?.parent?.id));
+    }
+    act(() => bridge.run({ type: 'deleteBlocks', blockIds }));
+  };
+  /** `removeChosen` as of this render, for the key listener set up once. */
+  const removing = useRef(removeChosen);
+  removing.current = removeChosen;
+
+  /**
+   * How many blocks a delete of the selection takes, when `slot` is one of
+   * them: its dot's menu then deletes them all. Undefined for a slot that is
+   * not selected, whose menu acts on its block alone.
+   */
+  const deletingOf = (slot: string): number | undefined => {
+    const chosen = latestChosen.current;
+    return chosen?.keys.includes(slot) ? roots(onScreen(), chosen.keys).length : undefined;
+  };
+
   const selecting = useMemo<Selecting>(
     () => ({
       mac,
@@ -653,8 +691,10 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       opening,
       onOpened: () => setOpening(null),
       fromBox,
+      deleting: deletingOf,
+      removeChosen: () => removing.current(),
     }),
-    // `fromBox` reads only refs and setters.
+    // `fromBox` and `deletingOf` read only refs and setters.
     [mac, selected, opening],
   );
 

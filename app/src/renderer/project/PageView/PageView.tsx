@@ -312,6 +312,14 @@ export default function PageView({
    */
   const openMenu = (block: BlockType) =>
     act(async () => {
+      // A dot among several selected deletes them all (#258). One selected
+      // alone is the block alone, as is a dot outside the selection, which
+      // leaves the selection as it is.
+      const count = selecting.deleting(slotKey(scope, block.id));
+      if (count !== undefined && count > 1) {
+        if ((await graph.blockMenu(block.id, { delete: true, count })) === 'delete') selecting.removeChosen();
+        return;
+      }
       const pick = await graph.blockMenu(block.id, { delete: true });
       if (pick !== 'delete') return;
       const now = latest.current;

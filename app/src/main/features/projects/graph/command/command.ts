@@ -9,7 +9,7 @@
  * Free of `electron` imports, so it runs under `node --test`.
  */
 import type { Command } from "../../../../../shared/graph.ts";
-import { requireString } from "../../../../ipc.ts";
+import { requireString, requireStringArray } from "../../../../ipc.ts";
 
 /**
  * A title is a key in a log that keeps everything forever, so it is checked
@@ -91,6 +91,12 @@ const CHECKERS: {
     type: "deleteBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
   }),
+  // An empty list is refused here: it names nothing, and is no delete.
+  deleteBlocks: (raw) => {
+    const blockIds = requireStringArray(own(raw, "blockIds"), "blockIds");
+    if (blockIds.length === 0) throw new TypeError("Expected a block to delete");
+    return { type: "deleteBlocks", blockIds };
+  },
   indentBlock: (raw) => ({
     type: "indentBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
