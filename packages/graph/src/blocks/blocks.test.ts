@@ -102,7 +102,7 @@ test("an event is folded under its namespaced name and no other", () => {
     none,
   );
 
-  assert.equal(Object.keys(BLOCK_HANDLES).length, 5);
+  assert.equal(Object.keys(BLOCK_HANDLES).length, 6);
   assert.equal(Object.keys(BLOCK_HANDLES).every((type) => type.startsWith(NAMESPACE)), true);
 });
 

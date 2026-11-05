@@ -6,8 +6,8 @@
  *
  * A page is not a record anywhere: it is a title that blocks carry, so pages
  * come into being by being named and go away by having nothing left on them.
- * That is why only a creation says anything about a page, and why every event
- * after it names the block alone.
+ * That is why only a creation and a move say anything about a page: where a
+ * block goes. Every other event names the block alone.
  *
  * Nothing here touches a log, a file, a device or a window. Both sides of the
  * app fold with it — main's fold is the truth, the renderer's `predict` is a
@@ -182,7 +182,7 @@ export function find(state: BlockState, id: string): Found | undefined {
 /** `define` and `slice` for the block events. */
 export const BLOCK = over<BlockState>();
 
-/** Where the user wrote a block. The only event that carries a page. */
+/** Where the user wrote a block. It and a move are the events that carry a page. */
 export type BlockCreated = {
   page: string;
   id: string;
@@ -219,6 +219,15 @@ export type BlockIndented = { id: string; parent: string };
 
 /** The block it used to hang under, and now sits directly beneath. */
 export type BlockOutdented = { id: string; after: string };
+
+/**
+ * Where the user moved a block, with its subtree, on its own page or another
+ * (#252). The place fields mean what they mean on `block.created`, and with
+ * none of them the block goes at the end of the page. The page is written
+ * even for a move on the same page, so the payload says where the block ends
+ * up without reading the graph.
+ */
+export type BlockMoved = { id: string; page: string } & Place;
 
 /**
  * A string field of `payload`, `""` included, or undefined for anything else.
@@ -288,6 +297,33 @@ export function placed(blocks: Block[], block: Block, { after, parent, first }: 
 }
 
 // ── Moves ───────────────────────────────────────────────────────────────────
+
+/**
+ * `blocks` with `block` at exactly `place`, or undefined when `place` names a
+ * block `blocks` lacks, or an `after` that is not one of `parent`'s children.
+ * Unlike `placed`, never falls back: a move to a place that is gone leaves
+ * the block where its owner last saw it.
+ */
+export function placedAt(blocks: Block[], block: Block, { after, parent, first }: Place): Block[] | undefined {
+  if (after) {
+    const sibling = locate(blocks, after);
+    if (!sibling || (parent && sibling.parent?.id !== parent)) return undefined;
+    return beside(blocks, after, block);
+  }
+  if (parent) return under(blocks, parent, block);
+  return first ? [block, ...blocks] : [...blocks, block];
+}
+
+/** Whether the block `id` already sits exactly where `place` on `page` says. */
+export function sitsAt(state: BlockState, id: string, page: string, { after, parent, first }: Place): boolean {
+  const found = find(state, id);
+  if (!found || canonicalize(found.page) !== canonicalize(page)) return false;
+  const { siblings, at } = found;
+  const hangs = found.parent?.id;
+  if (after) return siblings[at - 1]?.id === after && (!parent || hangs === parent);
+  if (parent) return hangs === parent && at === 0;
+  return !hangs && (first ? at === 0 : at === siblings.length - 1);
+}
 
 /**
  * What indenting a block is: filed under the sibling above it. Undefined for

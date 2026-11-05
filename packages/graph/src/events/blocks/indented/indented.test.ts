@@ -12,6 +12,7 @@ import { reduce } from "../slice.ts";
 import { blockCreated } from "../created/created.ts";
 import { blockEdited } from "../edited/edited.ts";
 import { blockOutdented } from "../outdented/outdented.ts";
+import { blockMoved } from "../moved/moved.ts";
 import { BLOCK_INDENTED, blockIndented } from "./indented.ts";
 
 const TODAY = "2026-09-21";
@@ -53,7 +54,7 @@ test("blockIndented writes the event's own type and v", () => {
   });
 });
 
-test("an indent under the sibling above is undone by an outdent after it; elsewhere, not at all", () => {
+test("an indent under the sibling above is undone by an outdent after it; elsewhere, by a move back", () => {
   const before = fold(
     empty(),
     blockCreated("Foo", "A", undefined, "a"),
@@ -63,7 +64,9 @@ test("an indent under the sibling above is undone by an outdent after it; elsewh
   assert.deepEqual(invert(before, [blockIndented({ id: "b", parent: "a" })]), [
     blockOutdented({ id: "b", after: "a" }),
   ]);
-  assert.equal(invert(before, [blockIndented({ id: "c", parent: "a" })]), undefined);
+  assert.deepEqual(invert(before, [blockIndented({ id: "c", parent: "a" })]), [
+    blockMoved({ id: "c", page: "Foo", after: "b" }),
+  ]);
 });
 
 test("an indent holds until the block moves again", () => {

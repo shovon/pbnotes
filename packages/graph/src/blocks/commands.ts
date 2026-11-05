@@ -3,8 +3,8 @@
  * builds and dispatches. Each event's builder is its own module.
  */
 import type { Written } from "../over/over.ts";
-import { blocksOn, find, indented, locate, outdented } from "./blocks.ts";
-import type { BlockState, Found, Page } from "./blocks.ts";
+import { blocksOn, find, ids, indented, locate, outdented, placedAt, sitsAt } from "./blocks.ts";
+import type { BlockState, Found, Page, Place } from "./blocks.ts";
 import { getPage } from "./queries.ts";
 import type { PageEvent } from "../events/blocks/slice.ts";
 import { blockCreated } from "../events/blocks/created/created.ts";
@@ -12,6 +12,7 @@ import { blockEdited } from "../events/blocks/edited/edited.ts";
 import { blockDeleted } from "../events/blocks/deleted/deleted.ts";
 import { blockIndented } from "../events/blocks/indented/indented.ts";
 import { blockOutdented } from "../events/blocks/outdented/outdented.ts";
+import { blockMoved } from "../events/blocks/moved/moved.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of
@@ -114,4 +115,41 @@ export function outdentBlock(view: BlocksView, blockId: string): Promise<Page> {
     const payload = outdented(found.blocks, blockId);
     return payload && blockOutdented(payload);
   });
+}
+
+/**
+ * Moves a block, with its subtree, to `place` on `title`: on its own page or
+ * another (#252). The place means what it means to `addBlock`, and refuses
+ * the same: an `after` or `parent` not on that page, an `after` that is not
+ * `parent`'s child, and `first` with either. It also refuses a place inside
+ * the block's own subtree, which the fold would ignore, and writes nothing
+ * for a block already there. Hands back the page the block lands on.
+ */
+export async function moveBlock(
+  view: BlocksView,
+  blockId: string,
+  title: string,
+  place: Place = {},
+): Promise<Page> {
+  const { after, parent, first } = place;
+  if (first && (after || parent)) {
+    throw new Error("A first block cannot have an after or a parent");
+  }
+  const found = find(view.state, blockId);
+  if (!found) throw new Error("No such block");
+  const moving = found.siblings[found.at];
+  const inside = new Set(ids([moving]));
+  if ((after && inside.has(after)) || (parent && inside.has(parent))) {
+    throw new Error("A block cannot move into itself");
+  }
+  const blocks = blocksOn(view.state, title);
+  if (after && !locate(blocks, after)) throw new Error("No such block");
+  if (parent && !locate(blocks, parent)) throw new Error("No such block");
+  if (!placedAt(blocks, moving, place)) {
+    throw new Error("That block is not a child of the parent");
+  }
+  if (!sitsAt(view.state, blockId, title, place)) {
+    await append(view, blockMoved({ id: blockId, page: title, ...place }));
+  }
+  return getPage(view.state, title);
 }

@@ -95,6 +95,7 @@ export type {
   BlockDeleted,
   BlockEdited,
   BlockIndented,
+  BlockMoved,
   BlockOutdented,
   Found,
   Page,
@@ -128,11 +129,13 @@ export { blockEdited } from "./events/blocks/edited/edited.ts";
 export { blockDeleted } from "./events/blocks/deleted/deleted.ts";
 export { blockIndented } from "./events/blocks/indented/indented.ts";
 export { blockOutdented } from "./events/blocks/outdented/outdented.ts";
+export { blockMoved } from "./events/blocks/moved/moved.ts";
 export {
   addBlock,
   deleteBlock,
   editBlock,
   indentBlock,
+  moveBlock,
   outdentBlock,
 } from "./blocks/commands.ts";
 export { getEdited } from "./edited/edited.ts";
