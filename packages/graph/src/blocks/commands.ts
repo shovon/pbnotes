@@ -6,6 +6,7 @@ import type { Written } from "../over/over.ts";
 import { blocksOn, find, ids, indented, locate, outdented, placedAt, sitsAt } from "./blocks.ts";
 import type { BlockState, Found, Page, Place } from "./blocks.ts";
 import { getPage } from "./queries.ts";
+import { reduce } from "../events/blocks/slice.ts";
 import type { PageEvent } from "../events/blocks/slice.ts";
 import { blockCreated } from "../events/blocks/created/created.ts";
 import { blockEdited } from "../events/blocks/edited/edited.ts";
@@ -108,6 +109,47 @@ export async function deleteBlocks(view: BlocksView, blockIds: readonly string[]
   const gone = topMost(view.state, blockIds);
   if (gone.length === 0) throw new Error("No such block");
   const events = gone.map((id) => blockDeleted(id));
+  await append(view, events.length === 1 ? events[0] : batch(events));
+}
+
+/**
+ * Tab on several blocks (#259): each top-most one of `blockIds` filed under
+ * the sibling above it, children and all, in the order given, as one record:
+ * a `batch` of `block.indented`s, or the one event alone. Each is resolved
+ * on the graph as the ones before it left it, so siblings selected together
+ * go under the same block, in their order. All or nothing: when any of them
+ * is first among its siblings, wherever it is, nothing is written, and that
+ * is not an error, as with `indentBlock`. Refuses when none is left.
+ */
+export function indentBlocks(view: BlocksView, blockIds: readonly string[]): Promise<void> {
+  return inTurn(view, blockIds, (state, id) => {
+    const found = find(state, id);
+    const payload = found && indented(found.blocks, id);
+    return payload && blockIndented(payload);
+  });
+}
+
+/**
+ * The shape of every command on several blocks that moves each in turn: the
+ * top-most of `blockIds`, each resolved by `eventFor` on the graph as the
+ * ones before it left it, written as one record. Nothing is written when
+ * `eventFor` has none for one of them: the step is all or nothing.
+ */
+async function inTurn(
+  view: BlocksView,
+  blockIds: readonly string[],
+  eventFor: (state: BlockState, id: string) => Written<PageEvent["type"], unknown> | undefined,
+): Promise<void> {
+  const ids = topMost(view.state, blockIds);
+  if (ids.length === 0) throw new Error("No such block");
+  const events: Written<PageEvent["type"], unknown>[] = [];
+  let state = view.state;
+  for (const id of ids) {
+    const event = eventFor(state, id);
+    if (!event) return;
+    events.push(event);
+    state = reduce(state, event);
+  }
   await append(view, events.length === 1 ? events[0] : batch(events));
 }
 

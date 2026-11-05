@@ -119,6 +119,7 @@ test("every kind of step undoes to the graph before it, and redoes to the graph 
     ["delete every top-level block, in one batch", [batch([blockDeleted("a"), blockDeleted("b"), blockDeleted("c")])]],
     ["indent a top-level block", [blockIndented({ id: "b", parent: "a" })]],
     ["indent a child", [blockIndented({ id: "a2", parent: "a1" })]],
+    ["indent two siblings together, in one batch (#259)", [batch([blockIndented({ id: "b", parent: "a" }), blockIndented({ id: "c", parent: "a" })])]],
     ["outdent a block with a sibling below", [blockOutdented({ id: "a1", after: "a" })]],
     ["outdent a last child", [blockOutdented({ id: "a2", after: "a" })]],
     ["move a block with children lower", [blockMoved({ id: "a", page: "Foo", after: "c" })]],

@@ -61,3 +61,10 @@ test("any other key, or a key with another modifier, is not a selection command"
   assert.equal(command(press("ArrowUp", { altKey: true }), true), undefined);
   assert.equal(command(press("a", { ctrlKey: true }), true), undefined);
 });
+
+test("Tab indents what is selected, and not with a modifier (#259)", () => {
+  assert.deepEqual(command(press("Tab"), true), { kind: "indent" });
+  for (const mod of ["metaKey", "ctrlKey", "altKey"]) {
+    assert.equal(command(press("Tab", { [mod]: true }), true), undefined, mod);
+  }
+});

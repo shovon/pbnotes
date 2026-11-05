@@ -27,6 +27,7 @@ import {
   UNDO,
   listPages,
   indentBlock,
+  indentBlocks,
   moveBlock,
   NAMESPACE,
   outdentBlock,
@@ -188,6 +189,43 @@ test("deleteBlocks deletes several blocks as one batch, each held one once, and 
   await assert.rejects(deleteBlocks(none, ["gone"]), Error);
   await assert.rejects(deleteBlocks(none, []), Error);
   assert.equal(none.events.length, before, "nothing written");
+});
+
+test("indentBlocks files each block under the sibling above, in turn, all or nothing (#259)", async () => {
+  /** Today: a b c d; Elsewhere: e f. */
+  const start = async () => {
+    const view = memory();
+    for (const [id, after] of [["a"], ["b", "a"], ["c", "b"], ["d", "c"]]) await addBlock(view, TODAY, id, after, id);
+    await addBlock(view, "Elsewhere", "e", undefined, "e");
+    await addBlock(view, "Elsewhere", "f", "e", "f");
+    return view;
+  };
+  const shape = (blocks: { id: string; children: unknown[] }[]): string =>
+    blocks.map((it) => (it.children.length ? `${it.id}(${shape(it.children as never)})` : it.id)).join(" ");
+  const pages = (view: GraphView) => [shape(getPage(view.state, TODAY).blocks), shape(getPage(view.state, "Elsewhere").blocks)];
+  const cases: [string, string[], string[]][] = [
+    ["siblings together go under the same block, in their order", ["b", "c"], ["a(b c) d", "e f"]],
+    ["a gap: each under its own sibling above", ["b", "d"], ["a(b) c(d)", "e f"]],
+    ["across pages", ["c", "f"], ["a b(c) d", "e(f)"]],
+  ];
+  for (const [name, ids, expected] of cases) {
+    const view = await start();
+    const written = view.events.length;
+    await indentBlocks(view, ids);
+    assert.equal(view.events.length, written + 1, `${name}: one record`);
+    assert.equal((view.events.at(-1) as { type: string }).type, `${NAMESPACE}batch`, name);
+    assert.deepEqual(pages(view), expected, name);
+  }
+  const one = await start();
+  await indentBlocks(one, ["c"]);
+  assert.deepEqual(one.events.at(-1), blockIndented({ id: "c", parent: "b" }), "one block is its own event");
+  for (const ids of [["a", "b"], ["b", "e"], ["e"]]) {
+    const view = await start();
+    const written = view.events.length;
+    await indentBlocks(view, ids);
+    assert.equal(view.events.length, written, `${ids}: one first among its siblings, so nothing moves`);
+  }
+  await assert.rejects(indentBlocks(await start(), ["gone"]), Error);
 });
 
 test("moveBlock refuses what the fold would ignore, and writes nothing for a block already there", async () => {
