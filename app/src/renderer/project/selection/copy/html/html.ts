@@ -38,6 +38,8 @@ export function asHtml(
   previews: Previews,
   images: ReadonlyMap<string, string>,
   source?: string,
+  /** A cut (#246): the blocks ride with their ids. */
+  cut = false,
 ): string {
   const components = {
     // A page link reads as it was typed, and goes nowhere: its fragment
@@ -67,6 +69,6 @@ export function asHtml(
   // React puts a preload ahead of a page's images, which a clipboard has no
   // use for: the list is the whole copy.
   return renderToStaticMarkup(
-    createElement('ul', { [ATTRIBUTE]: encode(copied(blocks), source) }, blocks.map(item)),
+    createElement('ul', { [ATTRIBUTE]: encode(copied(blocks, cut), source) }, blocks.map(item)),
   ).replace(/^(<link [^>]*>)+/, '');
 }

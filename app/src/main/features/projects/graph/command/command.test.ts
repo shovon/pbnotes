@@ -165,6 +165,15 @@ test("a paste's blocks are built fresh, from the fields they read", () => {
   assert.deepEqual(command, { type: "pasteBlocks", title: "Mira", blocks: [{ id: ID, text: "x", children: [] }] });
 });
 
+test("a cut block's id passes, and one main would not let a window name is left off (#246)", () => {
+  const kept = requireCommand(paste({ blocks: [{ id: ID, was: ID2, text: "x", children: [] }] }));
+  assert.deepEqual(kept, { type: "pasteBlocks", title: "Mira", blocks: [{ id: ID, was: ID2, text: "x", children: [] }] });
+  for (const was of ["b1", 3, null, "", ID2.toUpperCase()]) {
+    const command = requireCommand(paste({ blocks: [{ id: ID, was, text: "x", children: [] }] }));
+    assert.deepEqual(command, { type: "pasteBlocks", title: "Mira", blocks: [{ id: ID, text: "x", children: [] }] }, String(was));
+  }
+});
+
 test("a paste that is malformed, too big or too deep is refused", () => {
   type Leaf = { id: string; text: string; children: Leaf[] };
   const leaf = (id: string): Leaf => ({ id, text: "", children: [] });

@@ -34,9 +34,16 @@ test('HTML with no blocks in it, or blocks that do not read, is not a paste of b
   }
 });
 
-test('what a block does not read is left behind', () => {
+test("what a block does not read is left behind, and a cut's id is read (#246)", () => {
   const value = btoa(JSON.stringify({ v: 1, blocks: [{ text: 'x', children: [], id: 'old', page: 'P' }] }));
-  assert.deepEqual(decode(html(value)), { blocks: [{ text: 'x', children: [] }] });
+  assert.deepEqual(decode(html(value)), { blocks: [{ text: 'x', children: [], id: 'old' }] });
+});
+
+test('an id that is not a short string is left off, and the block still read', () => {
+  for (const id of [3, '', 'x'.repeat(65), null, { a: 1 }]) {
+    const value = btoa(JSON.stringify({ v: 1, blocks: [{ text: 'x', children: [], id }] }));
+    assert.deepEqual(decode(html(value)), { blocks: [{ text: 'x', children: [] }] }, JSON.stringify(id));
+  }
 });
 
 test('too many blocks, or too deep, is not read', () => {

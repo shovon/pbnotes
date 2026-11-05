@@ -15,6 +15,7 @@ import { blockIndented } from "../events/blocks/indented/indented.ts";
 import { blockOutdented } from "../events/blocks/outdented/outdented.ts";
 import { blockMoved } from "../events/blocks/moved/moved.ts";
 import { batch } from "../events/batch/batch.ts";
+import type { Batched } from "../events/batch/batch.ts";
 import type { BatchEvent } from "../events/batch/batch.ts";
 import { pasted } from "./paste/paste.ts";
 import type { PasteAt } from "./paste/paste.ts";
@@ -115,21 +116,37 @@ export async function deleteBlocks(view: BlocksView, blockIds: readonly string[]
 }
 
 /**
- * Writes copied blocks on `title` as new ones (#261), nested as they were
- * copied, as one record, so one undo takes the paste back. `at` is a place
- * as `addBlock` means one, and refuses what it refuses, or `into` an empty
- * block on the page, which the first pasted block replaces (`paste.ts`).
- * Every id is the caller's, and refused when the graph has it or the paste
- * names it twice: a pasted block is a new block.
+ * A block to paste: its id, text and children, and, when it was cut (#246),
+ * the id it had then, which it keeps when the graph does not hold it.
+ */
+export type Pasting = { id: string; text: string; children: readonly Pasting[]; was?: string };
+
+/**
+ * Writes copied blocks on `title` (#261), nested as they were copied, as one
+ * record, so one undo takes the paste back. `at` is a place as `addBlock`
+ * means one, and refuses what it refuses, or `into` an empty block on the
+ * page (`paste.ts`).
+ *
+ * Each block is written under the caller's `id`, refused when the graph has
+ * it or the paste names it twice, unless it carries the id it was cut with
+ * (`was`) and the graph does not hold that one: then it keeps it, so the
+ * first paste of a cut puts its blocks back and every `((id))` to them works
+ * again (#246). A later paste finds those ids held, and is a copy.
+ *
+ * `into` an empty block: a copy's first block takes that block's id, as
+ * ever. One that keeps its cut id can't, so the paste goes after the empty
+ * block instead, its children go under the first pasted block, and it is
+ * deleted, in the same record.
  */
 export async function pasteBlocks(
   view: BlocksView,
   title: string,
-  pasting: readonly Block[],
+  pasting: readonly Pasting[],
   at: PasteAt,
 ): Promise<void> {
   if (pasting.length === 0) throw new Error("Nothing to paste");
-  const named = ids(pasting);
+  const resolved = kept(view.state, pasting);
+  const named = ids(resolved);
   if (new Set(named).size !== named.length) throw new Error("A pasted block is named twice");
   if (named.some((id) => find(view.state, id))) throw new Error("That block already exists");
   const blocks = blocksOn(view.state, title);
@@ -147,9 +164,49 @@ export async function pasteBlocks(
       throw new Error("That block is not a child of the parent");
     }
   }
-  const events = pasted(blocks, title, pasting, at) ?? [];
+  const events =
+    ("into" in at && resolved[0].id === pasting[0].was
+      ? replacing(blocks, title, resolved, at.into)
+      : pasted(blocks, title, resolved, at)) ?? [];
   if (events.length === 0) return;
   await append(view, events.length === 1 ? (events[0] as Built) : batch(events));
+}
+
+/**
+ * `pasting` as blocks, each with the id it is written under: the one it was
+ * cut with when the graph does not hold it and no block before it in the
+ * paste took it, and the caller's otherwise.
+ */
+function kept(state: BlockState, pasting: readonly Pasting[]): Block[] {
+  const taken = new Set<string>();
+  const walk = (blocks: readonly Pasting[]): Block[] =>
+    blocks.map(({ id, text, children, was }) => {
+      const keep = was !== undefined && !taken.has(was) && !find(state, was);
+      if (keep) taken.add(was);
+      return { id: keep ? was : id, text, children: walk(children) };
+    });
+  return walk(pasting);
+}
+
+/**
+ * A paste into the empty block `into` whose first block keeps its own id:
+ * the blocks go after it, its children go under the first of them, after
+ * that block's own, and it is deleted. Undefined when the page lacks it.
+ */
+function replacing(blocks: Block[], title: string, pasting: Block[], into: string): Batched[] | undefined {
+  const found = locate(blocks, into);
+  if (!found) return undefined;
+  const target = found.siblings[found.at];
+  const first = pasting[0];
+  const parent = found.parent ? { parent: found.parent.id } : {};
+  const written = pasted(blocks, title, pasting, { after: into, ...parent }) ?? [];
+  let above = first.children.at(-1)?.id;
+  const moved = target.children.map((child) => {
+    const event = blockMoved({ id: child.id, page: title, parent: first.id, ...(above ? { after: above } : {}) });
+    above = child.id;
+    return event;
+  });
+  return [...written, ...moved, blockDeleted(into)];
 }
 
 /**

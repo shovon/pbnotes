@@ -287,7 +287,10 @@ export type BlockMenuOffer = {
    * a dot among several selected (#261), where it would copy one of them.
    */
   reference?: boolean;
-  /** Delete Block, which takes the block and every block under it. */
+  /**
+   * Delete Block, which takes the block and every block under it, and Cut
+   * Block beside it (#246), which takes the same blocks.
+   */
   delete?: boolean;
   /**
    * How many blocks the delete takes, when the dot is one of several
@@ -297,10 +300,15 @@ export type BlockMenuOffer = {
 };
 
 /** An item of `BlockMenuOffer` the user picked. */
-export type BlockMenuPick = 'delete';
+export type BlockMenuPick = 'delete' | 'cut';
 
-/** A block as a paste writes it: a new id, its text, and what goes under it. */
-export type Pasted = { id: string; text: string; children: Pasted[] };
+/**
+ * A block as a paste writes it: a new id, its text, and what goes under it.
+ * A block that was cut (#246) carries the id it had then as `was`, which it
+ * keeps when the project does not hold it, so the first paste of a cut puts
+ * the very blocks back.
+ */
+export type Pasted = { id: string; text: string; children: Pasted[]; was?: string };
 
 /**
  * Every write the window can ask main to record, tagged by `type`. Each runs

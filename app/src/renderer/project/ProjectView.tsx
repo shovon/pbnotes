@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { locate, canonicalize, today } from '@pbnotes/graph';
+import type { Block } from '@pbnotes/graph';
 import { CARRY_LIMIT } from '../../shared/graph';
 import type { GraphApi, Undone } from '../../shared/graph';
 import type { Act } from '../ui';
@@ -859,16 +860,27 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    * does, so the view is never rooted on nothing.
    */
   const removeChosen = () => {
+    const blockIds = takeChosen();
+    if (blockIds.length > 0) act(() => removeBlocks(blockIds));
+  };
+  /** The selection's top-most blocks, and the selection cleared. */
+  const takeChosen = (): string[] => {
     const chosen = latestChosen.current;
-    if (!chosen) return;
+    if (!chosen) return [];
     const blockIds = roots(onScreen(), chosen.keys).map((it) => it.id);
     setChosen(null);
-    if (blockIds.length === 0) return;
+    return blockIds;
+  };
+  /**
+   * `blockIds`, each with its subtree, deleted as one step, the zoom moved
+   * out first when the zoomed block is one of them.
+   */
+  const removeBlocks = async (blockIds: string[]) => {
     const zoomed = zoom ? held?.view.showing[0]?.page : undefined;
     if (zoom && zoomed && blockIds.includes(zoom)) {
       setTrail((trail) => rezoom(trail, locate(zoomed.blocks, zoom)?.parent?.id));
     }
-    act(() => bridge.run({ type: 'deleteBlocks', blockIds }));
+    await bridge.run({ type: 'deleteBlocks', blockIds });
   };
   /** `removeChosen` as of this render, for the key listener set up once. */
   const removing = useRef(removeChosen);
@@ -911,36 +923,80 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    */
   const copyChosen = () => {
     const chosen = latestChosen.current;
-    if (!chosen || !held) return;
+    if (!chosen) return;
+    const blocks = shownBlocks(roots(onScreen(), chosen.keys).map((it) => it.id));
+    if (blocks.length > 0) act(() => toClipboard(blocks, false));
+  };
+  /**
+   * `blockIds`, each with its subtree and once, as main last sent them: read
+   * off every page and cut on screen, since a selection spans them.
+   */
+  const shownBlocks = (blockIds: string[]): Block[] => {
+    if (!held) return [];
     const trees = held.view.showing.flatMap(({ page, references }) => [
       page.blocks,
       ...references.map((it) => it.blocks),
     ]);
-    const blocks = picked(trees, roots(onScreen(), chosen.keys).map((it) => it.id));
-    if (blocks.length === 0) return;
-    act(async () => {
-      const fetched = await Promise.all(
-        imageNames(blocks, previews).map(async (name) => [name, await graph.image(name)] as const),
-      );
-      // Up to the limit an image travels in the copy (#261). Past it, it is
-      // left out, and a block's own image is reached through a token for
-      // this project instead, which only this running app can follow.
-      const small = fetched.flatMap(([name, image]) =>
-        image && image.bytes.length <= CARRY_LIMIT ? [[name, dataUrl(image)] as const] : [],
-      );
-      const own = new Set(imageNames(blocks, new Map()));
-      const big = fetched.some(
-        ([name, image]) => image && image.bytes.length > CARRY_LIMIT && own.has(name),
-      );
-      const source = big ? await graph.imageSource() : undefined;
-      await graph.copy({
-        text: asText(blocks, previews),
-        html: asHtml(blocks, previews, new Map(small), source),
-      });
+    return picked(trees, blockIds);
+  };
+  /**
+   * `blocks` on the clipboard, as a copy or, with `cut`, with each block's
+   * id riding along (#246), so the first paste of them puts them back.
+   */
+  const toClipboard = async (blocks: Block[], cut: boolean) => {
+    const fetched = await Promise.all(
+      imageNames(blocks, previews).map(async (name) => [name, await graph.image(name)] as const),
+    );
+    // Up to the limit an image travels in the copy (#261). Past it, it is
+    // left out, and a block's own image is reached through a token for
+    // this project instead, which only this running app can follow.
+    const small = fetched.flatMap(([name, image]) =>
+      image && image.bytes.length <= CARRY_LIMIT ? [[name, dataUrl(image)] as const] : [],
+    );
+    const own = new Set(imageNames(blocks, new Map()));
+    const big = fetched.some(
+      ([name, image]) => image && image.bytes.length > CARRY_LIMIT && own.has(name),
+    );
+    const source = big ? await graph.imageSource() : undefined;
+    await graph.copy({
+      text: asText(blocks, previews),
+      html: asHtml(blocks, previews, new Map(small), source, cut),
     });
   };
   const copying = useRef(copyChosen);
   copying.current = copyChosen;
+
+  /**
+   * Cut (#246): the blocks go on the clipboard as a copy does, each with its
+   * id, and are then deleted, as one step. The first paste of them puts
+   * the very blocks back, so every `((id))` to them works again; a later
+   * paste is a copy. Nothing is deleted unless the clipboard took them.
+   */
+  const cutBlocks = (blockIds: string[]) => {
+    const blocks = shownBlocks(blockIds);
+    if (blocks.length === 0) return;
+    act(async () => {
+      await toClipboard(blocks, true);
+      await removeBlocks(blocks.map((it) => it.id));
+    });
+  };
+  /** Cmd/Ctrl+X, or Edit → Cut, with blocks selected: the selection, cut. */
+  const cutChosen = () => cutBlocks(takeChosen());
+  const cutting = useRef(cutChosen);
+  cutting.current = cutChosen;
+  const cuttingOne = useRef(cutBlocks);
+  cuttingOne.current = cutBlocks;
+
+  /** The cut event, as the copy event: Cmd/Ctrl+X and the menu's Cut both raise it. */
+  useEffect(() => {
+    const onCut = (event: ClipboardEvent) => {
+      if (!latestChosen.current || typesText(document.activeElement)) return;
+      event.preventDefault();
+      cutting.current();
+    };
+    document.addEventListener('cut', onCut);
+    return () => document.removeEventListener('cut', onCut);
+  }, []);
 
   /**
    * The copy event, not the key: Cmd/Ctrl+C and the menu's Copy both raise
@@ -995,6 +1051,8 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       fromBox,
       deleting: deletingOf,
       removeChosen: () => removing.current(),
+      cut: (slot, id) =>
+        latestChosen.current?.keys.includes(slot) ? cutting.current() : cuttingOne.current([id]),
     }),
     // `fromBox` and `deletingOf` read only refs and setters.
     [mac, selected, opening],

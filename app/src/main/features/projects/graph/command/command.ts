@@ -92,12 +92,26 @@ function requirePasted(value: unknown): Pasted[] {
         id: requireBlockId(own(it, "id")),
         text: requireString(own(it, "text"), "text"),
         children: read(own(it, "children"), depth + 1),
+        ...cutId(own(it, "was")),
       };
     });
   };
   const blocks = read(value, 1);
   if (blocks.length === 0) throw new TypeError("Expected a block");
   return blocks;
+}
+
+/**
+ * The id a cut block had (#246), when it is one main would let a window
+ * name. Anything else is left off, and the block is pasted as a copy: it
+ * came off a clipboard any app can write, and a paste is not refused for it.
+ */
+function cutId(value: unknown): { was?: string } {
+  try {
+    return value === undefined ? {} : { was: requireBlockId(value) };
+  } catch {
+    return {};
+  }
 }
 
 /** An optional block id field: absent, or a string. */

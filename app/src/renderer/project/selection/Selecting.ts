@@ -26,6 +26,11 @@ export type Selecting = {
   deleting: (slot: string) => number | undefined;
   /** Deletes the selection's blocks, each with its subtree, as one step. */
   removeChosen: () => void;
+  /**
+   * Cuts the block `id`, shown at `slot`, with its subtree (#246): the whole
+   * selection when `slot` is in it, and the block alone otherwise.
+   */
+  cut: (slot: string, id: string) => void;
 };
 
 /** Nothing selected and nothing to tell: a page drawn alone, as in a story. */
@@ -37,4 +42,5 @@ export const Selecting = createContext<Selecting>({
   fromBox: () => undefined,
   deleting: () => undefined,
   removeChosen: () => undefined,
+  cut: () => undefined,
 });

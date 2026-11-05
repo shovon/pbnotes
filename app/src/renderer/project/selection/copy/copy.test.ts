@@ -36,6 +36,12 @@ test('copied blocks keep their text and nesting, and lose their ids', () => {
   ]);
 });
 
+test("a cut keeps each block's id, nested as they were (#246)", () => {
+  assert.deepEqual(copied([day[0]], true), [
+    { id: 'a', text: 'A', children: [{ id: 'b', text: 'B', children: [{ id: 'c', text: 'C', children: [] }] }] },
+  ]);
+});
+
 test('the text is an indented list, two spaces a level', () => {
   assert.equal(asText(day, none), '- A\n  - B\n    - C\n- D');
 });
