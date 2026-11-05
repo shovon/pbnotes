@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { locate, canonicalize, today } from '@pbnotes/graph';
+import { CARRY_LIMIT } from '../../shared/graph';
 import type { GraphApi, Undone } from '../../shared/graph';
 import type { Act } from '../ui';
 import { Previews } from './Block/Block';
@@ -38,10 +39,10 @@ import type { Entry } from './selection/shown';
 import { covered, roots } from './selection/roots/roots';
 import { command, picks } from './selection/shortcut/shortcut';
 import { decode } from './selection/clip/clip';
-import type { Copied } from './selection/clip/clip';
+import type { Clipped } from './selection/clip/clip';
 import { asText, dataUrl, imageNames, picked } from './selection/copy/copy';
 import { asHtml } from './selection/copy/html/html';
-import { beneath, endOf, withIds } from './selection/paste/paste';
+import { beneath, endOf, landed, withIds } from './selection/paste/paste';
 import type { Spot } from './selection/paste/paste';
 
 /**
@@ -59,6 +60,8 @@ export type ProjectViewGraph = PageViewGraph &
     | 'pages'
     | 'addImage'
     | 'image'
+    | 'imageSource'
+    | 'carryImages'
     | 'copy'
     | 'pageMenu'
   >;
@@ -786,15 +789,23 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
     const blocks = picked(trees, roots(onScreen(), chosen.keys).map((it) => it.id));
     if (blocks.length === 0) return;
     act(async () => {
-      const carried = await Promise.all(
-        imageNames(blocks, previews).map(async (name) => {
-          const image = await graph.image(name);
-          return image ? [[name, dataUrl(image)] as const] : [];
-        }),
+      const fetched = await Promise.all(
+        imageNames(blocks, previews).map(async (name) => [name, await graph.image(name)] as const),
       );
+      // Up to the limit an image travels in the copy (#261). Past it, it is
+      // left out, and a block's own image is reached through a token for
+      // this project instead, which only this running app can follow.
+      const small = fetched.flatMap(([name, image]) =>
+        image && image.bytes.length <= CARRY_LIMIT ? [[name, dataUrl(image)] as const] : [],
+      );
+      const own = new Set(imageNames(blocks, new Map()));
+      const big = fetched.some(
+        ([name, image]) => image && image.bytes.length > CARRY_LIMIT && own.has(name),
+      );
+      const source = big ? await graph.imageSource() : undefined;
       await graph.copy({
         text: asText(blocks, previews),
-        html: asHtml(blocks, previews, new Map(carried.flat())),
+        html: asHtml(blocks, previews, new Map(small), source),
       });
     });
   };
@@ -820,10 +831,10 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    * Blocks from a pbnotes copy, pasted with no box open (#261): beneath the
    * last selected block, at its depth, or with none selected where a pasted
    * image goes, at the end of what is in view. New blocks, named here, as
-   * one write and one undo step. A box open takes the paste itself
-   * (`PageView`).
+   * one write and one undo step, once the images they link are in this
+   * project. A box open takes the paste itself (`PageView`).
    */
-  const pasteHere = (blocks: Copied[]) => {
+  const pasteHere = (clipped: Clipped, html: string) => {
     const chosen = latestChosen.current;
     const last = chosen ? roots(onScreen(), chosen.keys).at(-1) : undefined;
     const zoomed = zoom ? held?.view.showing[0]?.page : undefined;
@@ -839,8 +850,10 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           });
           return { page, spot: endOf(root) };
         })();
-    const pasting = withIds(blocks, () => crypto.randomUUID());
-    act(() => bridge.run({ type: 'pasteBlocks', title: target.page, blocks: pasting, ...target.spot }));
+    act(async () => {
+      const pasting = withIds(await landed(graph, clipped, html), () => crypto.randomUUID());
+      await bridge.run({ type: 'pasteBlocks', title: target.page, blocks: pasting, ...target.spot });
+    });
   };
 
   const selecting = useMemo<Selecting>(
@@ -919,12 +932,11 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       if (!data || event.defaultPrevented) return;
       // A box, or any field, takes blocks as its own: into a box they are
       // `PageView`'s, and into anything else the text they also carry.
-      const blocks = typesText(document.activeElement)
-        ? undefined
-        : decode(data.getData('text/html'));
-      if (blocks) {
+      const html = data.getData('text/html');
+      const clipped = typesText(document.activeElement) ? undefined : decode(html);
+      if (clipped) {
         event.preventDefault();
-        pasteHere(blocks);
+        pasteHere(clipped, html);
         return;
       }
       // Text copied out of a word processor comes with a picture of itself.

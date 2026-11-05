@@ -35,7 +35,7 @@ import type { Pending } from './pending/pending';
 import { Selecting } from '../selection/Selecting';
 import { slot, slotKey } from '../selection/shown';
 import { decode } from '../selection/clip/clip';
-import { beneath, endOf, withIds } from '../selection/paste/paste';
+import { beneath, endOf, landed, withIds } from '../selection/paste/paste';
 import type { Spot } from '../selection/paste/paste';
 
 /**
@@ -51,7 +51,7 @@ type Writing = { after?: string } | null;
  * steps it writes through call. A cut under the page is another `PageView`,
  * so `LinkedReferences` needs no more than this.
  */
-export type PageViewGraph = StepsGraph & Pick<GraphApi, 'search' | 'blockMenu'>;
+export type PageViewGraph = StepsGraph & Pick<GraphApi, 'search' | 'blockMenu' | 'carryImages'>;
 
 type Props = {
   graph: PageViewGraph;
@@ -491,11 +491,13 @@ export default function PageView({
    * id and takes the first block's text, and a new box's place is where the
    * paste starts. With something typed, that is written first, as blur
    * writes it, and the paste goes beneath it at its depth. The box closes.
-   * Not drawn ahead of main. Anything else on the clipboard is the box's.
+   * Written once the images it links are in this project, and not drawn
+   * ahead of main. Anything else on the clipboard is the box's.
    */
   const pasteIn = (data: DataTransfer, text: string, block?: BlockType): boolean => {
-    const blocks = decode(data.getData('text/html'));
-    if (!blocks) return false;
+    const html = data.getData('text/html');
+    const clipped = decode(html);
+    if (!clipped) return false;
     let spot: Spot;
     if (block) {
       setEditingId(null);
@@ -510,8 +512,10 @@ export default function PageView({
       setWriting(null);
       spot = written ? { after: written } : writing?.after ? { after: writing.after } : endOf(root);
     }
-    const pasting = withIds(blocks, () => crypto.randomUUID());
-    act(() => graph.run({ type: 'pasteBlocks', title, blocks: pasting, ...spot }));
+    act(async () => {
+      const pasting = withIds(await landed(graph, clipped, html), () => crypto.randomUUID());
+      await graph.run({ type: 'pasteBlocks', title, blocks: pasting, ...spot });
+    });
     return true;
   };
 

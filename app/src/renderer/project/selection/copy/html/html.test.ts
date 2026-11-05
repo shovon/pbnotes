@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Block } from '@pbnotes/graph';
-import { decode } from '../../clip/clip.ts';
+import { carried, decode } from '../../clip/clip.ts';
 import { asHtml } from './html.ts';
 
 const block = (id: string, text: string, ...children: Block[]): Block => ({ id, text, children });
@@ -22,9 +22,10 @@ test('blocks are a nested list, each one its Markdown rendered', () => {
 
 test('the blocks ride on the list, for a paste into pbnotes', () => {
   const html = asHtml([block('a', 'A [[Mira]] ((r))', block('b', 'B'))], none, noImages);
-  assert.deepEqual(decode(html), [
-    { text: 'A [[Mira]] ((r))', children: [{ text: 'B', children: [] }] },
-  ]);
+  assert.deepEqual(decode(html), {
+    blocks: [{ text: 'A [[Mira]] ((r))', children: [{ text: 'B', children: [] }] }],
+  });
+  assert.equal(decode(asHtml([block('a', 'A')], none, noImages, 'tok'))?.source, 'tok');
 });
 
 test('a page link reads as it was typed and goes nowhere; a web link still goes', () => {
@@ -45,8 +46,9 @@ test('a project image is carried as data, one with no data is left out, a web on
   );
   assert.equal(
     html,
-    '<ul><li><p><img src="data:image/png;base64,AAAA" alt="a"/>  <img src="https://e.com/c.png" alt="c"/></p></li></ul>',
+    '<ul><li><p><img src="data:image/png;base64,AAAA" alt="a" data-pbnotes-image="x.png"/>  <img src="https://e.com/c.png" alt="c"/></p></li></ul>',
   );
+  assert.deepEqual([...carried(html)], [['x.png', 'data:image/png;base64,AAAA']]);
 });
 
 test('text that looks like markup stays text', () => {

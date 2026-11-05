@@ -12,6 +12,7 @@ const graph: PageViewGraph = {
   run: async () => undefined,
   search: async () => [],
   blockMenu: async () => null,
+  carryImages: async (images) => images.map((): string | undefined => undefined),
 };
 
 const block = (id: string, text: string, children: Block[] = []): Block => ({

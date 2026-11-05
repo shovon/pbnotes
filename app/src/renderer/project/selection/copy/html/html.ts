@@ -20,7 +20,7 @@ import type { Components } from 'react-markdown';
 import { remarkPlugins as reading } from '@pbnotes/graph';
 import type { Block } from '@pbnotes/graph';
 import { remarkHighlight, remarkStrikethrough } from '../../../Block/marks/marks.ts';
-import { ATTRIBUTE, encode } from '../../clip/clip.ts';
+import { ATTRIBUTE, encode, IMAGE_ATTRIBUTE } from '../../clip/clip.ts';
 import { copied, localImage, unreferenced } from '../copy.ts';
 import type { Previews } from '../copy.ts';
 
@@ -29,13 +29,15 @@ const remarkPlugins = [...reading, remarkStrikethrough, remarkHighlight];
 
 /**
  * `blocks` as one HTML list. `images` is each project image's name and what
- * it is as a `data:` URL; one not in it is left out, as it would show
- * nothing anywhere else.
+ * it is as a `data:` URL, tagged with its name so a paste into pbnotes can
+ * store it; one not in it is left out, as it would show nothing anywhere
+ * else. `source` is the token for where images too big to carry are.
  */
 export function asHtml(
   blocks: readonly Block[],
   previews: Previews,
   images: ReadonlyMap<string, string>,
+  source?: string,
 ): string {
   const components = {
     // A page link reads as it was typed, and goes nowhere: its fragment
@@ -48,8 +50,9 @@ export function asHtml(
     'block-ref': ({ children }: { children?: ReactNode }) => createElement(Fragment, null, children),
     img: ({ src, alt, title }: { src?: string; alt?: string; title?: string }) => {
       const name = localImage(src ?? '');
-      const data = name === undefined ? src : images.get(name);
-      return data ? createElement('img', { src: data, alt, title }) : null;
+      if (name === undefined) return src ? createElement('img', { src, alt, title }) : null;
+      const data = images.get(name);
+      return data ? createElement('img', { src: data, alt, title, [IMAGE_ATTRIBUTE]: name }) : null;
     },
   } as Components;
 
@@ -64,6 +67,6 @@ export function asHtml(
   // React puts a preload ahead of a page's images, which a clipboard has no
   // use for: the list is the whole copy.
   return renderToStaticMarkup(
-    createElement('ul', { [ATTRIBUTE]: encode(copied(blocks)) }, blocks.map(item)),
+    createElement('ul', { [ATTRIBUTE]: encode(copied(blocks), source) }, blocks.map(item)),
   ).replace(/^(<link [^>]*>)+/, '');
 }

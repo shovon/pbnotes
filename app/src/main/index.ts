@@ -34,7 +34,8 @@ import {
   registerGraphIpc,
 } from "./features/projects/graph/graph-ipc";
 import { createGraphSession } from "./features/projects/graph/graph-session/graph-session";
-import { findImage, saveImage } from "./features/projects/graph/images/images";
+import { carryImages, findImage, saveImage } from "./features/projects/graph/images/images";
+import { createTokens } from "./tokens";
 import { GRAPH_CHANNELS, IMAGE_SCHEME } from "../shared/graph";
 import {
   MIN_SIZE,
@@ -208,6 +209,9 @@ app.on("ready", () => {
     // Every window of the app, over `graph:changed`.
     broadcastGraph,
   );
+  // What the tokens a copy carries for its images stand for (#261): a
+  // project id, kept in main and never sent. The latest few, for this run.
+  const imageSources = createTokens<string>({ newId: randomUUID, keep: 50 });
   registerGraphIpc(graph, {
     save: async (bytes, mime) => {
       const project = await projects.requireProject();
@@ -224,6 +228,19 @@ app.on("ready", () => {
     find: async (name) => {
       const project = projects.currentProject();
       return project ? findImage(project.path, name) : undefined;
+    },
+    // A copy whose images are too big to carry names where they are by a
+    // token (#261), lent here, for the project's id: a project that moves
+    // keeps it, and one removed since stands for nothing.
+    source: async () => {
+      const project = projects.currentProject();
+      return project ? imageSources.lend(project.id) : undefined;
+    },
+    carry: async (wanted, source) => {
+      const project = await projects.requireProject();
+      const id = source === undefined ? undefined : imageSources.find(source);
+      const from = id === undefined ? undefined : store.getProject(id)?.path;
+      return carryImages(project.path, await ledgers.writerOf(project), from, wanted);
     },
   });
 
