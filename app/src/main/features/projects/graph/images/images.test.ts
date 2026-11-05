@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { findImage, saveImage } from './images.ts';
+import { findImage, mimeOf, saveImage } from './images.ts';
 
 const scratch = () => mkdtemp(path.join(tmpdir(), 'pbnotes-images-'));
 const bytes = new TextEncoder().encode('not really a png');
@@ -39,4 +39,12 @@ test('a type that is not an image is refused', async () => {
   const dir = await scratch();
   await assert.rejects(saveImage(dir, 'device-a', bytes, 'text/html'));
   assert.deepEqual(await readdir(dir), []);
+});
+
+test("an image's type is read back off the extension it was stored under", () => {
+  assert.equal(mimeOf("/p/d/images/abc.png"), "image/png");
+  assert.equal(mimeOf("abc.JPG"), "image/jpeg");
+  assert.equal(mimeOf("abc.svg"), "image/svg+xml");
+  assert.equal(mimeOf("abc.exe"), undefined);
+  assert.equal(mimeOf("abc"), undefined);
 });

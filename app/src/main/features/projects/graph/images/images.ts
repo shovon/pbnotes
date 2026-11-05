@@ -24,6 +24,16 @@ const EXTENSIONS = new Map([
 ]);
 
 /**
+ * The type an image was stored as, read off its file's extension, or
+ * undefined for a file this module would not have stored.
+ */
+export function mimeOf(file: string): string | undefined {
+  const extension = /\.([^./\\]+)$/.exec(file)?.[1]?.toLowerCase();
+  for (const [mime, it] of EXTENSIONS) if (it === extension) return mime;
+  return undefined;
+}
+
+/**
  * Stores an image in this device's folder and returns what a note links it
  * by: `images/<sha256>.<ext>`, relative to the log directory.
  */

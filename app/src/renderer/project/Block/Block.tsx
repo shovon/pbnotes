@@ -379,6 +379,7 @@ export function BlockEditor({
   onIndent,
   onCancel,
   onSelect,
+  onPaste,
   mac = false,
   data,
   findPages,
@@ -427,6 +428,13 @@ export function BlockEditor({
    * the rest are what they are in any text field.
    */
   onSelect?: (text: string, how: FromBox) => void;
+  /**
+   * A paste, offered to the page before the box takes it as text, with what
+   * was typed so far (#261). True is the page taking it: the box changes
+   * nothing, and like `onCancel` it has to be unmounted, or blur commits
+   * the text a second time. Left off, every paste is the box's.
+   */
+  onPaste?: (data: DataTransfer, text: string) => boolean;
   /** Whether this is macOS, for Cmd+A against Ctrl+A. */
   mac?: boolean;
   /** Put on the outermost element. */
@@ -542,6 +550,11 @@ export function BlockEditor({
         /* The window losing focus blurs the box too, but that is the user
            looking elsewhere, not leaving the block: the browser hands focus
            back to this same box when the window returns, so stay open. */
+        onPaste={(event) => {
+          if (onPaste?.(event.clipboardData, event.currentTarget.value.trim())) {
+            event.preventDefault();
+          }
+        }}
         onBlur={(event) => {
           if (!document.hasFocus()) return;
           onCommit(event.target.value.trim());

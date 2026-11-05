@@ -53,6 +53,8 @@ const graph: GraphApi = {
   run: (command) => ipcRenderer.invoke(GRAPH_CHANNELS.command, command),
   addImage: (bytes, mime) =>
     ipcRenderer.invoke(GRAPH_CHANNELS.addImage, bytes, mime),
+  image: (name) => ipcRenderer.invoke(GRAPH_CHANNELS.image, name),
+  copy: (clip) => ipcRenderer.invoke(GRAPH_CHANNELS.copy, clip),
   blockMenu: (blockId, offer) =>
     ipcRenderer.invoke(GRAPH_CHANNELS.blockMenu, blockId, offer),
   pageMenu: (at, offer) => ipcRenderer.invoke(GRAPH_CHANNELS.pageMenu, at, offer),

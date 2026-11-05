@@ -173,6 +173,18 @@ function linkFor(match: RegExpExecArray): RootContent {
   return wikilink(match[0].slice(1), text(match[0]));
 }
 
+/**
+ * The bare `((ID))` refs in a run of text, where each starts and how long it
+ * is, read with the same pattern the walk reads with: a `((x))` inside
+ * `[[…]]` is part of the link, not a ref. For whoever needs to know where in
+ * the source a ref sits, which the walk's nodes do not carry.
+ */
+export function* refsIn(value: string): Generator<{ index: number; length: number; id: string }> {
+  for (const match of value.matchAll(new RegExp(PATTERN))) {
+    if (match[5] !== undefined) yield { index: match.index, length: match[0].length, id: match[5] };
+  }
+}
+
 /** The text a link reads as. A bare URL's label is one text node. */
 const read = (node: Link) => (node.children[0] as Text).value;
 

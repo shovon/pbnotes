@@ -4,7 +4,7 @@
  */
 import type { Written } from "../over/over.ts";
 import { blocksOn, find, ids, indented, locate, outdented, placedAt, sitsAt } from "./blocks.ts";
-import type { BlockState, Found, Page, Place } from "./blocks.ts";
+import type { Block, BlockState, Found, Page, Place } from "./blocks.ts";
 import { getPage } from "./queries.ts";
 import { reduce } from "../events/blocks/slice.ts";
 import type { PageEvent } from "../events/blocks/slice.ts";
@@ -16,6 +16,8 @@ import { blockOutdented } from "../events/blocks/outdented/outdented.ts";
 import { blockMoved } from "../events/blocks/moved/moved.ts";
 import { batch } from "../events/batch/batch.ts";
 import type { BatchEvent } from "../events/batch/batch.ts";
+import { pasted } from "./paste/paste.ts";
+import type { PasteAt } from "./paste/paste.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of
@@ -110,6 +112,44 @@ export async function deleteBlocks(view: BlocksView, blockIds: readonly string[]
   if (gone.length === 0) throw new Error("No such block");
   const events = gone.map((id) => blockDeleted(id));
   await append(view, events.length === 1 ? events[0] : batch(events));
+}
+
+/**
+ * Writes copied blocks on `title` as new ones (#261), nested as they were
+ * copied, as one record, so one undo takes the paste back. `at` is a place
+ * as `addBlock` means one, and refuses what it refuses, or `into` an empty
+ * block on the page, which the first pasted block replaces (`paste.ts`).
+ * Every id is the caller's, and refused when the graph has it or the paste
+ * names it twice: a pasted block is a new block.
+ */
+export async function pasteBlocks(
+  view: BlocksView,
+  title: string,
+  pasting: readonly Block[],
+  at: PasteAt,
+): Promise<void> {
+  if (pasting.length === 0) throw new Error("Nothing to paste");
+  const named = ids(pasting);
+  if (new Set(named).size !== named.length) throw new Error("A pasted block is named twice");
+  if (named.some((id) => find(view.state, id))) throw new Error("That block already exists");
+  const blocks = blocksOn(view.state, title);
+  if ("into" in at) {
+    if (!locate(blocks, at.into)) throw new Error("No such block");
+  } else {
+    const { after, parent, first } = at;
+    if (first && (after || parent)) {
+      throw new Error("A first block cannot have an after or a parent");
+    }
+    const sibling = after ? locate(blocks, after) : undefined;
+    if (after && !sibling) throw new Error("No such block");
+    if (parent && !locate(blocks, parent)) throw new Error("No such block");
+    if (after && parent && sibling?.parent?.id !== parent) {
+      throw new Error("That block is not a child of the parent");
+    }
+  }
+  const events = pasted(blocks, title, pasting, at) ?? [];
+  if (events.length === 0) return;
+  await append(view, events.length === 1 ? (events[0] as Built) : batch(events));
 }
 
 /**

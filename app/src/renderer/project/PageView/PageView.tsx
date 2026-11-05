@@ -34,6 +34,9 @@ import { drawn, recorded, refused, unseen } from './pending/pending';
 import type { Pending } from './pending/pending';
 import { Selecting } from '../selection/Selecting';
 import { slot, slotKey } from '../selection/shown';
+import { decode } from '../selection/clip/clip';
+import { beneath, endOf, withIds } from '../selection/paste/paste';
+import type { Spot } from '../selection/paste/paste';
 
 /**
  * Where an unwritten block is waiting to be typed. `after` is the block it
@@ -317,7 +320,9 @@ export default function PageView({
       // leaves the selection as it is.
       const count = selecting.deleting(slotKey(scope, block.id));
       if (count !== undefined && count > 1) {
-        if ((await graph.blockMenu(block.id, { delete: true, count })) === 'delete') selecting.removeChosen();
+        // Copy Block Reference would copy one of them: not offered (#261).
+        const offer = { delete: true, count, reference: false };
+        if ((await graph.blockMenu(block.id, offer)) === 'delete') selecting.removeChosen();
         return;
       }
       const pick = await graph.blockMenu(block.id, { delete: true });
@@ -481,6 +486,36 @@ export default function PageView({
   };
 
   /**
+   * Blocks from a pbnotes copy, pasted into a box (#261). Into an empty one,
+   * the first block takes its place: the block the box is open on keeps its
+   * id and takes the first block's text, and a new box's place is where the
+   * paste starts. With something typed, that is written first, as blur
+   * writes it, and the paste goes beneath it at its depth. The box closes.
+   * Not drawn ahead of main. Anything else on the clipboard is the box's.
+   */
+  const pasteIn = (data: DataTransfer, text: string, block?: BlockType): boolean => {
+    const blocks = decode(data.getData('text/html'));
+    if (!blocks) return false;
+    let spot: Spot;
+    if (block) {
+      setEditingId(null);
+      if (text === '') {
+        spot = { into: block.id };
+      } else {
+        if (text !== block.text) act(() => write(edit(graph, block.id, text)));
+        spot = beneath(block.id, root);
+      }
+    } else {
+      const written = text === '' ? undefined : commitNew(text, { then: 'stop' });
+      setWriting(null);
+      spot = written ? { after: written } : writing?.after ? { after: writing.after } : endOf(root);
+    }
+    const pasting = withIds(blocks, () => crypto.randomUUID());
+    act(() => graph.run({ type: 'pasteBlocks', title, blocks: pasting, ...spot }));
+    return true;
+  };
+
+  /**
    * A row of the properties table left with something to write: drawn at
    * once, and sent in order. A rename is one batch; a value changed in the
    * same edit is written after it, over the value it kept.
@@ -514,6 +549,7 @@ export default function PageView({
       onBackspace={cancelNew}
       onCommit={(text) => commitNew(text, { then: 'stop' })}
       onContinue={(text) => commitNew(text, { then: 'again' })}
+      onPaste={(data, text) => pasteIn(data, text)}
       onIndent={(text, at, by) =>
         commitNew(text, { then: by === 1 ? 'indent' : 'outdent', caret: at })
       }
@@ -567,6 +603,7 @@ export default function PageView({
         }}
         onCommit={(text) => commitEdit(block, text)}
         onBackspace={() => commitDelete(block)}
+        onPaste={(data, text) => pasteIn(data, text, block)}
         onIndent={
           reference
             ? undefined

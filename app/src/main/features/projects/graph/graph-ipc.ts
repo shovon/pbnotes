@@ -1,5 +1,6 @@
 import {
   BrowserWindow,
+  ClipboardItem,
   Menu,
   clipboard,
   ipcMain,
@@ -7,14 +8,16 @@ import {
   protocol,
 } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { IMAGE_SCHEME, GRAPH_CHANNELS } from "../../../../shared/graph";
-import type { BlockMenuPick, PageMenuPick, Place } from "../../../../shared/graph";
+import type { BlockMenuPick, Clip, PageMenuPick, Place } from "../../../../shared/graph";
 import { requireString } from "../../../ipc";
 import { deleteLabel, readOffer } from "./block-menu/block-menu";
 import { readOffer as readPageOffer, readPoint } from "./page-menu/page-menu";
 import { requireCommand, requireDay, requireTitle } from "./command/command";
 import type { GraphSession } from "./graph-session/graph-session";
+import { mimeOf } from "./images/images";
 
 // This software is split into two components: the renderer, and the main
 // process. Neither can see each other directly, and IPC is the only way to
@@ -54,6 +57,13 @@ export function broadcastGraph(version: number): void {
       window.webContents.send(GRAPH_CHANNELS.changed, version);
     }
   }
+}
+
+/** A copy as it crossed the bridge: its text and its HTML, nothing else. */
+function requireClip(clip: unknown): Clip {
+  if (typeof clip !== "object" || clip === null) throw new TypeError("Expected a copy");
+  const { text, html } = clip as Record<string, unknown>;
+  return { text: requireString(text, "text"), html: requireString(html, "html") };
 }
 
 /** A place as it crossed the bridge: none is the journal. */
@@ -107,6 +117,24 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
     },
   );
 
+  // An image's bytes, for a copy that carries it (#261). Found as the scheme
+  // below finds one, so the name is checked by `find` before it is near a
+  // path, and typed by its extension, which is what it was stored under.
+  ipcMain.handle(GRAPH_CHANNELS.image, async (_event, name: unknown) => {
+    const file = await images.find(requireString(name, "name"));
+    const mime = file && mimeOf(file);
+    if (!file || !mime) return undefined;
+    return { bytes: new Uint8Array(await readFile(file)), mime };
+  });
+
+  // One copy in two formats (#261), written in one go so whatever pastes it
+  // picks the one it reads. Here, not in the window, so the copy does not
+  // depend on the window holding focus while it was put together.
+  ipcMain.handle(GRAPH_CHANNELS.copy, (_event, clip: unknown) => {
+    const { text, html } = requireClip(clip);
+    return clipboard.write([new ClipboardItem({ "text/plain": text, "text/html": html })]);
+  });
+
   /**
    * `pbnotes-image://images/<name>`: the image a note links as
    * `images/<name>`, out of whatever is open. The URL is built from note
@@ -140,26 +168,30 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
       const offered = readOffer(offer);
       const window = BrowserWindow.fromWebContents(event.sender) ?? undefined;
       return new Promise<BlockMenuPick | null>((resolve) => {
-        const items: MenuItemConstructorOptions[] = [
-          {
-            label: "Copy Block Reference",
-            click: () => {
-              clipboard.writeText(`((${id}))`);
-              resolve(null);
-            },
-          },
-        ];
+        const items: MenuItemConstructorOptions[] =
+          offered.reference === false
+            ? []
+            : [
+                {
+                  label: "Copy Block Reference",
+                  click: () => {
+                    clipboard.writeText(`((${id}))`);
+                    resolve(null);
+                  },
+                },
+              ];
         if (offered.delete) {
           items.push(
             // Apart from copying: one leaves the notes as they were, and
             // this one does not.
-            { type: "separator" },
+            ...(items.length > 0 ? [{ type: "separator" as const }] : []),
             {
               label: deleteLabel(offered),
               click: () => resolve("delete"),
             },
           );
         }
+        if (items.length === 0) return resolve(null);
         Menu.buildFromTemplate(items).popup({
           window,
           callback: () => setTimeout(() => resolve(null), 100),
