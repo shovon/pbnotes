@@ -87,12 +87,14 @@
    ponytail: when blocks nest, this becomes a real <ul> and the dot becomes a
    control (collapse, zoom) — that is the point to spend markup on. */
 @utility bullet {
-  background: radial-gradient(
-      circle at 0.4rem 0.875rem,
-      var(--color-muted) 2.5px,
-      transparent 3px
-    )
-    no-repeat;
+  /* The image alone, not the `background` shorthand, which would also reset
+     the colour and wipe out a selected block's tint (#253). */
+  background-image: radial-gradient(
+    circle at 0.4rem 0.875rem,
+    var(--color-muted) 2.5px,
+    transparent 3px
+  );
+  background-repeat: no-repeat;
 }
 
 /* Rendered Markdown and KaTeX. Their elements are generated, so there is no
