@@ -21,6 +21,11 @@ import { bracketEdit } from './brackets/brackets';
 import type { Edit } from './brackets/brackets';
 import { completeLink, linkQuery } from './linkQuery/linkQuery';
 import type { LinkQuery } from './linkQuery/linkQuery';
+import { extendsBy, selectsAll } from '../selection/shortcut/shortcut';
+import type { FromBox } from '../selection/Selecting';
+
+/** `data-*` attributes a view puts on a block, for whatever reads the screen. */
+type Data = Record<`data-${string}`, string>;
 
 /** Read the way `@pbnotes/graph` reads a block, plus marks that only draw. */
 const remarkPlugins = [...reading, remarkStrikethrough, remarkHighlight];
@@ -187,12 +192,18 @@ export const blockFocus =
 export function Block({
   id,
   text,
+  selected = false,
+  data,
   onActivate,
   onMenu,
 }: {
   /** Put on the element as `data-block-id`, so a view can scroll to it. */
   id?: string;
   text: string;
+  /** Drawn as selected (#253): an accent wash behind the text. */
+  selected?: boolean;
+  /** Put on the outermost element. */
+  data?: Data;
   /** The offset the click landed on, when it could be worked out. */
   onActivate: (caret?: number) => void;
   /**
@@ -222,8 +233,10 @@ export function Block({
 
   const box = (
     <div
+      {...(id ? {} : data)}
       data-block-id={id}
-      className={`${blockBox} ${blockFocus} markdown cursor-text`}
+      aria-selected={selected || undefined}
+      className={`${blockBox} ${blockFocus} markdown cursor-text ${selected ? 'bg-accent/15' : ''}`}
       role="button"
       tabIndex={0}
       onClick={(event) => onActivate(sourceOffset(event, text))}
@@ -250,7 +263,7 @@ export function Block({
      project view follows by its `data-block-ref`. Beside the box, not in it —
      inside, it would be the first child the Markdown margins are trimmed by. */
   return (
-    <div className="relative">
+    <div className="relative" {...data}>
       {box}
       <a
         href="#"
@@ -287,6 +300,33 @@ function apply(box: HTMLTextAreaElement, edit: Edit): void {
  * Remeasured as the query grows, because a long one wraps the `[[` with it.
  */
 function under(box: HTMLTextAreaElement, offset: number) {
+  return measure(box, offset, '[[', (mark) => ({
+    top: mark.offsetTop + mark.offsetHeight,
+    left: mark.offsetLeft,
+  }));
+}
+
+/**
+ * The top of the row the caret at `offset` is on, as the box wraps it: the
+ * same as at 0 on the first row, and as at the end on the last. What Shift+Up
+ * and Shift+Down read, so a long block wrapped over several rows still selects
+ * text a row at a time until the caret is on its edge row.
+ */
+function rowTop(box: HTMLTextAreaElement, offset: number): number {
+  return measure(box, offset, '​', (mark) => mark.offsetTop);
+}
+
+/**
+ * Measures `mark` placed at `offset` in a hidden copy of the box, styled the
+ * same and holding the text up to there: a textarea will not say where a
+ * character is.
+ */
+function measure<T>(
+  box: HTMLTextAreaElement,
+  offset: number,
+  text: string,
+  read: (mark: HTMLSpanElement) => T,
+): T {
   const mirror = document.createElement('div');
   const style = getComputedStyle(box);
   for (const name of style) {
@@ -301,18 +341,20 @@ function under(box: HTMLTextAreaElement, offset: number) {
   });
   mirror.textContent = box.value.slice(0, offset);
   const mark = mirror.appendChild(document.createElement('span'));
-  mark.textContent = '[[';
+  mark.textContent = text;
   box.after(mirror);
-  const point = { top: mark.offsetTop + mark.offsetHeight, left: mark.offsetLeft };
+  const result = read(mark);
   mirror.remove();
-  return point;
+  return result;
 }
 
 /**
  * The box while it is being written in. One implementation for both the new
  * block and an existing one, so the commit rules cannot drift apart: blur
- * commits, Escape unmounts the box before blur can fire and so discards —
- * which is how the rename field in the project list behaves too.
+ * commits, and so does Escape where the page selects (#253), handing over to
+ * the block selected, as Logseq does; Cmd+Z takes back what was typed. Where
+ * nothing is selected, Escape unmounts the box before blur can fire and so
+ * discards.
  *
  * Enter ends the block and opens the next one, the way it sends a message
  * everywhere else; Shift+Enter is the newline. Blocks are short far more
@@ -336,6 +378,9 @@ export function BlockEditor({
   onBackspace,
   onIndent,
   onCancel,
+  onSelect,
+  mac = false,
+  data,
   findPages,
 }: {
   initial?: string;
@@ -374,6 +419,18 @@ export function BlockEditor({
    */
   onIndent?: (text: string, caret: number, by: 1 | -1) => void;
   onCancel: () => void;
+  /**
+   * Leaving the box for a selection of blocks (#253), with what was typed:
+   * Escape (`here`), Shift+Up on the first row (`up`), Shift+Down on the last
+   * (`down`), and Cmd+A with all the text already selected (`all`). Like
+   * `onCancel`, it has to unmount the box. Left off, Escape is `onCancel` and
+   * the rest are what they are in any text field.
+   */
+  onSelect?: (text: string, how: FromBox) => void;
+  /** Whether this is macOS, for Cmd+A against Ctrl+A. */
+  mac?: boolean;
+  /** Put on the outermost element. */
+  data?: Data;
   /**
    * The titles to offer after `[[` for what is typed after it (#29), each
    * with the page it opens. Left off, nothing is offered.
@@ -444,8 +501,25 @@ export function BlockEditor({
     sync(element);
   };
 
+  /** The key that leaves the box for a selection, if this press is one. */
+  const selecting = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
+  ): FromBox | undefined => {
+    if (!onSelect || event.nativeEvent.isComposing) return undefined;
+    const { value, selectionStart, selectionEnd } = event.currentTarget;
+    if (event.key === 'Escape') return 'here';
+    const by = extendsBy(event);
+    const box = event.currentTarget;
+    if (by === -1 && rowTop(box, selectionStart) === rowTop(box, 0)) return 'up';
+    if (by === 1 && rowTop(box, selectionEnd) === rowTop(box, value.length)) return 'down';
+    if (selectsAll(event, mac) && selectionStart === 0 && selectionEnd === value.length) {
+      return 'all';
+    }
+    return undefined;
+  };
+
   return (
-    <div className="relative">
+    <div className="relative" {...data}>
       {/* Grows with what is typed instead of standing at a fixed height with
           a scrollbar inside it — a block is as tall as its text in both
           states. */}
@@ -492,6 +566,12 @@ export function BlockEditor({
               setDismissed(shown.at);
               return;
             }
+          }
+          const how = selecting(event);
+          if (how) {
+            event.preventDefault();
+            onSelect?.(event.currentTarget.value.trim(), how);
+            return;
           }
           if (event.key === 'Escape') onCancel();
           /**

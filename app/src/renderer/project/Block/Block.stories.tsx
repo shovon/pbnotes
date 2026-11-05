@@ -22,6 +22,16 @@ export const Default: Story = {
   args: { text: 'Ordered the replacement hinge. Two weeks, apparently.' },
 };
 
+/** Selected (#253): an accent wash behind the text, in both themes. Check
+    a link in it still reads against the wash. */
+export const Selected: Story = {
+  args: {
+    id: 'b1',
+    text: 'Ordered the replacement hinge from [[Hardware Store]]. Two weeks, apparently.',
+    selected: true,
+  },
+};
+
 /** A single newline is a line break here, not a space — notes are written
     line by line, and Markdown's paragraph folding would run them together. */
 export const LineBreaks: Story = {
