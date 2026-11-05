@@ -107,6 +107,21 @@ function optionalId(raw: Raw, name: string): Record<string, string> {
 }
 
 /**
+ * Where a block goes, as a paste or a move names it: `after` and `parent`
+ * as optional block ids, and `first` as absent or `true`. Each is left off
+ * when absent. Which combinations make sense is the graph command's to say.
+ */
+function requirePlace(raw: Raw): { after?: string; parent?: string; first?: true } {
+  const first = own(raw, "first");
+  if (first !== undefined && first !== true) throw new TypeError("Expected first to be true");
+  return {
+    ...optionalId(raw, "after"),
+    ...optionalId(raw, "parent"),
+    ...(first === true ? { first: true as const } : {}),
+  };
+}
+
+/**
  * One checker per command type. Keyed on `Command["type"]`, so a case added
  * to the union without a checker does not compile. Each builds its command
  * fresh from the fields it reads, so nothing else the window sent goes on.
@@ -143,9 +158,7 @@ const CHECKERS: {
   // Where a paste goes is a place or an empty block to fill, never both:
   // the graph command would take one and the other would mean nothing.
   pasteBlocks: (raw) => {
-    const first = own(raw, "first");
-    if (first !== undefined && first !== true) throw new TypeError("Expected first to be true");
-    const place = { ...optionalId(raw, "after"), ...optionalId(raw, "parent"), ...(first === true ? { first: true as const } : {}) };
+    const place = requirePlace(raw);
     const into = optionalId(raw, "into");
     if (into.into !== undefined && Object.keys(place).length > 0) {
       throw new TypeError("A paste into a block has no other place");
@@ -165,6 +178,14 @@ const CHECKERS: {
   outdentBlock: (raw) => ({
     type: "outdentBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
+  }),
+  // A move names its place as a paste does, and the page it lands on as a
+  // title, since a move can be the first write to that page.
+  moveBlock: (raw) => ({
+    type: "moveBlock",
+    blockId: requireString(own(raw, "blockId"), "blockId"),
+    title: requireTitle(own(raw, "title")),
+    ...requirePlace(raw),
   }),
   // A key is a page title, and checked as one: it goes into `titles` as the
   // key page's spelling if nothing has named that page yet.

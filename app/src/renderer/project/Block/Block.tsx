@@ -193,6 +193,7 @@ export function Block({
   id,
   text,
   selected = false,
+  moving = false,
   data,
   onActivate,
   onMenu,
@@ -202,6 +203,8 @@ export function Block({
   text: string;
   /** Drawn as selected (#253): an accent wash behind the text. */
   selected?: boolean;
+  /** Being dragged to another place (#251): faded, dot and all, where it is now. */
+  moving?: boolean;
   /** Put on the outermost element. */
   data?: Data;
   /** The offset the click landed on, when it could be worked out. */
@@ -236,7 +239,7 @@ export function Block({
       {...(id ? {} : data)}
       data-block-id={id}
       aria-selected={selected || undefined}
-      className={`${blockBox} ${blockFocus} markdown cursor-text ${selected ? 'bg-accent/15' : ''}`}
+      className={`${blockBox} ${blockFocus} markdown cursor-text ${selected ? 'bg-accent/15' : ''} ${moving ? 'opacity-40' : ''}`}
       role="button"
       tabIndex={0}
       onClick={(event) => onActivate(sourceOffset(event, text))}
@@ -261,13 +264,17 @@ export function Block({
 
   /* The dot zooms into the block: a link laid over the painted one, which the
      project view follows by its `data-block-ref`. Beside the box, not in it —
-     inside, it would be the first child the Markdown margins are trimmed by. */
+     inside, it would be the first child the Markdown margins are trimmed by.
+     Dragged, it moves the block (#251): `data-dot` is what the project view
+     starts that drag from, and the browser's own link drag is off. */
   return (
     <div className="relative" {...data}>
       {box}
       <a
         href="#"
         data-block-ref={id}
+        data-dot=""
+        draggable={false}
         aria-label="Zoom into block"
         className="absolute top-0 left-0 h-7 w-indent cursor-pointer"
         onContextMenu={

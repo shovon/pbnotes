@@ -246,3 +246,11 @@
     color: var(--color-danger) !important;
   }
 }
+
+/* While a block is dragged by its dot (#251), the cursor is a closed hand
+   wherever it goes: every element's own cursor (text, pointer) is set
+   aside. Only during the drag; hovering a dot is still a pointer. */
+html[data-dragging-block],
+html[data-dragging-block] * {
+  cursor: grabbing !important;
+}

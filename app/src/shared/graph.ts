@@ -397,6 +397,25 @@ export type Command =
    */
   | { type: 'outdentBlock'; blockId: string }
   /**
+   * Appends a `block.moved` event (#251): the block, with everything under
+   * it, goes to `title`, on its own page or another, keeping its id.
+   * `after`, `parent` and `first` place it as they place a new block. A page
+   * nothing was written on yet takes it like any other: every page is in
+   * the graph, and this is only the first write to it.
+   *
+   * Main refuses a place inside the block's own subtree, and a place the
+   * page lacks. A block already where the move puts it resolves with
+   * nothing written, like `indentBlock` with nowhere to go.
+   */
+  | {
+      type: 'moveBlock';
+      blockId: string;
+      title: string;
+      after?: string;
+      parent?: string;
+      first?: true;
+    }
+  /**
    * Appends a `property.set` event: `title`'s `key` is now `value`. A key is
    * a page title, so it arrives trimmed like one. Setting the value the key
    * already has resolves with nothing written.
