@@ -99,6 +99,7 @@ export type {
   BlockOutdented,
   Found,
   Page,
+  Place,
 } from "./blocks/blocks.ts";
 export type { PageEvent } from "./events/blocks/slice.ts";
 export { getPages, getPreviews, linking, locateBlock, searchBlocks } from "./blocks/queries.ts";
@@ -139,6 +140,7 @@ export {
   editBlock,
   indentBlock,
   moveBlock,
+  moveBlocks,
   outdentBlock,
   pasteBlocks,
 } from "./blocks/commands.ts";

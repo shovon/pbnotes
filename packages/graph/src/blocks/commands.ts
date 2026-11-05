@@ -264,25 +264,72 @@ export async function moveBlock(
   title: string,
   place: Place = {},
 ): Promise<Page> {
-  const { after, parent, first } = place;
-  if (first && (after || parent)) {
-    throw new Error("A first block cannot have an after or a parent");
-  }
-  const found = find(view.state, blockId);
-  if (!found) throw new Error("No such block");
-  const moving = found.siblings[found.at];
-  const inside = new Set(ids([moving]));
-  if ((after && inside.has(after)) || (parent && inside.has(parent))) {
-    throw new Error("A block cannot move into itself");
-  }
-  const blocks = blocksOn(view.state, title);
-  if (after && !locate(blocks, after)) throw new Error("No such block");
-  if (parent && !locate(blocks, parent)) throw new Error("No such block");
-  if (!placedAt(blocks, moving, place)) {
-    throw new Error("That block is not a child of the parent");
-  }
+  checkMove(view.state, [blockId], title, place);
   if (!sitsAt(view.state, blockId, title, place)) {
     await append(view, blockMoved({ id: blockId, page: title, ...place }));
   }
   return getPage(view.state, title);
+}
+
+/**
+ * Moves several blocks, each with its subtree, to `place` on `title` (#269):
+ * the top-most of `blockIds`, in the order given. The first goes to `place`,
+ * and each next one directly beneath the one before it, at its depth, so
+ * blocks that had gaps between them, or came from other pages, land
+ * together. Written as one record: a `batch` of `block.moved`s, or the one
+ * event alone, leaving out any block already where it would go.
+ *
+ * Refuses what `moveBlock` refuses, for any of them: a place inside one of
+ * their subtrees among it. Refuses when none is left.
+ */
+export async function moveBlocks(
+  view: BlocksView,
+  blockIds: readonly string[],
+  title: string,
+  place: Place = {},
+): Promise<void> {
+  const moving = topMost(view.state, blockIds);
+  checkMove(view.state, moving, title, place);
+  const events: Written<PageEvent["type"], unknown>[] = [];
+  let state = view.state;
+  let at: Place = place;
+  for (const id of moving) {
+    if (!sitsAt(state, id, title, at)) {
+      const event = blockMoved({ id, page: title, ...at });
+      events.push(event);
+      state = reduce(state, event);
+    }
+    const parent = find(state, id)?.parent?.id;
+    at = { after: id, ...(parent === undefined ? {} : { parent }) };
+  }
+  if (events.length > 0) await append(view, events.length === 1 ? events[0] : batch(events));
+}
+
+/**
+ * Throws unless every one of `blockIds` can move to `place` on `title`: each
+ * is in the graph, the place is not inside any of their subtrees, and it
+ * means something on that page, as it would to `addBlock`.
+ */
+function checkMove(state: BlockState, blockIds: readonly string[], title: string, place: Place): void {
+  const { after, parent, first } = place;
+  if (first && (after || parent)) {
+    throw new Error("A first block cannot have an after or a parent");
+  }
+  if (blockIds.length === 0) throw new Error("No such block");
+  const inside = new Set<string>();
+  for (const id of blockIds) {
+    const found = find(state, id);
+    if (!found) throw new Error("No such block");
+    for (const it of ids([found.siblings[found.at]])) inside.add(it);
+  }
+  if ((after && inside.has(after)) || (parent && inside.has(parent))) {
+    throw new Error("A block cannot move into itself");
+  }
+  const blocks = blocksOn(state, title);
+  if (after && !locate(blocks, after)) throw new Error("No such block");
+  if (parent && !locate(blocks, parent)) throw new Error("No such block");
+  const found = find(state, blockIds[0]);
+  if (found && !placedAt(blocks, found.siblings[found.at], place)) {
+    throw new Error("That block is not a child of the parent");
+  }
 }

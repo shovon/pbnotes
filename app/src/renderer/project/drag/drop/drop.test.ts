@@ -45,8 +45,8 @@ const below = (index: number, from = 0) => from + index * (HEIGHT + GAP) + HEIGH
 /** A height in the upper half of row `index`. */
 const above = (index: number, from = 0) => from + index * (HEIGHT + GAP) + 2;
 
-const place = (rows: Row[], moving: string, x: number, y: number, empties: Empty[] = []) => {
-  const drop = dropAt(rows, empties, moving, x, y, INDENT);
+const place = (rows: Row[], moving: string | string[], x: number, y: number, empties: Empty[] = []) => {
+  const drop = dropAt(rows, empties, new Set([moving].flat()), x, y, INDENT);
   return drop && { page: drop.page, ...drop.place };
 };
 
@@ -127,10 +127,24 @@ test('a page with no blocks takes the drop as its first block', () => {
 });
 
 test('the line is drawn between the rows, at the depth chosen', () => {
-  const drop = dropAt(PAGE, [], 'elsewhere', at(1), below(3), INDENT);
+  const drop = dropAt(PAGE, [], new Set(['elsewhere']), at(1), below(3), INDENT);
   assert.deepEqual(drop?.line, {
     top: 3 * (HEIGHT + GAP) + HEIGHT + GAP / 2,
     left: LEFT + INDENT,
     right: 600,
   });
+});
+
+test('several blocks: every one of their rows is left out, so a gap closes over them (#269)', () => {
+  // Dragging a and c: no line beside either, and a drop between b and c is after b.
+  assert.equal(place(PAGE, ['a', 'c'], at(1), below(1)), undefined);
+  assert.deepEqual(place(PAGE, ['a', 'c'], at(0), above(4)), { page: 'Foo', after: 'b' });
+  assert.deepEqual(place(PAGE, ['a', 'c'], at(0), above(3)), { page: 'Foo', first: true });
+});
+
+test('a drop says which view it is in, and none for a page with no blocks', () => {
+  const day = view('Day', ['d'], { from: 200, page: 'Day' });
+  assert.equal(dropAt([...PAGE, ...day], [], new Set(['a']), at(0), below(0, 200), INDENT)?.scope, 'Day');
+  const empty: Empty = { page: 'Bare', top: 300, bottom: 330, left: LEFT, right: 600 };
+  assert.equal(dropAt(PAGE, [empty], new Set(['a']), at(0), 310, INDENT)?.scope, undefined);
 });

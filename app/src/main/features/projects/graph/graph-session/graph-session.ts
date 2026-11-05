@@ -22,6 +22,7 @@ import {
   listPages,
   locateBlock,
   moveBlock,
+  moveBlocks,
   outdentBlock,
   removeProperty,
   removeTag,
@@ -265,6 +266,10 @@ function apply(view: GraphView, command: Exclude<Command, Taking>): Promise<unkn
     case "moveBlock": {
       const { blockId, title, after, parent, first } = command;
       return moveBlock(view, blockId, title, { after, parent, first });
+    }
+    case "moveBlocks": {
+      const { blockIds, title, after, parent, first } = command;
+      return moveBlocks(view, blockIds, title, { after, parent, first });
     }
     case "setProperty":
       return setProperty(view, command.title, command.key, command.value);

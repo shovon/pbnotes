@@ -29,6 +29,7 @@ import {
   indentBlock,
   indentBlocks,
   moveBlock,
+  moveBlocks,
   NAMESPACE,
   outdentBlock,
   outdentBlocks,
@@ -45,7 +46,7 @@ import {
   setProperty,
   today,
 } from "./graph.ts";
-import type { Graph, GraphView } from "./graph.ts";
+import type { Graph, GraphView, Place } from "./graph.ts";
 
 const TODAY = "2026-09-21";
 
@@ -293,6 +294,67 @@ test("moveBlock refuses what the fold would ignore, and writes nothing for a blo
   const page = await moveBlock(view, "c", TODAY, { parent: "b" });
   assert.equal(view.events.length, written, "already there");
   assert.equal(page.title, TODAY);
+});
+
+test("moveBlocks lands the top-most blocks together, in order, as one record (#269)", async () => {
+  /** Today: a(a1) b c d; Elsewhere: e f. */
+  const start = async () => {
+    const view = memory();
+    await addBlock(view, TODAY, "a", undefined, "a");
+    await addBlock(view, TODAY, "a1", undefined, "a1", "a");
+    for (const [id, after] of [["b", "a"], ["c", "b"], ["d", "c"]]) await addBlock(view, TODAY, id, after, id);
+    await addBlock(view, "Elsewhere", "e", undefined, "e");
+    await addBlock(view, "Elsewhere", "f", "e", "f");
+    return view;
+  };
+  const shape = (blocks: { id: string; children: unknown[] }[]): string =>
+    blocks.map((it) => (it.children.length ? `${it.id}(${shape(it.children as never)})` : it.id)).join(" ");
+  const pages = (view: GraphView) => [shape(getPage(view.state, TODAY).blocks), shape(getPage(view.state, "Elsewhere").blocks)];
+  const cases: [string, string[], string, Place, string[]][] = [
+    ["siblings, lower on the page", ["a", "b"], TODAY, { after: "d" }, ["c d a(a1) b", "e f"]],
+    ["a gap closes", ["a", "c"], TODAY, { after: "d" }, ["b d a(a1) c", "e f"]],
+    ["under a block: the rest follow at its depth", ["b", "c"], TODAY, { parent: "d" }, ["a(a1) d(b c)", "e f"]],
+    ["after a child: the rest follow at that depth", ["c", "d"], TODAY, { after: "a1", parent: "a" }, ["a(a1 c d) b", "e f"]],
+    ["from two pages onto a third", ["b", "f"], "Fresh", { first: true }, ["a(a1) c d", "e"]],
+    ["a parent and its child: only the parent moves, child and all", ["a", "a1"], "Elsewhere", { after: "f" }, ["b c d", "e f a(a1)"]],
+  ];
+  for (const [name, ids, title, place, expected] of cases) {
+    const view = await start();
+    const written = view.events.length;
+    await moveBlocks(view, ids, title, place);
+    assert.equal(view.events.length, written + 1, `${name}: one record`);
+    assert.deepEqual(pages(view), expected, name);
+  }
+  const fresh = await start();
+  await moveBlocks(fresh, ["b", "f"], "Fresh", { first: true });
+  assert.equal(shape(getPage(fresh.state, "Fresh").blocks), "b f", "the third page");
+
+  const one = await start();
+  await moveBlocks(one, ["c"], TODAY, { after: "d" });
+  assert.deepEqual(one.events.at(-1), blockMoved({ id: "c", page: TODAY, after: "d" }), "one block is its own event");
+
+  const there = await start();
+  const before = there.events.length;
+  await moveBlocks(there, ["b", "c"], TODAY, { after: "a" });
+  assert.equal(there.events.length, before, "already where they would go: nothing written");
+
+  const gone = await start();
+  await moveBlocks(gone, ["gone", "b"], TODAY, { after: "d" });
+  assert.deepEqual(pages(gone), ["a(a1) c d b", "e f"], "a block the graph lacks is passed over, as other writers' deletes are");
+
+  const refused: [string, string[], string, Place][] = [
+    ["into one of their subtrees", ["b", "a"], TODAY, { parent: "a1" }],
+    ["after one of them", ["b", "c"], TODAY, { after: "c" }],
+    ["only blocks the graph lacks", ["gone"], TODAY, {}],
+    ["none at all", [], TODAY, {}],
+    ["after a block the page lacks", ["b"], TODAY, { after: "e" }],
+  ];
+  for (const [name, ids, title, place] of refused) {
+    const view = await start();
+    const written = view.events.length;
+    await assert.rejects(moveBlocks(view, ids, title, place), Error, name);
+    assert.equal(view.events.length, written, name);
+  }
 });
 
 test("every builder writes the v its own gate reads, and there is one for every event", () => {

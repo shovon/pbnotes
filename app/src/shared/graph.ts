@@ -416,6 +416,22 @@ export type Command =
       first?: true;
     }
   /**
+   * A selection dragged by one of its dots (#269): each top-most block,
+   * with its subtree, goes to `title`, the first to the place `after`,
+   * `parent` and `first` name, and each next one directly beneath the one
+   * before it, at its depth. One record and one undo step. Main refuses a
+   * place inside any of their subtrees; a block the project no longer has
+   * is passed over, and none left is refused.
+   */
+  | {
+      type: 'moveBlocks';
+      blockIds: readonly string[];
+      title: string;
+      after?: string;
+      parent?: string;
+      first?: true;
+    }
+  /**
    * Appends a `property.set` event: `title`'s `key` is now `value`. A key is
    * a page title, so it arrives trimmed like one. Setting the value the key
    * already has resolves with nothing written.
