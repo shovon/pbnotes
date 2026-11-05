@@ -154,6 +154,15 @@ A journal day answers to its date in words, with nothing written. A name, once `
 - **Malformed is skipped whole:** a payload that is not an object, or a `page` that is not a string or is blank once trimmed.
 - **`deletePage(view, page)`** writes nothing for a page with nothing on it (`hasContent`): the delete would change nothing. **`getRefsTo(graph, page)`** counts the blocks on other pages that hold a `((id))` to a block on it: what a delete would leave showing as missing. What links to it by title is `getReferences`.
 
+## A block id is written once
+
+A block id names one block in the whole graph. Two `block.created` events for one id can still reach a folder: two writers each pasting the same cut, or each undoing the same delete, before they sync (#273).
+
+- **The first create in fold order stands.** A later one for an id the graph holds now changes nothing: not the text, not the place. Fold order is the same on every machine, so every machine shows the same block in the same place.
+- **"Holds now" means in the graph at that point,** not ever: an id that was deleted can be created again, which is what undoing a delete and pasting a cut rely on.
+- **A create under a parent on another page follows the parent there.** The parent moved after the writer last saw it, or a skipped create of it put it elsewhere, and the block was written under it either way. Before #273 such a block went to the end of the page its event named.
+- **Undo of a create that lost stops,** as for any step someone else changed, unless the winning create put the block in the same place with the same text and children: then the two can't be told apart, and undo removes it.
+
 ## Moving a block is a contract
 
 | Type | `v` | Payload | Meaning |
