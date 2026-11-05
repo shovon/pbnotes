@@ -309,8 +309,17 @@ test("a page's own view counts the refs other graph hold to its blocks", async (
 
 // ── Undo and redo (#234) ────────────────────────────────────────────────────
 
-/** What undo puts back: what the user wrote, not spellings, counts or dates. */
-const held = ({ blocks, properties, tags, aliases }: Graph) => ({ blocks, properties, tags, aliases });
+/**
+ * What undo puts back: what the user wrote, not spellings, counts or dates.
+ * A page with no blocks is left out: every page is in the graph, and one
+ * whose last block moved away again is the same as one never written.
+ */
+const held = ({ blocks, properties, tags, aliases }: Graph) => ({
+  blocks: new Map([...blocks].filter(([, it]) => it.length > 0)),
+  properties,
+  tags,
+  aliases,
+});
 
 /** Ids for the blocks the tests write. */
 const A = "a1";
@@ -349,6 +358,9 @@ test("every command is undone to the graph before it, and redone to the graph af
     { type: "outdentBlocks", blockIds: [B] },
     { type: "indentBlock", blockId: C },
     { type: "outdentBlock", blockId: B },
+    { type: "moveBlock", blockId: A, title: "Bar", after: "d1" },
+    { type: "moveBlock", blockId: C, title: "Foo", parent: A },
+    { type: "moveBlock", blockId: C, title: "Never written", first: true },
     { type: "setProperty", title: "Foo", key: "Owner", value: "Sal" },
     { type: "removeProperty", title: "Foo", key: "Owner" },
     { type: "renameProperty", title: "Foo", from: "Owner", to: "Author" },
@@ -425,6 +437,39 @@ test("a Shift+Tab with one block already top-level, on any page, writes nothing 
   assert.equal((view.state.blocks.get("foo") ?? [])[0]?.children[0]?.id, B, "b1 where it was");
   const undone = await graph.run({ type: "undo" });
   assert.notEqual(undone.block, B, "undo takes the step before, not a Shift+Tab that did nothing");
+});
+
+test("a move takes the block and its subtree to another page, keeping its id (#251)", async () => {
+  const { graph } = await written();
+  await graph.run({ type: "moveBlock", blockId: A, title: "Bar", after: "d1" });
+  const bar = (await graph.view({ page: "Bar" }, TODAY)).showing[0].page;
+  assert.deepEqual(
+    bar.blocks.map((it) => [it.id, it.children.map((child) => child.id)]),
+    [["d1", []], [A, [B]]],
+  );
+  const foo = (await graph.view({ page: "Foo" }, TODAY)).showing[0].page;
+  assert.deepEqual(foo.blocks.map((it) => it.id), [C]);
+});
+
+test("a move onto a page nothing was written on is its first write (#251)", async () => {
+  const { graph } = await written();
+  await graph.run({ type: "moveBlock", blockId: C, title: "2026-11-01" });
+  const day = (await graph.view({ page: "2026-11-01" }, TODAY)).showing[0].page;
+  assert.deepEqual(day.blocks.map((it) => it.id), [C]);
+});
+
+test("a move into the block's own subtree is refused and writes nothing (#251)", async () => {
+  const { graph, writes } = await written();
+  const before = writes();
+  await assert.rejects(graph.run({ type: "moveBlock", blockId: A, title: "Foo", parent: B }));
+  assert.equal(writes(), before);
+});
+
+test("a move to where the block already is writes nothing and is no step (#251)", async () => {
+  const { graph, writes } = await written();
+  const before = writes();
+  await graph.run({ type: "moveBlock", blockId: C, title: "Foo", after: A });
+  assert.equal(writes(), before);
 });
 
 test("redoing a page delete deletes the page again, not its blocks one by one", async () => {

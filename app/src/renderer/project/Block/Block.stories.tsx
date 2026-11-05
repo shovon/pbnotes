@@ -32,6 +32,16 @@ export const Selected: Story = {
   },
 };
 
+/** Being dragged by its dot (#251): faded where it is, dot and all, while
+    a line shows where it will land. */
+export const Moving: Story = {
+  args: {
+    id: 'b1',
+    text: 'Ordered the replacement hinge from [[Hardware Store]]. Two weeks, apparently.',
+    moving: true,
+  },
+};
+
 /** A single newline is a line break here, not a space — notes are written
     line by line, and Markdown's paragraph folding would run them together. */
 export const LineBreaks: Story = {

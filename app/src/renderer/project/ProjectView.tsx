@@ -33,8 +33,19 @@ import { Selecting } from './selection/Selecting';
 import type { FromBox } from './selection/Selecting';
 import { every, extend, follow as followShown, move, pick, span, toggle as flip } from './selection/selection';
 import type { Selection } from './selection/selection';
-import { rows as readRows, shown as readShown } from './selection/shown';
+import {
+  dropRows as readDropRows,
+  emptyPages as readEmptyPages,
+  rows as readRows,
+  shown as readShown,
+} from './selection/shown';
 import { watchDrag } from './selection/sweep/watch';
+import { THRESHOLD } from './selection/sweep/sweep';
+import { watchGesture } from './gesture/gesture';
+import type { Point } from './gesture/gesture';
+import { Dragging } from './drag/Dragging';
+import { dropAt } from './drag/drop/drop';
+import type { Drop } from './drag/drop/drop';
 import type { Entry } from './selection/shown';
 import { covered, roots } from './selection/roots/roots';
 import { command, picks } from './selection/shortcut/shortcut';
@@ -704,6 +715,78 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
     });
   }, [mac]);
 
+  /**
+   * Dragging a block by its dot moves it, with everything under it (#251):
+   * on its page, into a linked reference, which puts it on that page, or
+   * onto another journal day, a day with no blocks yet among them. A line
+   * shows where it will land, and how far it is indented shows how deep.
+   * Escape, or letting go away from every block, moves nothing. A click on
+   * the dot without a drag still zooms in. Not drawn ahead of main: the
+   * block can land on another page, which this window may show in another
+   * view, so it moves when main's next view arrives, as a selection's
+   * writes do.
+   */
+  const [drop, setDrop] = useState<Drop | null>(null);
+  /**
+   * The block being dragged: its slot, which every page view draws faded
+   * with its subtree, and its first line, which follows the pointer so it
+   * is plain what is moving. The pointer is in client coordinates.
+   */
+  const [dragging, setDragging] = useState<{ key: string; text: string; at: Point } | null>(
+    null,
+  );
+  const moveTo = (blockId: string, { page, place }: Drop) =>
+    act(() => bridge.run({ type: 'moveBlock', blockId, title: page, ...place }));
+  const movingTo = useRef(moveTo);
+  movingTo.current = moveTo;
+  useEffect(() => {
+    const root = wrapper.current;
+    if (!root) return;
+    let latest: Drop | undefined;
+    const stop = () => {
+      latest = undefined;
+      setDrop(null);
+      setDragging(null);
+      delete document.documentElement.dataset.draggingBlock;
+    };
+    return watchGesture<{ id: string; key: string; text: string; indent: number }>({
+      press: (event) => {
+        // Ctrl+click on macOS is a right-click.
+        if (mac && event.ctrlKey) return undefined;
+        const target = event.target;
+        const dot = target instanceof Element ? target.closest<HTMLElement>('[data-dot]') : null;
+        const id = dot?.dataset.blockRef;
+        const slot = dot?.closest<HTMLElement>('[data-slot]');
+        const key = slot?.dataset.slot;
+        if (!dot || !id || !key || !root.contains(dot)) return undefined;
+        const box = slot.querySelector<HTMLElement>('[data-block-id]');
+        const text = box?.innerText.trim().split('\n')[0] ?? '';
+        // The dot is one level wide, whatever the font size.
+        return { id, key, text, indent: dot.getBoundingClientRect().width };
+      },
+      begins: (_, from, to) => Math.hypot(to.x - from.x, to.y - from.y) >= THRESHOLD,
+      start: ({ key, text }) => {
+        // A closed hand, over everything, for as long as the drag lasts
+        // (`index.css`): a block's own cursor would win over the page's.
+        document.documentElement.dataset.draggingBlock = '';
+        setDragging({ key, text, at: { x: -1000, y: -1000 } });
+      },
+      move: ({ id, key, text, indent }, to) => {
+        setDragging({ key, text, at: to });
+        const x = to.x + window.scrollX;
+        const y = to.y + window.scrollY;
+        latest = dropAt(readDropRows(root), readEmptyPages(root), id, x, y, indent);
+        setDrop(latest ?? null);
+      },
+      cancel: stop,
+      end: ({ id }, dropped) => {
+        const it = latest;
+        stop();
+        if (dropped && it) movingTo.current(id, it);
+      },
+    });
+  }, [mac]);
+
   /** What shows has changed: what is gone drops out of the selection. */
   useEffect(() => {
     setChosen((it) => it && followShown(it, onScreen().map((entry) => entry.key)));
@@ -1074,6 +1157,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
         )}
 
         <Selecting.Provider value={selecting}>
+        <Dragging.Provider value={dragging?.key ?? null}>
         <Previews value={previews}>
           {browsing ? null : held === null ? (
             <p className="mt-1 text-sm text-muted">Loading…</p>
@@ -1103,7 +1187,35 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
             ))
           )}
         </Previews>
+        </Dragging.Provider>
         </Selecting.Provider>
+        {/* Where a dragged block will land (#251), over everything, in page
+            coordinates: the body is what it is placed against. */}
+        {drop &&
+          createPortal(
+            <div
+              aria-hidden
+              className="pointer-events-none absolute z-50 h-0.5 rounded-full bg-accent"
+              style={{
+                top: drop.line.top - 1,
+                left: drop.line.left,
+                width: drop.line.right - drop.line.left,
+              }}
+            />,
+            document.body,
+          )}
+        {/* What is being dragged, beside the pointer: its first line. */}
+        {dragging &&
+          createPortal(
+            <div
+              aria-hidden
+              className="pointer-events-none fixed z-50 max-w-64 truncate rounded-sm border border-accent bg-bg px-2 py-0.5 text-sm shadow-md"
+              style={{ top: dragging.at.y + 12, left: dragging.at.x + 12 }}
+            >
+              {dragging.text || '…'}
+            </div>,
+            document.body,
+          )}
       </div>
     </OwnEdit.Provider>
   );

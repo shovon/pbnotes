@@ -33,7 +33,8 @@ import type { Caret, Then } from './editing/editing';
 import { drawn, recorded, refused, unseen } from './pending/pending';
 import type { Pending } from './pending/pending';
 import { Selecting } from '../selection/Selecting';
-import { slot, slotKey } from '../selection/shown';
+import { emptyPage, slot, slotKey } from '../selection/shown';
+import { Dragging } from '../drag/Dragging';
 import { decode } from '../selection/clip/clip';
 import { beneath, endOf, landed, withIds } from '../selection/paste/paste';
 import type { Spot } from '../selection/paste/paste';
@@ -77,9 +78,10 @@ type Props = {
    * Shown under another page as what links to it: a cut of this page — the
    * blocks that link, not all of them — decided in main and read again
    * after every change. The title is a link to the whole page. Nothing can be
-   * added here, and a block cannot be moved: the siblings that would decide
-   * where it goes are not in the cut. Editing and deleting are what they are
-   * anywhere, a write to the page the block is on.
+   * added here, and Tab does not move a block: the siblings that would decide
+   * where it goes are not in the cut. Dragging one does (#251), since a drop
+   * names the block it lands beside or under. Editing and deleting are what
+   * they are anywhere, a write to the page the block is on.
    */
   reference?: boolean;
   /**
@@ -138,6 +140,8 @@ export default function PageView({
 }: Props) {
   /** The selection, which `ProjectView` holds (#253). */
   const selecting = useContext(Selecting);
+  /** The block being dragged by its dot, which `ProjectView` runs (#251). */
+  const dragging = useContext(Dragging);
   const scope = scoped ?? sent.title;
   /**
    * The writes made here that main has not answered yet, as the events they
@@ -591,8 +595,13 @@ export default function PageView({
    * the focus key it is everywhere else: there is nowhere to add, and
    * nothing here to move a block under.
    */
-  const renderBlock = (block: BlockType, parent: string | undefined, lit: boolean) => {
-    const data = slot(scope, title, block.id, parent);
+  const renderBlock = (
+    block: BlockType,
+    parent: string | undefined,
+    lit: boolean,
+    moving = false,
+  ) => {
+    const data = slot(scope, title, block.id, { parent, whole: !reference && !root });
     return editingId === block.id ? (
       <BlockEditor
         initial={block.text}
@@ -628,6 +637,7 @@ export default function PageView({
         text={block.text}
         data={data}
         selected={lit}
+        moving={moving}
         onActivate={(at) => {
           setCaret(at);
           setEditingId(block.id);
@@ -640,18 +650,21 @@ export default function PageView({
   /**
    * `parent` is the block they show under, if any. `lit` is whether that is
    * selected: a block brings its subtree, so everything under a selected one
-   * is drawn selected too.
+   * is drawn selected too. `moving` is the same for the block being dragged
+   * (#251): it moves with its subtree, so all of it is drawn moving.
    */
-  const renderBlocks = (blocks: BlockType[], parent?: string, lit = false) =>
+  const renderBlocks = (blocks: BlockType[], parent?: string, lit = false, moving = false) =>
     blocks.map((block) => {
-      const on = lit || selecting.selected.has(slotKey(scope, block.id));
+      const key = slotKey(scope, block.id);
+      const on = lit || selecting.selected.has(key);
+      const going = moving || dragging === key;
       return (
         <Fragment key={block.id}>
-          {renderBlock(block, parent, on)}
+          {renderBlock(block, parent, on, going)}
           {block.children.length > 0 && (
             // Its own column, since the gap between blocks does not inherit.
             <div className="ml-indent flex flex-col gap-1">
-              {renderBlocks(block.children, block.id, on)}
+              {renderBlocks(block.children, block.id, on, going)}
             </div>
           )}
           {writing?.after === block.id && newBlockEditor}
@@ -668,6 +681,8 @@ export default function PageView({
    */
   /** Whether the zoomed block is selected, and with it everything shown. */
   const rootLit = root !== undefined && selecting.selected.has(slotKey(scope, root.id));
+  /** Whether the zoomed block is being dragged, and with it everything shown. */
+  const rootMoving = root !== undefined && dragging === slotKey(scope, root.id);
 
   const pageSpace = reference
     ? 'ml-indent cursor-default'
@@ -774,8 +789,8 @@ export default function PageView({
           // Keyed, or zooming out with a box open hands the new root the old
           // root's box — and its text, which blur would then commit over it.
           <Fragment key={root.id}>
-            {renderBlock(root, undefined, rootLit)}
-            {renderBlocks(root.children, root.id, rootLit)}
+            {renderBlock(root, undefined, rootLit, rootMoving)}
+            {renderBlocks(root.children, root.id, rootLit, rootMoving)}
           </Fragment>
         ) : (
           renderBlocks(page.blocks)
@@ -792,6 +807,7 @@ export default function PageView({
           page.blocks.length === 0 && (
             <button
               className={`${blockBox} ${blockFocus} cursor-text text-muted`}
+              {...emptyPage(title)}
               onClick={() => setWriting({})}>
               Click to write the first block
             </button>

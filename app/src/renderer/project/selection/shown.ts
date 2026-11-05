@@ -9,6 +9,7 @@
  * under it is `under(scope, title)`.
  */
 import type { Shown } from './roots/roots';
+import type { Empty as DropEmpty, Row as DropRow } from '../drag/drop/drop';
 
 /** One place a block shows. */
 export type Entry = Shown & {
@@ -28,15 +29,31 @@ export function under(scope: string, title: string): string {
   return JSON.stringify([scope, title]);
 }
 
-/** The attributes a view puts on a block it draws. */
-export function slot(scope: string, page: string, id: string, parent?: string) {
+/**
+ * The attributes a view puts on a block it draws. `parent` is the block it
+ * shows under, if any; `whole` says the view shows the whole page, so its
+ * top blocks are the page's top level, which a drop above them can name
+ * (#251).
+ */
+export function slot(
+  scope: string,
+  page: string,
+  id: string,
+  { parent, whole = false }: { parent?: string; whole?: boolean } = {},
+) {
   return {
     'data-slot': slotKey(scope, id),
     'data-slot-scope': scope,
     'data-slot-page': page,
     'data-slot-block': id,
     ...(parent === undefined ? {} : { 'data-slot-parent': slotKey(scope, parent) }),
+    ...(whole ? { 'data-slot-whole': '' } : {}),
   };
+}
+
+/** What a view puts on the room a page with no blocks yet shows, for a drop to land in (#251). */
+export function emptyPage(page: string) {
+  return { 'data-empty-page': page };
 }
 
 /** Every block showing under `root`, in the order it shows. */
@@ -65,4 +82,50 @@ export function rows(root: ParentNode | null | undefined): { key: string; top: n
     const { top, bottom } = element.getBoundingClientRect();
     return [{ key, top: top + window.scrollY, bottom: bottom + window.scrollY }];
   });
+}
+
+/**
+ * Every block's own row under `root`, as a drop reads it (#251): the slot
+ * and what it shows, and its box, in page coordinates.
+ */
+export function dropRows(root: ParentNode | null | undefined): DropRow[] {
+  if (!root) return [];
+  return [...root.querySelectorAll<HTMLElement>('[data-slot]')].flatMap((element) => {
+    const { slot: key, slotScope: scope, slotPage: page, slotBlock: id, slotParent: parent } =
+      element.dataset;
+    if (key === undefined || scope === undefined || page === undefined || id === undefined) {
+      return [];
+    }
+    return [
+      {
+        key,
+        scope,
+        page,
+        id,
+        ...(parent === undefined ? {} : { parent }),
+        ...box(element),
+        whole: element.dataset.slotWhole !== undefined,
+      },
+    ];
+  });
+}
+
+/** Every page with no blocks yet under `root`, with the room it shows, in page coordinates. */
+export function emptyPages(root: ParentNode | null | undefined): DropEmpty[] {
+  if (!root) return [];
+  return [...root.querySelectorAll<HTMLElement>('[data-empty-page]')].flatMap((element) => {
+    const page = element.dataset.emptyPage;
+    return page === undefined ? [] : [{ page, ...box(element) }];
+  });
+}
+
+/** Where `element` is, in page coordinates. */
+function box(element: Element) {
+  const { top, bottom, left, right } = element.getBoundingClientRect();
+  return {
+    top: top + window.scrollY,
+    bottom: bottom + window.scrollY,
+    left: left + window.scrollX,
+    right: right + window.scrollX,
+  };
 }
