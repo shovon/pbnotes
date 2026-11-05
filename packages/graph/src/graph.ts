@@ -133,6 +133,7 @@ export { blockMoved } from "./events/blocks/moved/moved.ts";
 export {
   addBlock,
   deleteBlock,
+  deleteBlocks,
   editBlock,
   indentBlock,
   moveBlock,

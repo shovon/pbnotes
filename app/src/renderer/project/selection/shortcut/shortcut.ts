@@ -23,7 +23,8 @@ export type Command =
   | { kind: "extend"; by: 1 | -1 }
   | { kind: "open" }
   | { kind: "clear" }
-  | { kind: "all" };
+  | { kind: "all" }
+  | { kind: "delete" };
 
 /** The platform's own modifier, and no other. */
 function platform(mods: Mods, mac: boolean): boolean {
@@ -66,5 +67,7 @@ export function command(press: Press, mac: boolean): Command | undefined {
   if (press.key === "Enter" && bare(press)) return { kind: "open" };
   if (press.key === "Escape" && bare(press)) return { kind: "clear" };
   if (selectsAll(press, mac)) return { kind: "all" };
+  // Either key, as in Logseq: a Mac keyboard's delete key is Backspace.
+  if ((press.key === "Backspace" || press.key === "Delete") && bare(press)) return { kind: "delete" };
   return undefined;
 }

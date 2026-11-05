@@ -18,7 +18,9 @@ import {
   blockMoved,
   blockOutdented,
   deleteBlock,
+  deleteBlocks,
   editBlock,
+  getPage,
   getPages,
   HANDLES,
   inCode,
@@ -159,6 +161,33 @@ test("each builder is the event its command writes, and folds to the same graph"
     assert.notEqual(view.state, before, name);
     assert.deepEqual(graphFold.reduce(before, built), view.state, name);
   }
+});
+
+test("deleteBlocks deletes several blocks as one batch, each held one once, and one alone as itself", async () => {
+  // Today: a, b(c), and Elsewhere: e
+  const start = async () => {
+    const view = await outline();
+    await addBlock(view, "Elsewhere", "E", undefined, "e");
+    return view;
+  };
+  const view = await start();
+  const written = view.events.length;
+  // `c` sits under `b`, and goes with it; `gone` is passed over; `a` twice is once.
+  await deleteBlocks(view, ["c", "a", "b", "gone", "a", "e"]);
+  assert.equal(view.events.length, written + 1, "one record");
+  assert.deepEqual(view.events.at(-1), batch([blockDeleted("a"), blockDeleted("b"), blockDeleted("e")]));
+  assert.deepEqual(getPage(view.state, TODAY).blocks, []);
+  assert.deepEqual(getPage(view.state, "Elsewhere").blocks, []);
+
+  const one = await start();
+  await deleteBlocks(one, ["c", "b"]);
+  assert.deepEqual(one.events.at(-1), blockDeleted("b"), "one block left is its own event, not a batch");
+
+  const none = await start();
+  const before = none.events.length;
+  await assert.rejects(deleteBlocks(none, ["gone"]), Error);
+  await assert.rejects(deleteBlocks(none, []), Error);
+  assert.equal(none.events.length, before, "nothing written");
 });
 
 test("moveBlock refuses what the fold would ignore, and writes nothing for a block already there", async () => {

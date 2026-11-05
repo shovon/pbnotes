@@ -9,7 +9,15 @@ import type { BlockMenuOffer } from "../../../../../shared/graph";
  */
 export function readOffer(offer: unknown): BlockMenuOffer {
   if (typeof offer !== "object" || offer === null) return {};
-  return (offer as Record<string, unknown>).delete === true
-    ? { delete: true }
-    : {};
+  const { delete: remove, count } = offer as Record<string, unknown>;
+  if (remove !== true) return {};
+  // A count is only for several: one, or anything not a whole number, is
+  // the block alone.
+  const several = Number.isSafeInteger(count) && (count as number) > 1;
+  return several ? { delete: true, count: count as number } : { delete: true };
+}
+
+/** What the delete item says: the block alone, or how many go. */
+export function deleteLabel(offer: BlockMenuOffer): string {
+  return offer.count ? `Delete ${offer.count} Blocks` : "Delete Block";
 }

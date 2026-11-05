@@ -19,6 +19,13 @@ export type Selecting = {
   onOpened: () => void;
   /** A box closed, having written what was typed, and the selection starts at its slot. */
   fromBox: (slot: string, how: FromBox) => void;
+  /**
+   * How many blocks deleting the selection takes, when `slot` is selected,
+   * or undefined when it is not (#258).
+   */
+  deleting: (slot: string) => number | undefined;
+  /** Deletes the selection's blocks, each with its subtree, as one step. */
+  removeChosen: () => void;
 };
 
 /** Nothing selected and nothing to tell: a page drawn alone, as in a story. */
@@ -28,4 +35,6 @@ export const Selecting = createContext<Selecting>({
   opening: null,
   onOpened: () => undefined,
   fromBox: () => undefined,
+  deleting: () => undefined,
+  removeChosen: () => undefined,
 });

@@ -13,6 +13,8 @@ import { blockDeleted } from "../events/blocks/deleted/deleted.ts";
 import { blockIndented } from "../events/blocks/indented/indented.ts";
 import { blockOutdented } from "../events/blocks/outdented/outdented.ts";
 import { blockMoved } from "../events/blocks/moved/moved.ts";
+import { batch } from "../events/batch/batch.ts";
+import type { BatchEvent } from "../events/batch/batch.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of
@@ -21,11 +23,11 @@ import { blockMoved } from "../events/blocks/moved/moved.ts";
 export type BlocksView = {
   readonly state: BlockState;
   /** Resolves once the event is durable and folded into `state`. */
-  dispatch(v: number, type: PageEvent["type"], payload: unknown): Promise<unknown>;
+  dispatch(v: number, type: PageEvent["type"] | BatchEvent["type"], payload: unknown): Promise<unknown>;
 };
 
-/** A block event as a builder hands it back. */
-type Built = Written<PageEvent["type"], unknown>;
+/** A block event as a builder hands it back, or a batch of them. */
+type Built = Written<PageEvent["type"] | BatchEvent["type"], unknown>;
 
 function append(view: BlocksView, event: Built): Promise<unknown> {
   return view.dispatch(event.v, event.type, event.payload);
@@ -92,6 +94,37 @@ export function editBlock(view: BlocksView, blockId: string, text: string): Prom
 /** Removes a block and its subtree from view. Nothing is taken off disk. */
 export function deleteBlock(view: BlocksView, blockId: string): Promise<Page> {
   return onExisting(view, blockId, () => blockDeleted(blockId));
+}
+
+/**
+ * Removes several blocks, each with its subtree, as one record (#258): a
+ * `batch` of `block.deleted`s, or the one event alone, so one undo brings
+ * them all back. A block under another of `blockIds` goes with it and is not
+ * deleted again, whatever order they came in or wherever the caller saw
+ * them; a block the graph no longer has is passed over. Refuses when none of
+ * them is left, as `deleteBlock` does for one.
+ */
+export async function deleteBlocks(view: BlocksView, blockIds: readonly string[]): Promise<void> {
+  const gone = topMost(view.state, blockIds);
+  if (gone.length === 0) throw new Error("No such block");
+  const events = gone.map((id) => blockDeleted(id));
+  await append(view, events.length === 1 ? events[0] : batch(events));
+}
+
+/**
+ * Of `blockIds`, the ones the graph has and that no other of them holds,
+ * once each, in the order given. Asked of the graph, not of what a caller
+ * saw: a linked reference shows a block without what it hangs under.
+ */
+function topMost(state: BlockState, blockIds: readonly string[]): string[] {
+  const asked = new Set(blockIds);
+  const held = (id: string): boolean => {
+    for (let up = find(state, id)?.parent; up; up = find(state, up.id)?.parent) {
+      if (asked.has(up.id)) return true;
+    }
+    return false;
+  };
+  return [...asked].filter((id) => find(state, id) && !held(id));
 }
 
 /**

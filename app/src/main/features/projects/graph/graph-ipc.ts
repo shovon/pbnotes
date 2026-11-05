@@ -11,7 +11,7 @@ import { pathToFileURL } from "node:url";
 import { IMAGE_SCHEME, GRAPH_CHANNELS } from "../../../../shared/graph";
 import type { BlockMenuPick, PageMenuPick, Place } from "../../../../shared/graph";
 import { requireString } from "../../../ipc";
-import { readOffer } from "./block-menu/block-menu";
+import { deleteLabel, readOffer } from "./block-menu/block-menu";
 import { readOffer as readPageOffer, readPoint } from "./page-menu/page-menu";
 import { requireCommand, requireDay, requireTitle } from "./command/command";
 import type { GraphSession } from "./graph-session/graph-session";
@@ -155,7 +155,7 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
             // this one does not.
             { type: "separator" },
             {
-              label: "Delete Block",
+              label: deleteLabel(offered),
               click: () => resolve("delete"),
             },
           );

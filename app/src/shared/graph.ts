@@ -234,6 +234,11 @@ export type PageMenuPick = 'delete';
 export type BlockMenuOffer = {
   /** Delete Block, which takes the block and every block under it. */
   delete?: boolean;
+  /**
+   * How many blocks the delete takes, when the dot is one of several
+   * selected (#258): "Delete N Blocks". Left off for the block alone.
+   */
+  count?: number;
 };
 
 /** An item of `BlockMenuOffer` the user picked. */
@@ -271,6 +276,13 @@ export type Command =
    * deleted it, not that it never existed.
    */
   | { type: 'deleteBlock'; blockId: string }
+  /**
+   * Deletes several blocks, each with its subtree, as one record and one undo
+   * step (#258): a selection's top-most blocks. Main works out which of them
+   * another holds, so a caller may name a block and its parent both; one the
+   * project no longer has is passed over, and none left is refused.
+   */
+  | { type: 'deleteBlocks'; blockIds: readonly string[] }
   /**
    * Appends a `block.indented` event: the block becomes the last child of the
    * sibling above it, bringing its own children along.

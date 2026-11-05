@@ -12,9 +12,9 @@ for await (const graph of ledger.onEvent(graphFold.initial, graphFold.reduce)) {
 }
 ```
 
-To write, hand `addBlock`, `editBlock`, `deleteBlock`, `indentBlock`, `outdentBlock` or `moveBlock` a `GraphView`: the state you hold, and a `dispatch(v, type, payload)` wired to your own log. They run the same checks the app runs before they write anything.
+To write, hand `addBlock`, `editBlock`, `deleteBlock`, `deleteBlocks`, `indentBlock`, `outdentBlock` or `moveBlock` a `GraphView`: the state you hold, and a `dispatch(v, type, payload)` wired to your own log. They run the same checks the app runs before they write anything.
 
-Each of those writes one event, and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented`, `blockOutdented` and `blockMoved`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
+Each of those writes one event (`deleteBlocks` writes a `batch` of `block.deleted`s when there is more than one, so they are one undo step), and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented`, `blockOutdented` and `blockMoved`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
 
 Page properties have commands too, `setProperty`, `removeProperty` and `renameProperty`, and builders, `propertySet` and `propertyRemoved`.
 
