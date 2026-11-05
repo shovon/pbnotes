@@ -10,8 +10,8 @@ import {
 import type { MenuItemConstructorOptions } from "electron";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { IMAGE_SCHEME, GRAPH_CHANNELS } from "../../../../shared/graph";
-import type { BlockMenuPick, Clip, PageMenuPick, Place } from "../../../../shared/graph";
+import { CARRY_COUNT, CARRY_LIMIT, IMAGE_SCHEME, GRAPH_CHANNELS } from "../../../../shared/graph";
+import type { BlockMenuPick, CarriedImage, Clip, PageMenuPick, Place } from "../../../../shared/graph";
 import { requireString } from "../../../ipc";
 import { deleteLabel, readOffer } from "./block-menu/block-menu";
 import { readOffer as readPageOffer, readPoint } from "./page-menu/page-menu";
@@ -44,6 +44,13 @@ export type Images = {
   save(bytes: Uint8Array, mime: string): Promise<string>;
   /** The file a note's `images/<name>` is, or undefined. */
   find(name: string): Promise<string | undefined>;
+  /** A token for the images of what is open, or undefined with nothing open. */
+  source(): Promise<string | undefined>;
+  /**
+   * Brings `images` into what is open, from their bytes or from the project
+   * `source` stands for, and answers each one's link or undefined.
+   */
+  carry(images: readonly CarriedImage[], source: string | undefined): Promise<(string | undefined)[]>;
 };
 
 /**
@@ -57,6 +64,21 @@ export function broadcastGraph(version: number): void {
       window.webContents.send(GRAPH_CHANNELS.changed, version);
     }
   }
+}
+
+/** The images a paste asks for, built fresh from what each reads. */
+function requireCarried(value: unknown): CarriedImage[] {
+  if (!Array.isArray(value)) throw new TypeError("Expected images to be an array");
+  if (value.length > CARRY_COUNT) throw new TypeError("Too many images to bring");
+  return value.map((it: unknown) => {
+    if (typeof it !== "object" || it === null) throw new TypeError("Expected an image");
+    const { name, bytes, mime } = it as Record<string, unknown>;
+    if (bytes === undefined) return { name: requireString(name, "name") };
+    if (!(bytes instanceof Uint8Array) || bytes.length > CARRY_LIMIT) {
+      throw new TypeError("Expected an image's bytes, within the limit");
+    }
+    return { name: requireString(name, "name"), bytes, mime: requireString(mime, "mime") };
+  });
 }
 
 /** A copy as it crossed the bridge: its text and its HTML, nothing else. */
@@ -126,6 +148,21 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
     if (!file || !mime) return undefined;
     return { bytes: new Uint8Array(await readFile(file)), mime };
   });
+
+  // A token for where the open project's images are (#261). What it stands
+  // for stays in main: `index.ts` keeps it, and the window only carries it.
+  ipcMain.handle(GRAPH_CHANNELS.imageSource, () => images.source());
+
+  // The images a paste links, brought into what is open (#261). What
+  // arrives came off a clipboard any app can write: each name is checked by
+  // `find` before it is near a path, the bytes by their size here and their
+  // type when stored, and a token main never handed out stands for nothing.
+  ipcMain.handle(GRAPH_CHANNELS.carryImages, (_event, wanted: unknown, source: unknown) =>
+    images.carry(
+      requireCarried(wanted),
+      source === undefined ? undefined : requireString(source, "source"),
+    ),
+  );
 
   // One copy in two formats (#261), written in one go so whatever pastes it
   // picks the one it reads. Here, not in the window, so the copy does not

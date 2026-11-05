@@ -54,6 +54,9 @@ const graph: GraphApi = {
   addImage: (bytes, mime) =>
     ipcRenderer.invoke(GRAPH_CHANNELS.addImage, bytes, mime),
   image: (name) => ipcRenderer.invoke(GRAPH_CHANNELS.image, name),
+  imageSource: () => ipcRenderer.invoke(GRAPH_CHANNELS.imageSource),
+  carryImages: (images, source) =>
+    ipcRenderer.invoke(GRAPH_CHANNELS.carryImages, images, source),
   copy: (clip) => ipcRenderer.invoke(GRAPH_CHANNELS.copy, clip),
   blockMenu: (blockId, offer) =>
     ipcRenderer.invoke(GRAPH_CHANNELS.blockMenu, blockId, offer),

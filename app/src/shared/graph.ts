@@ -26,6 +26,17 @@ import type { LogStatus } from './log';
 export const IMAGE_SCHEME = 'pbnotes-image';
 
 /**
+ * How big an image a copy carries inside itself (#261): up to this, its
+ * bytes travel on the clipboard and a paste anywhere can store them; past
+ * it, the copy carries a token main resolves to the project it came from,
+ * which only this running app can follow.
+ */
+export const CARRY_LIMIT = 4 * 1024 * 1024;
+
+/** How many images one paste may ask to bring. */
+export const CARRY_COUNT = 1_000;
+
+/**
  * A stop on the trail: a page, or one block of a page as the root of the
  * view. Both are places you go back to, so they share the one history. The
  * trail is the window's own (`ProjectView`); main is only ever asked what
@@ -112,6 +123,8 @@ export const GRAPH_CHANNELS = {
   command: 'graph:command',
   addImage: 'graph:add-image',
   image: 'graph:image',
+  imageSource: 'graph:image-source',
+  carryImages: 'graph:carry-images',
   copy: 'graph:copy',
   blockMenu: 'graph:block-menu',
   pageMenu: 'graph:page-menu',
@@ -215,6 +228,22 @@ export type GraphApi = {
    */
   copy(clip: Clip): Promise<void>;
   /**
+   * A token that stands for the images of what is open (#261), for a copy
+   * whose images are too big to carry (`CARRY_LIMIT`). Only main can turn it
+   * back into where they are, and only while it runs: nothing about the
+   * project crosses the bridge. Undefined with nothing open.
+   */
+  imageSource(): Promise<string | undefined>;
+  /**
+   * Brings the images a paste links into what is open (#261), and answers
+   * each one's link, in order, or undefined for one that could not be had.
+   * One already there is left as it is. Otherwise its bytes, when the copy
+   * carried them, are stored, or the file of that name is brought from the
+   * project `source` stands for. Stored under the hash of what was stored,
+   * so a link can come back other than the name asked for.
+   */
+  carryImages(images: readonly CarriedImage[], source?: string): Promise<(string | undefined)[]>;
+  /**
    * Pops the native menu for a block at the pointer. Copy Block Reference is
    * there unless `offer` hides it, and puts `((blockId))` on the clipboard in
    * main. What else
@@ -244,6 +273,9 @@ export type PageMenuOffer = {
 
 /** An item of the page menu the user picked. */
 export type PageMenuPick = 'delete';
+
+/** An image a paste wants: its name, and its bytes and type when the copy carried them. */
+export type CarriedImage = { name: string; bytes?: Uint8Array; mime?: string };
 
 /** One copy, in the formats it goes on the clipboard in. */
 export type Clip = { text: string; html: string };

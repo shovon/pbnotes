@@ -18,6 +18,15 @@ export type Copied = { text: string; children: Copied[] };
 /** The attribute the blocks ride in. */
 export const ATTRIBUTE = 'data-pbnotes';
 
+/** The attribute that names a project image carried in a copy's HTML as data. */
+export const IMAGE_ATTRIBUTE = 'data-pbnotes-image';
+
+/**
+ * What a paste of blocks reads: the blocks, and, when the copy had images
+ * too big to carry, the token main handed out for where they are.
+ */
+export type Clipped = { blocks: Copied[]; source?: string };
+
 /**
  * The version of what the attribute holds. One a build does not know is
  * not read, and the paste is the text: a newer build's blocks are never
@@ -33,8 +42,8 @@ const LIMITS = { blocks: 10_000, depth: 100 };
  * nothing in a note's text can break out of the attribute or be changed by
  * an app that rewrites HTML entities on the way through.
  */
-export function encode(blocks: readonly Copied[]): string {
-  const json = JSON.stringify({ v: V, blocks });
+export function encode(blocks: readonly Copied[], source?: string): string {
+  const json = JSON.stringify({ v: V, blocks, ...(source === undefined ? {} : { source }) });
   const bytes = new TextEncoder().encode(json);
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -42,7 +51,7 @@ export function encode(blocks: readonly Copied[]): string {
 }
 
 /** The blocks a paste's HTML carries, or undefined when it carries none it can read. */
-export function decode(html: string): Copied[] | undefined {
+export function decode(html: string): Clipped | undefined {
   const value = new RegExp(`${ATTRIBUTE}="([A-Za-z0-9+/=]*)"`).exec(html)?.[1];
   if (value === undefined) return undefined;
   try {
@@ -50,10 +59,13 @@ export function decode(html: string): Copied[] | undefined {
     const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
     const read: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
     if (typeof read !== 'object' || read === null) return undefined;
-    const { v, blocks } = read as Record<string, unknown>;
+    const { v, blocks, source } = read as Record<string, unknown>;
     if (v !== V) return undefined;
     const checked = blocksOf(blocks);
-    return checked && checked.length > 0 ? checked : undefined;
+    if (!checked || checked.length === 0) return undefined;
+    // A token is main's to judge; here it only has to be a token's size.
+    const token = typeof source === 'string' && source.length <= 64 ? { source } : {};
+    return { blocks: checked, ...token };
   } catch {
     return undefined;
   }
@@ -78,4 +90,33 @@ function blocksOf(raw: unknown): Copied[] | undefined {
     return out;
   };
   return read(raw, 1);
+}
+
+/** A name as `images/<name>` links it: a bare file name, nothing that reaches out of the folder. */
+const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * The project images a copy's HTML carries as data, by name: each `img`
+ * tagged with `IMAGE_ATTRIBUTE` and a `data:` source. An image tagged with a
+ * name that is not a bare file name, or twice, keeps the first.
+ */
+export function carried(html: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [tag] of html.matchAll(/<img\b[^>]*>/gi)) {
+    const name = new RegExp(`${IMAGE_ATTRIBUTE}="([^"]*)"`).exec(tag)?.[1];
+    const src = /\ssrc="(data:[^"]*)"/.exec(tag)?.[1];
+    if (name && src && NAME.test(name) && !out.has(name)) out.set(name, src);
+  }
+  return out;
+}
+
+/** The bytes and type of a base64 `data:` URL, or undefined for anything else. */
+export function bytesOf(url: string): { bytes: Uint8Array; mime: string } | undefined {
+  const match = /^data:([a-z]+\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]*)$/i.exec(url);
+  if (!match) return undefined;
+  try {
+    return { mime: match[1].toLowerCase(), bytes: Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0)) };
+  } catch {
+    return undefined;
+  }
 }
