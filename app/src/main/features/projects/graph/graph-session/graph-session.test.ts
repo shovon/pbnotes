@@ -346,6 +346,7 @@ test("every command is undone to the graph before it, and redone to the graph af
     { type: "deleteBlock", blockId: A },
     { type: "deleteBlocks", blockIds: [C, A, "d1"] },
     { type: "indentBlocks", blockIds: [C] },
+    { type: "outdentBlocks", blockIds: [B] },
     { type: "indentBlock", blockId: C },
     { type: "outdentBlock", blockId: B },
     { type: "setProperty", title: "Foo", key: "Owner", value: "Sal" },
@@ -413,6 +414,17 @@ test("a Tab with one block that cannot indent, on any page, writes nothing and i
   assert.equal((view.state.blocks.get("foo") ?? []).at(-1)?.id, C, "c1 where it was");
   const undone = await graph.run({ type: "undo" });
   assert.notEqual(undone.block, C, "undo takes the step before, not a Tab that did nothing");
+});
+
+test("a Shift+Tab with one block already top-level, on any page, writes nothing and is no step (#260)", async () => {
+  const { graph, view, writes } = await written();
+  const before = writes();
+  // `b1` can come out from under `a1`, but `d1` is top-level on `Bar`.
+  await graph.run({ type: "outdentBlocks", blockIds: [B, "d1"] });
+  assert.equal(writes(), before, "nothing written");
+  assert.equal((view.state.blocks.get("foo") ?? [])[0]?.children[0]?.id, B, "b1 where it was");
+  const undone = await graph.run({ type: "undo" });
+  assert.notEqual(undone.block, B, "undo takes the step before, not a Shift+Tab that did nothing");
 });
 
 test("redoing a page delete deletes the page again, not its blocks one by one", async () => {

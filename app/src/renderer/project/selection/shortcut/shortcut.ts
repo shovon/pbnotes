@@ -25,7 +25,8 @@ export type Command =
   | { kind: "clear" }
   | { kind: "all" }
   | { kind: "delete" }
-  | { kind: "indent" };
+  | { kind: "indent" }
+  | { kind: "outdent" };
 
 /** The platform's own modifier, and no other. */
 function platform(mods: Mods, mac: boolean): boolean {
@@ -71,5 +72,6 @@ export function command(press: Press, mac: boolean): Command | undefined {
   // Either key, as in Logseq: a Mac keyboard's delete key is Backspace.
   if ((press.key === "Backspace" || press.key === "Delete") && bare(press)) return { kind: "delete" };
   if (press.key === "Tab" && bare(press)) return { kind: "indent" };
+  if (press.key === "Tab" && shifted(press)) return { kind: "outdent" };
   return undefined;
 }

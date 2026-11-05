@@ -68,3 +68,10 @@ test("Tab indents what is selected, and not with a modifier (#259)", () => {
     assert.equal(command(press("Tab", { [mod]: true }), true), undefined, mod);
   }
 });
+
+test("Shift+Tab outdents what is selected, and not with another modifier (#260)", () => {
+  assert.deepEqual(command(press("Tab", { shiftKey: true }), true), { kind: "outdent" });
+  for (const mod of ["metaKey", "ctrlKey", "altKey"]) {
+    assert.equal(command(press("Tab", { shiftKey: true, [mod]: true }), true), undefined, mod);
+  }
+});

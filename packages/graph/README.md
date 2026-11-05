@@ -12,9 +12,9 @@ for await (const graph of ledger.onEvent(graphFold.initial, graphFold.reduce)) {
 }
 ```
 
-To write, hand `addBlock`, `editBlock`, `deleteBlock`, `deleteBlocks`, `indentBlock`, `indentBlocks`, `outdentBlock` or `moveBlock` a `GraphView`: the state you hold, and a `dispatch(v, type, payload)` wired to your own log. They run the same checks the app runs before they write anything.
+To write, hand `addBlock`, `editBlock`, `deleteBlock`, `deleteBlocks`, `indentBlock`, `indentBlocks`, `outdentBlock`, `outdentBlocks` or `moveBlock` a `GraphView`: the state you hold, and a `dispatch(v, type, payload)` wired to your own log. They run the same checks the app runs before they write anything.
 
-Each of those writes one event (`deleteBlocks` and `indentBlocks` write a `batch` when there is more than one block, so they are one undo step; `indentBlocks` indents each in turn, on the graph as the one before left it, and writes nothing when any of them cannot indent), and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented`, `blockOutdented` and `blockMoved`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
+Each of those writes one event (`deleteBlocks`, `indentBlocks` and `outdentBlocks` write a `batch` when there is more than one block, so they are one undo step; the last two move each block in turn, on the graph as the one before left it, and write nothing when any of them cannot move), and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented`, `blockOutdented` and `blockMoved`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
 
 Page properties have commands too, `setProperty`, `removeProperty` and `renameProperty`, and builders, `propertySet` and `propertyRemoved`.
 

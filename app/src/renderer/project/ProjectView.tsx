@@ -595,7 +595,8 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       else if (it.kind === 'all') setChosen(everyBeside(chosen.anchor) ?? chosen);
       else if (it.kind === 'clear') setChosen(null);
       else if (it.kind === 'delete') removing.current();
-      else if (it.kind === 'indent') indenting.current();
+      else if (it.kind === 'indent') moving.current('indentBlocks');
+      else if (it.kind === 'outdent') moving.current('outdentBlocks');
       else {
         const first = entries.find((entry) => entry.key === chosen.keys[0]);
         setChosen(null);
@@ -727,20 +728,21 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   removing.current = removeChosen;
 
   /**
-   * Tab with blocks selected (#259): each top-most selected block goes under
-   * the sibling above it, in the order they show, as one write and one undo
-   * step, or none of them does when one is first among its siblings,
-   * wherever it is. The selection stays, so a second Tab indents again: a
-   * slot is a block in a view, and an indent keeps both.
+   * Tab (#259) and Shift+Tab (#260) with blocks selected: each top-most
+   * selected block goes under the sibling above it, or comes out a level, in
+   * the order they show, as one write and one undo step, or none of them
+   * does when one cannot move, wherever it is. The selection stays, so a
+   * second press moves them again: a slot is a block in a view, and an
+   * indent or an outdent keeps both.
    */
-  const indentChosen = () => {
+  const moveChosen = (type: 'indentBlocks' | 'outdentBlocks') => {
     const chosen = latestChosen.current;
     if (!chosen) return;
     const blockIds = roots(onScreen(), chosen.keys).map((it) => it.id);
-    if (blockIds.length > 0) act(() => bridge.run({ type: 'indentBlocks', blockIds }));
+    if (blockIds.length > 0) act(() => bridge.run({ type, blockIds }));
   };
-  const indenting = useRef(indentChosen);
-  indenting.current = indentChosen;
+  const moving = useRef(moveChosen);
+  moving.current = moveChosen;
 
   /**
    * How many blocks a delete of the selection takes, when `slot` is one of

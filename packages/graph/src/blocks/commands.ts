@@ -130,6 +130,24 @@ export function indentBlocks(view: BlocksView, blockIds: readonly string[]): Pro
 }
 
 /**
+ * Shift+Tab on several blocks (#260): each top-most one of `blockIds`
+ * brought out a level, in the order given, as one record, taking the
+ * siblings below it along as its children, as `outdentBlock` does. Each is
+ * resolved on the graph as the ones before it left it, so selected siblings
+ * come out in order: `a(b c d)` with `b` and `c` is `a b c(d)`, the same as
+ * Shift+Tab on `b` and then on `c`. All or nothing: when any of them is
+ * already top-level, on whatever page, nothing is written, and that is not
+ * an error. Refuses when none is left.
+ */
+export function outdentBlocks(view: BlocksView, blockIds: readonly string[]): Promise<void> {
+  return inTurn(view, blockIds, (state, id) => {
+    const found = find(state, id);
+    const payload = found && outdented(found.blocks, id);
+    return payload && blockOutdented(payload);
+  });
+}
+
+/**
  * The shape of every command on several blocks that moves each in turn: the
  * top-most of `blockIds`, each resolved by `eventFor` on the graph as the
  * ones before it left it, written as one record. Nothing is written when
