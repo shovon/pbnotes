@@ -88,8 +88,9 @@ export default function Card({ graph, title, now, scope, onClose, onShown, act }
   return (
     <section
       aria-label={title}
-      // The page's own heading, smaller, and clear of the ×.
-      className="relative rounded-md border border-line bg-bg px-3 [&_h2]:mt-2 [&_h2]:mb-2 [&_h2]:pr-6 [&_h2]:text-lg [&_h2]:break-words"
+      // Not boxed: a stretch of the column with a rule under it, the last
+      // card's too. The page's own heading, smaller, and clear of the ×.
+      className="relative border-b border-line bg-bg px-3 [&_h2]:mt-2 [&_h2]:mb-2 [&_h2]:pr-6 [&_h2]:text-lg [&_h2]:break-words"
     >
       <button
         type="button"
