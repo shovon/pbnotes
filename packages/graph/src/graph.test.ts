@@ -34,6 +34,7 @@ import {
   outdentBlock,
   outdentBlocks,
   pageDeleted,
+  pageRenamed,
   graphFold,
   propertyRemoved,
   addTag,
@@ -372,6 +373,7 @@ test("every builder writes the v its own gate reads, and there is one for every 
     aliasAdded("x", "y"),
     aliasRemoved("x", "y"),
     pageDeleted("x"),
+    pageRenamed("x", "y"),
     batch([pageDeleted("x")]),
   ];
   for (const event of built) assert.equal(event.v, HANDLES[event.type], event.type);
@@ -506,6 +508,7 @@ test("the event names and their v are exactly these", () => {
       v("alias.added", 1),
       v("alias.removed", 1),
       v("page.deleted", 1),
+      v("page.renamed", 1),
       v("batch", 1),
     ]),
   );

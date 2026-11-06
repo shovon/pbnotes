@@ -7,7 +7,7 @@ import type { PropertyState } from "../properties/properties.ts";
 import type { TagState } from "../tags/tags.ts";
 import type { AliasState } from "../aliases/aliases.ts";
 import { hasContent } from "./deletes.ts";
-import type { DeleteEvent } from "../events/pages/slice.ts";
+import type { PagesEvent } from "../events/pages/slice.ts";
 import { pageDeleted } from "../events/pages/deleted/deleted.ts";
 
 // ── The command ─────────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ import { pageDeleted } from "../events/pages/deleted/deleted.ts";
 export type DeletesView = {
   readonly state: BlockState & PropertyState & TagState & AliasState;
   /** Resolves once the event is durable and folded into `state`. */
-  dispatch(v: number, type: DeleteEvent["type"], payload: unknown): Promise<unknown>;
+  dispatch(v: number, type: PagesEvent["type"], payload: unknown): Promise<unknown>;
 };
 
 /**

@@ -53,8 +53,8 @@ import type { AliasEvent } from "./events/aliases/slice.ts";
 import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
 import {
-  DELETE_HANDLES,
-  DELETE_UNDO,
+  PAGE_HANDLES,
+  PAGE_UNDO,
   reads as readsDeletes,
   reduce as reduceDeletes,
 } from "./events/pages/slice.ts";
@@ -64,7 +64,10 @@ import { holds as holdsWith, invert as invertWith, remember as rememberWith } fr
 import type { Remembered as RememberedWith, Undo } from "./undo/undo.ts";
 import { admits } from "./over/over.ts";
 import type { DeleteState } from "./deletes/deletes.ts";
-import type { DeleteEvent } from "./events/pages/slice.ts";
+import { redirect, renamedAway } from "./renames/renames.ts";
+import type { RenameState } from "./renames/renames.ts";
+import { field, unnamed } from "./events/events.ts";
+import type { PagesEvent } from "./events/pages/slice.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
 import type { EditedState } from "./edited/edited.ts";
 import { search } from "./search/search.ts";
@@ -117,8 +120,11 @@ export type { AliasEvent } from "./events/aliases/slice.ts";
 export { getDeletions, getRefsTo, hasContent } from "./deletes/deletes.ts";
 export { deletePage } from "./deletes/commands.ts";
 export { pageDeleted } from "./events/pages/deleted/deleted.ts";
+export { pageRenamed } from "./events/pages/renamed/renamed.ts";
+export { renamePage } from "./renames/commands.ts";
+export type { PageRenamed } from "./renames/renames.ts";
 export type { PageDeleted } from "./deletes/deletes.ts";
-export type { DeleteEvent } from "./events/pages/slice.ts";
+export type { PagesEvent } from "./events/pages/slice.ts";
 export { blockCreated } from "./events/blocks/created/created.ts";
 export { blockEdited } from "./events/blocks/edited/edited.ts";
 export { blockDeleted } from "./events/blocks/deleted/deleted.ts";
@@ -162,6 +168,7 @@ export type Graph = BlockState &
   TagState &
   AliasState &
   DeleteState &
+  RenameState &
   EditedState;
 
 /**
@@ -173,7 +180,7 @@ export const HANDLES: Record<
   | PropertyEvent["type"]
   | TagEvent["type"]
   | AliasEvent["type"]
-  | DeleteEvent["type"]
+  | PagesEvent["type"]
   | BatchEvent["type"],
   number
 > = {
@@ -181,7 +188,7 @@ export const HANDLES: Record<
   ...PROPERTY_HANDLES,
   ...TAG_HANDLES,
   ...ALIAS_HANDLES,
-  ...DELETE_HANDLES,
+  ...PAGE_HANDLES,
   ...BATCH_HANDLES,
 };
 
@@ -215,6 +222,7 @@ export const graphFold = {
     tags: emptyMap(),
     aliases: emptyMap(),
     deletions: emptyMap(),
+    renames: emptyMap(),
     edited: emptyMap(),
   } as Graph,
 };
@@ -235,7 +243,7 @@ export const UNDO: Record<Exclude<keyof typeof HANDLES, BatchEvent["type"]>, Und
   ...PROPERTY_UNDO,
   ...TAG_UNDO,
   ...ALIAS_UNDO,
-  ...DELETE_UNDO,
+  ...PAGE_UNDO,
 };
 
 /**
@@ -284,7 +292,25 @@ function readable(event: Incoming): boolean {
 
 /** One event past the gate: every slice, then when its page changed. */
 function one(state: Graph, event: Incoming): Graph {
-  return reduceEdited(state, behindTheGate(state, event), event);
+  const routed = redirected(state, event);
+  return reduceEdited(state, behindTheGate(state, routed), routed);
+}
+
+/**
+ * `event` with the page it names sent where a rename sent that page, while
+ * the alias the rename left stands (#108). A write that sorts after a rename,
+ * from a device that had not seen it, lands on the page it was meant for,
+ * rather than giving the old name content of its own and taking it back.
+ * Every event that names its page as `page` is sent: blocks, properties,
+ * tags, aliases and a page delete. A rename names two pages, and is not.
+ */
+function redirected(state: Graph, event: Incoming): Incoming {
+  if (unnamed(event.type) === "page.renamed") return event;
+  const { payload } = event;
+  if (typeof payload !== "object" || payload === null) return event;
+  const page = field(payload, "page");
+  const to = typeof page === "string" ? redirect(state, page) : undefined;
+  return to === undefined ? event : { ...event, payload: { ...payload, page: titleOf(state, to) } };
 }
 
 /** Each slice's fold in turn. The delete fold empties what the others hold. */
@@ -386,14 +412,16 @@ export type PageMatch = {
  * Every name search offers, by key, each in the spelling it shows: every
  * title something names, and each day one of them opens, by its title and
  * its built-in names: a day named by a link to `Nov 4th, 2024` is offered as
- * `2024-11-04` and `November 4th, 2024` too.
+ * `2024-11-04` and `November 4th, 2024` too. A name a rename left behind is
+ * not offered (#108): it still opens the page, as a safety net.
  */
 function offered(state: Graph): Map<string, string> {
   const opens = resolver(state);
+  const away = renamedAway(state);
   const names = new Map<string, string>();
   for (const title of named(state)) {
     const key = canonicalize(title);
-    if (!names.has(key)) names.set(key, titleOf(state, key));
+    if (!names.has(key) && !away.has(key)) names.set(key, titleOf(state, key));
   }
   const days = new Set([...names.keys()].map(opens.key).filter((key) => DATE_PATTERN.test(key)));
   for (const day of days) {

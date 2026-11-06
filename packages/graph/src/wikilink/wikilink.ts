@@ -102,7 +102,7 @@ const text = (value: string): Text => ({ type: 'text', value });
  * the label is the one thing they share. `<https://…>` and `[https://…](…)`
  * pass for one too, which is harmless: read back as text they are the same.
  */
-function bare(node: RootContent): node is Link {
+export function bare(node: RootContent): node is Link {
   if (node.type !== 'link' || node.children.length !== 1) return false;
   const [label] = node.children;
   if (label.type !== 'text') return false;
@@ -183,6 +183,61 @@ export function* refsIn(value: string): Generator<{ index: number; length: numbe
   for (const match of value.matchAll(new RegExp(PATTERN))) {
     if (match[5] !== undefined) yield { index: match.index, length: match[0].length, id: match[5] };
   }
+}
+
+/**
+ * What the walk makes of the next thing in `value` from `from` on, where it
+ * sits, and how it was written: a link (its page, its form, and where the
+ * page's name is in the source) or a ref. Read with the walk's own pattern,
+ * for whoever needs to change a link where it is written, which the walk's
+ * nodes do not say.
+ *
+ * - `alias`: `[label]([[page]])`, written as text because the page has a space.
+ * - `brackets`: `[[page]]`.
+ * - `tag-brackets`: `#[[page]]`.
+ * - `tag`: `#page`.
+ *
+ * `name` is the page as written, untrimmed: `value.slice(name.index,
+ * name.index + name.length)`. `page` is it trimmed, as the walk links it.
+ */
+export type Match = { index: number; length: number } & (
+  | {
+      kind: 'link';
+      form: 'alias' | 'brackets' | 'tag-brackets' | 'tag';
+      page: string;
+      name: { index: number; length: number };
+    }
+  | { kind: 'ref'; id: string }
+);
+
+export function matchFrom(value: string, from: number): Match | undefined {
+  const re = new RegExp(PATTERN);
+  re.lastIndex = from;
+  const match = re.exec(value);
+  if (!match) return undefined;
+  const { index } = match;
+  const length = match[0].length;
+  const link = (form: Extract<Match, { kind: 'link' }>['form'], page: string, at: number): Match => ({
+    index,
+    length,
+    kind: 'link',
+    form,
+    page: page.trim(),
+    name: { index: index + at, length: page.length },
+  });
+  // A label holds no bracket, so the first `]([[` is where the page starts.
+  if (match[2] !== undefined) return link('alias', match[2], match[0].indexOf(']([[') + 4);
+  if (match[4] !== undefined) {
+    return match[3] ? link('tag-brackets', match[4], 3) : link('brackets', match[4], 2);
+  }
+  if (match[5] !== undefined) return { index, length, kind: 'ref', id: match[5] };
+  return link('tag', match[0].slice(1), 1);
+}
+
+/** Whether `#name` reads as a bare tag, whole: `name` needs no brackets. */
+export function bareTag(name: string): boolean {
+  const match = matchFrom(`#${name}`, 0);
+  return match?.kind === 'link' && match.form === 'tag' && match.index === 0 && match.length === name.length + 1;
 }
 
 /** The text a link reads as. A bare URL's label is one text node. */

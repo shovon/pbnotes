@@ -55,7 +55,7 @@ Every event type is `NAMESPACE` followed by a name, for example `github.com/shov
 
 ## Where the events are
 
-Every event is one module under [`src/events/`](src/events/README.md), grouped by subject: its name, its `v`, how its payload is read, its fold, its builder and its undo, together. Each subject's `slice.ts` there lists its events, and `HANDLES`, `UNDO`, the fold and the predictions are built from those lists. What a subject's events share (its state, the helpers that change it, its queries and its commands) is in the subject's own folder: `blocks/`, `properties/`, `tags/`, `aliases/` and `deletes/`.
+Every event is one module under [`src/events/`](src/events/README.md), grouped by subject: its name, its `v`, how its payload is read, its fold, its builder and its undo, together. Each subject's `slice.ts` there lists its events, and `HANDLES`, `UNDO`, the fold and the predictions are built from those lists. What a subject's events share (its state, the helpers that change it, its queries and its commands) is in the subject's own folder: `blocks/`, `properties/`, `tags/`, `aliases/`, `deletes/` and `renames/`.
 
 That folder's README says what an event module holds, and how to add, change or remove an event.
 
@@ -146,7 +146,7 @@ A journal day answers to its date in words, with nothing written. A name, once `
 
 - **The reads resolve first.** `getPage`, `getProperties` and `getTags` read the page a name opens. `getReferences` and `getTaggedBy` match every name that opens it: its title, its date names if it is a day, and its aliases in effect. A link keeps the spelling it was written with.
 - **`getAliases(graph, page)`** lists the aliases in effect, not the built-in names, and **`getAliasOf(graph, alias)`** the page an alias in effect opens.
-- **`searchNames(graph, query)`** offers each name with the page it `opens`; `searchPages` is the titles alone. Beside the titles it always offered, it offers aliases, and for each day any offered name opens, the day's title and its date names. A day nothing names isn't offered, since the days can't be listed without end.
+- **`searchNames(graph, query)`** offers each name with the page it `opens`; `searchPages` is the titles alone. Beside the titles it always offered, it offers aliases, and for each day any offered name opens, the day's title and its date names. A day nothing names isn't offered, since the days can't be listed without end. A name a rename left behind isn't offered either (below).
 - **`listPages`** lists each page once, under its title. A name that opens another page isn't a row, and its links and tags count for the page it opens, a block or a tagging page once however many of the page's names it uses.
 
 ## Deleting a page is a contract
@@ -162,6 +162,28 @@ A journal day answers to its date in words, with nothing written. A name, once `
 - **Each delete is counted per page** (`getDeletions`), so a reader can tell that a page was deleted from a page that merely went empty.
 - **Malformed is skipped whole:** a payload that is not an object, or a `page` that is not a string or is blank once trimmed.
 - **`deletePage(view, page)`** writes nothing for a page with nothing on it (`hasContent`): the delete would change nothing. **`getRefsTo(graph, page)`** counts the blocks on other pages that hold a `((id))` to a block on it: what a delete would leave showing as missing. What links to it by title is `getReferences`.
+
+## Renaming a page is a contract
+
+| Type | `v` | Payload | Meaning |
+|---|---|---|---|
+| `page.renamed` | 1 | `{ from, to }` | The page `from` is now called `to`. |
+
+A reader that folds this event has to do all of what follows to show the same graph. One that understands aliases but not the rewrite still opens the right page, with the old text.
+
+- **One event, and the fold does all of it.** No `block.edited` per linking block: an edit replaces a block's whole text, and one that sorted after a concurrent edit on another device would wipe that edit out. The rewrite applies to whatever text is there at its place in fold order, so a block written offline that sorts before the rename is rewritten when it arrives.
+- **Titles are filed by `keyFor`:** the day a date name means, or the title's `canonicalize`d key. Renaming to `Nov 6th, 2026` makes the page that day.
+- **When the keys differ, the page moves:** its blocks (in their order and nesting, `regroup`), properties, tags, aliases and last-edited time go to `to`'s key, and `to` becomes its spelling.
+- **The old title becomes an alias,** along with the aliases the page had; a page never answers to its own title, so renaming onto one of its aliases drops it. **A day leaves no alias,** since nothing takes a `YYYY-MM-DD` over (`resolve` rule 3): a write on the day afterwards stays on the day.
+- **What pointed at the old title points at `to`:** every link in every block (below), every tag on any page, and every property key on any page, unless that page already has the key `to`, when both are left as they are. For a day, every link, tag or key by any of its date names.
+- **Links are rewritten where they are written,** read with the parser the renderer reads with (`relink`): one in code, math, a URL or an alias's label is left alone, as is everything else in the text. `[[x]]`, `#[[x]]` and `[label]([[x]])` keep their form and label. A bare `#x` stays bare unless `to` can't be a bare tag, when it becomes `#[[to]]`.
+- **A write on the old title goes to the page it became** while that page still answers to it (`redirect`): any event with a `page` field (blocks, properties, tags, aliases, a page delete) that sorts after the rename. A device that wrote offline before seeing the rename lands where it meant to, rather than giving the old title content of its own, which would take the name back (rule 1). Removing the alias ends it.
+- **A rename that can't move the page does nothing:** `from` has nothing on it (`hasContent`), `to` has content of its own, or `to` is a name a rename sends to another page. Of two renames of one page, the first in fold order wins. Nothing is ever merged without being asked.
+- **When the keys are the same, only the spelling changes** (#89): the page shows as `to` from then on, even though `titles` otherwise keeps the first spelling seen. Nothing moves and no text changes. A day's spelling never changes.
+- **The names a rename left behind aren't offered by `searchNames`.** They still open the page; they are a safety net, and a renamed typo shouldn't keep being offered. `getAliases` still lists them.
+- **Malformed is skipped whole:** a payload that is not an object, or a `from` or `to` that is not a string or is blank once trimmed.
+- **`renamePage(view, from, to)`** renames the page `from` opens, and refuses, writing nothing, what the fold would skip, a `to` that opens another page, and a `to` holding `[[`, `]]` or a line break. A rename to the spelling the page has writes nothing.
+- **Undone by renaming back,** with the alias that leaves on the old page removed, as one batch. Each rewritten link comes back naming the page as it is spelled, so `[[bridal falls]]` comes back `[[Bridal Falls]]`, and a bare tag that took brackets keeps them. It stops once anything on the page has changed since, or anything has been written under the old title.
 
 ## A block id is written once
 

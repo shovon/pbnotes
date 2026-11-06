@@ -214,3 +214,18 @@ export function dropGroup(forest: Forest, group: string): Forest {
   }
   return { ...next, roots: map.remove(next.roots, group) };
 }
+
+/**
+ * `forest` with every node in `from` moved to `to`, after any `to` already
+ * holds, in the order and nesting they had, and `from` dropped. The same
+ * forest for a `from` not there, or a `to` that is `from`.
+ */
+export function regroup(forest: Forest, from: string, to: string): Forest {
+  if (from === to || !hasGroup(forest, from)) return forest;
+  let next: Forest = forest;
+  for (const id of inGroup(forest, from)) {
+    next = { ...next, nodes: map.put(next.nodes, id, { ...node(next, id)!, group: to }) };
+  }
+  const roots = map.put(next.roots, to, [...rootsOf(next, to), ...rootsOf(forest, from)]);
+  return { ...next, roots: map.remove(roots, from) };
+}

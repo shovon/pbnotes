@@ -208,3 +208,21 @@ test("survives a structured clone as itself", () => {
   assert.deepEqual(cloned, f);
   assert.deepEqual(forest.childrenOf(cloned, "a"), ["b"]);
 });
+
+test("regroup moves every node in one group to the end of another, nesting kept", () => {
+  let f = forest.empty();
+  f = forest.add(f, "a", { group: "g", at: "last" });
+  f = forest.add(f, "b", { under: "a", at: "first" });
+  f = forest.add(f, "c", { group: "g", at: "last" });
+  f = forest.add(f, "x", { group: "h", at: "last" });
+  const before = f;
+  const moved = forest.regroup(f, "g", "h");
+  assert.deepEqual(forest.rootsOf(moved, "h"), ["x", "a", "c"]);
+  assert.deepEqual(forest.childrenOf(moved, "a"), ["b"]);
+  assert.equal(forest.node(moved, "b")?.group, "h");
+  assert.equal(forest.hasGroup(moved, "g"), false);
+  assert.deepEqual(f, before);
+  assert.equal(forest.regroup(f, "nowhere", "h"), f);
+  assert.equal(forest.regroup(f, "g", "g"), f);
+  assert.deepEqual(forest.rootsOf(forest.regroup(f, "g", "new"), "new"), ["a", "c"]);
+});

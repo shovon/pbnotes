@@ -242,6 +242,11 @@ const CHECKERS: {
     type: "deletePage",
     title: requireTitle(own(raw, "title")),
   }),
+  renamePage: (raw) => ({
+    type: "renamePage",
+    title: requireTitle(own(raw, "title")),
+    to: requireTitle(own(raw, "to")),
+  }),
   // Nothing to check: what to undo or redo is main's, never the window's to
   // say (#234). Built fresh, so nothing else the window sent goes on.
   undo: () => ({ type: "undo" }),
