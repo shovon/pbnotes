@@ -99,8 +99,9 @@ export const WithProperties: Story = {
 };
 
 /** A new page, nothing on it yet: under the title, "+ Add tag" and "+ Add
-    property" keep their room but show only while the header is hovered or
-    holds focus. Hover the title to see them. */
+    property" share one line, and keep their room but show only while the
+    header is hovered or holds focus. Hover the title to see them; adding
+    either puts the properties back on a line of their own. */
 export const NewPage: Story = {
   args: { page: page('Shed', []), properties: [], tags: [] },
 };

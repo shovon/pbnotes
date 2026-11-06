@@ -715,12 +715,15 @@ export default function PageView({
   return (
     <>
       {/* The header: the title, and on a page's own view its tags and
-          properties. What is marked `data-reveal` in it ("+ Add tag", "+ Add
-          property") shows only while it is hovered or holds focus, so a new
-          page is not two empty placeholders under its title. Hidden is
-          opacity, not removal: they keep their room, and nothing below moves
-          as the pointer crosses the title. */}
-      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity focus-within:[&_[data-reveal]]:opacity-100 hover:[&_[data-reveal]]:opacity-100">
+          properties. What is marked `data-reveal` in it ("+ Add tag", and
+          "+ Add property" while there are none) is hidden, so a new page is
+          not two empty placeholders under its title. Each shows only while
+          its own row (the element holding it) is hovered or holds focus, so
+          pointing at the properties does not light up "+ Add tag". While the
+          two share a line, a page with neither, the whole header shows both.
+          Hidden is opacity, not removal: they keep their room, and nothing
+          below moves as the pointer crosses the title. */}
+      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity [&_:hover>[data-reveal]]:opacity-100 [&_:focus-within>[data-reveal]]:opacity-100 has-[[data-bare]+[data-bare]]:hover:[&_[data-reveal]]:opacity-100 has-[[data-bare]+[data-bare]]:focus-within:[&_[data-reveal]]:opacity-100">
         {/* A cut is headed by the page it is cut from, as a link there — the
             project view follows it like the ones in the blocks. */}
         {reference ? (
@@ -774,26 +777,33 @@ export default function PageView({
           </h2>
         )}
 
-        {/* Under the title, above the properties, on the same terms: a journal
-            day shows its tags only when it has some, and neither a zoom nor a
-            cut shows them. */}
-        {tags && !reference && !root && (!linked || tags.length > 0) && (
-          <Tags tags={tags} findTags={findTitles} onAdd={tagPage} onRemove={untagPage} />
-        )}
+        {/* While a page has no tags and no properties, "+ Add tag" and "+ Add
+            property" share one line. Each marks itself `data-bare` while it
+            holds nothing; the line breaks as soon as either holds something,
+            an open input or draft included. Only the layout changes, never
+            the tree, so the draft a click opens is not remounted. */}
+        <div className="has-[>[data-bare]+[data-bare]]:flex has-[>[data-bare]+[data-bare]]:gap-1.5">
+          {/* Under the title, above the properties, on the same terms: a journal
+              day shows its tags only when it has some, and neither a zoom nor a
+              cut shows them. */}
+          {tags && !reference && !root && (!linked || tags.length > 0) && (
+            <Tags tags={tags} findTags={findTitles} onAdd={tagPage} onRemove={untagPage} />
+          )}
 
-        {/* Under the title, on the page's own view. A journal day shows its
-            table only when it has something in it: an empty one on every day
-            is noise, and the first property on a day is added from its page.
-            Not under a zoom, where what shows is a block and the page's
-            properties would read as its own. */}
-        {properties && !reference && !root && (!linked || properties.length > 0) && (
-          <Properties
-            rows={properties}
-            findKeys={findTitles}
-            onCommit={commitProperties}
-            onRemove={removeRow}
-          />
-        )}
+          {/* Under the title, on the page's own view. A journal day shows its
+              table only when it has something in it: an empty one on every day
+              is noise, and the first property on a day is added from its page.
+              Not under a zoom, where what shows is a block and the page's
+              properties would read as its own. */}
+          {properties && !reference && !root && (!linked || properties.length > 0) && (
+            <Properties
+              rows={properties}
+              findKeys={findTitles}
+              onCommit={commitProperties}
+              onRemove={removeRow}
+            />
+          )}
+        </div>
       </div>
 
       {/* The blank space under the page is part of the page: clicking it opens

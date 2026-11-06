@@ -22,6 +22,9 @@ type Props = {
  * until wanted, as `PageView` does until its header is hovered or focused.
  * The open input is not marked, so it stays shown until it closes.
  *
+ * With no chips and the input closed the row is marked `data-bare`, for a
+ * holder that sets something else beside it while there is nothing in it.
+ *
  * Enter adds what is typed and keeps the input open for the next. Escape
  * closes it, and so does focus leaving it, dropping what was typed rather
  * than adding a tag nobody confirmed. Switching windows is not leaving.
@@ -110,7 +113,12 @@ export default function Tags({ tags, findTags, onAdd, onRemove }: Props) {
   };
 
   return (
-    <div aria-label="Tags" role="group" className="mb-3 flex flex-wrap items-start gap-1.5 text-sm">
+    <div
+      aria-label="Tags"
+      role="group"
+      data-bare={tags.length === 0 && !open ? '' : undefined}
+      className="mb-3 flex flex-wrap items-start gap-1.5 text-sm"
+    >
       {tags.map((tag) => (
         <span
           key={canonicalize(tag)}
