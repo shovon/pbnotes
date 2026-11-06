@@ -12,7 +12,18 @@ import { indented, outdented } from "./tree.ts";
 import * as forest from "../forest/forest.ts";
 import { BLOCK_HANDLES, predict, reduce } from "../events/blocks/slice.ts";
 import { NAMESPACE } from "../events/events.ts";
-import { getPage, getReferences, graphFold, read, searchBlocks, searchPages } from "../graph.ts";
+import {
+  blockCreated,
+  getDays,
+  getPage,
+  getPages,
+  getPreviews,
+  getReferences,
+  graphFold,
+  read,
+  searchBlocks,
+  searchPages,
+} from "../graph.ts";
 import type { Graph } from "../graph.ts";
 import type { Block } from "./tree.ts";
 import type { PageEvent } from "../events/blocks/slice.ts";
@@ -333,3 +344,44 @@ test("plain text keeps tags, aliases and paragraphs apart, and drops an empty re
   assert.equal(read("see ((abc123))").plain, "see");
 });
 
+
+/** `events` folded from nothing. */
+const folded = (...events: { type: string; v: number; payload: unknown }[]): Graph =>
+  events.reduce(graphFold.reduce, graphFold.initial);
+
+test("the journal's days are getPages' titles, newest first, without building a page (#282)", () => {
+  const state = folded(
+    blockCreated("2026-09-20", "one", undefined, "a"),
+    blockCreated("Mira", "not a day", undefined, "b"),
+    blockCreated("2026-09-22", "three", undefined, "c"),
+    blockCreated("2026-09-21", "two", undefined, "d"),
+  );
+  assert.deepEqual(getDays(state), ["2026-09-22", "2026-09-21", "2026-09-20"]);
+  assert.deepEqual(getDays(state), getPages(state).map((page) => page.title));
+});
+
+test("previews for some pages are the refs on them, and the refs in what those show (#282)", () => {
+  const state = folded(
+    blockCreated("2026-09-21", "see ((b))", undefined, "a"),
+    blockCreated("Mira", "quotes ((c))", undefined, "b"),
+    blockCreated("Mira", "the end", undefined, "c"),
+    blockCreated("Atlas", "elsewhere ((c)) and ((gone))", undefined, "d"),
+    blockCreated("Atlas", "loops ((e))", undefined, "e"),
+  );
+  assert.deepEqual(getPreviews(state, [getPage(state, "2026-09-21")]), [
+    ["b", "quotes ((c))"],
+    ["c", "the end"],
+  ]);
+  // A block that quotes itself is read once, and a ref to a block the project lacks is null.
+  assert.deepEqual(getPreviews(state, [getPage(state, "Atlas")]), [
+    ["c", "the end"],
+    ["e", "loops ((e))"],
+    ["gone", null],
+  ]);
+  assert.deepEqual(getPreviews(state, []), []);
+  // Without pages, every ref in the project, as before.
+  assert.deepEqual(
+    getPreviews(state).map(([id]) => id),
+    ["b", "c", "e", "gone"],
+  );
+});

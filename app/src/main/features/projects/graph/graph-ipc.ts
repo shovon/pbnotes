@@ -103,8 +103,12 @@ function requirePlace(place: unknown): Place | undefined {
  * scheme against `images`.
  */
 export function registerGraphIpc(session: GraphSession, images: Images): void {
-  ipcMain.handle(GRAPH_CHANNELS.view, (_event, place: unknown, today: unknown) =>
-    session.view(requirePlace(place), requireDay(today)),
+  ipcMain.handle(GRAPH_CHANNELS.view, (_event, place: unknown, today: unknown, from: unknown) =>
+    session.view(
+      requirePlace(place),
+      requireDay(today),
+      from === undefined || from === null ? undefined : requireDay(from, "from"),
+    ),
   );
 
   ipcMain.handle(GRAPH_CHANNELS.locate, (_event, blockId: unknown) =>

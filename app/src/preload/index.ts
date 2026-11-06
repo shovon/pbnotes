@@ -25,7 +25,7 @@ const projects: ProjectsApi = {
 };
 
 const graph: GraphApi = {
-  view: (place, today) => ipcRenderer.invoke(GRAPH_CHANNELS.view, place, today),
+  view: (place, today, from) => ipcRenderer.invoke(GRAPH_CHANNELS.view, place, today, from),
   // Hands each version on without the event: the first argument of an IPC
   // event carries `sender`, and the whole point of the bridge is that the
   // renderer never gets that.

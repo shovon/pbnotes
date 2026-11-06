@@ -187,11 +187,12 @@ export function createGraphSession(
     },
 
     /**
-     * What shows at `place`, or the journal with `today` on top, and the
-     * version it was read at. Rejects when what is open cannot be reached.
+     * What shows at `place`, or the journal with `today` on top from `from`
+     * on (#282), and the version it was read at. Rejects when what is open
+     * cannot be reached.
      */
-    view: async (place: Place | undefined, today: string): Promise<PlaceView> =>
-      getView(await open.require(), place, today),
+    view: async (place: Place | undefined, today: string, from?: string): Promise<PlaceView> =>
+      getView(await open.require(), place, today, from),
 
     locate: async (blockId: string) =>
       locateBlock((await open.require()).state, blockId),

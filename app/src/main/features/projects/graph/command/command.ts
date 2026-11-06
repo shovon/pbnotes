@@ -27,11 +27,12 @@ export function requireTitle(value: unknown): string {
 }
 
 /**
- * A day as the window's clock names it, `YYYY-MM-DD`: the journal's today.
- * Only its shape is checked; which day it is belongs to the window.
+ * A day as the window's clock names it, `YYYY-MM-DD`: the journal's today,
+ * or where its window starts (#282), by `name`. Only its shape is checked;
+ * which day it is belongs to the window.
  */
-export function requireDay(value: unknown): string {
-  const day = requireString(value, "today");
+export function requireDay(value: unknown, name = "today"): string {
+  const day = requireString(value, name);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
     throw new TypeError("Expected a day as YYYY-MM-DD");
   }
