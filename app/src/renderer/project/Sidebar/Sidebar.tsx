@@ -9,8 +9,12 @@ import { isShowing } from "./recent/recent";
  * Fixed under the title-bar strip, the height of the window, with its own
  * scroll. Its column reaches up through the strip as well, behind the
  * toggle and the picker, so the strip's rule stops at its edge and its own
- * rule runs to the top of the window. `App` makes room for it beside the page while it is in the DOM;
- * collapsed, `ProjectView` leaves it out altogether.
+ * rule runs to the top of the window. `App` makes room for it beside the page
+ * while it is in the DOM; collapsed, `ProjectView` leaves it out altogether.
+ *
+ * Floating, it is the same column laid over the page while it is collapsed
+ * (pointing at the toggle shows it, `peek.ts`): without `data-sidebar`, so
+ * `App` makes no room for it, a layer up and with a shadow off its edge.
  */
 type Props = {
   /** Titles, newest first. */
@@ -23,6 +27,10 @@ type Props = {
   onAllPages: () => void;
   /** A recent page was clicked; `beside` is Shift held, for the right sidebar (#287). */
   onOpen: (page: string, beside: boolean) => void;
+  /** Laid over the page rather than beside it. */
+  floating?: boolean;
+  onPointerEnter?: () => void;
+  onPointerLeave?: () => void;
 };
 
 const entry =
@@ -36,8 +44,14 @@ export default function Sidebar({
   onJournal,
   onAllPages,
   onOpen,
+  floating = false,
+  onPointerEnter,
+  onPointerLeave,
 }: Props) {
   const journal = showing === undefined && !browsing;
+  const hover = { onPointerEnter, onPointerLeave };
+  // Floating: above the page and its own raised bits, still under the header.
+  const lift = floating ? "z-20 shadow-[6px_0_16px_-8px_rgb(0_0_0/0.25)]" : "z-10";
   return (
     <>
       {/* The column's top, laid over the strip's backing (it comes later at
@@ -45,16 +59,19 @@ export default function Sidebar({
         hangs one pixel below the strip to cover the strip's rule. It says
         nothing about dragging: it comes after the header in the DOM, so
         claiming the drag here would take the toggle's and picker's clicks
-        too, and the backing under it drags already. */}
+        too, and the backing under it drags already. Floating, it takes no
+        drag at all, so pointing at it keeps the sidebar showing. */}
       <div
         aria-hidden
-        className="fixed top-0 left-0 z-20 h-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar))+1px)] w-sidebar border-r border-line bg-bg"
+        {...hover}
+        className={`${floating ? "app-region-no-drag shadow-[6px_0_16px_-8px_rgb(0_0_0/0.25)]" : ""} fixed top-0 left-0 z-20 h-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar))+1px)] w-sidebar border-r border-line bg-bg`}
       />
       <nav
         id="sidebar"
         aria-label="Sidebar"
-        data-sidebar
-        className="fixed top-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] bottom-0 left-0 z-10 w-sidebar overflow-y-auto border-r border-line bg-bg px-2 py-3"
+        data-sidebar={floating ? undefined : true}
+        {...hover}
+        className={`${lift} fixed top-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] bottom-0 left-0 w-sidebar overflow-y-auto border-r border-line bg-bg px-2 py-3`}
       >
         <button
           type="button"

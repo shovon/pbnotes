@@ -26,6 +26,7 @@ import Sidebar from './Sidebar/Sidebar';
 import Toggle from './Sidebar/Toggle/Toggle';
 import { forget, renamedIn as renamedInRecent, visit } from './Sidebar/recent/recent';
 import { togglesSidebar } from './Sidebar/shortcut/shortcut';
+import { usePeek } from './Sidebar/peek';
 import { createDispatcher } from './undo/dispatcher/dispatcher';
 import { watchFields } from './undo/fields';
 import { landing } from './undo/landing/landing';
@@ -333,10 +334,14 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   const toggle = useRef(() => undefined as void);
   toggle.current = () => {
     toggled.current = true;
+    // Shown or hidden for good now, so not floating, however it was asked for.
+    peek.stop();
     const next = !collapsed;
     setCollapsed(next);
     sidebar.save({ collapsed: next });
   };
+  /** Collapsed, the sidebar floats over the page while the toggle is pointed at. */
+  const peek = usePeek(collapsed);
 
   /**
    * The pages kept open in the right sidebar (#287), most recently opened
@@ -1283,7 +1288,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           and a paste into it is text rather than an image for the page. */}
       {/* Outside the view too: its entries are buttons, not links in a page,
           so the view's capture of a click on a link stays out of it. */}
-      {!collapsed && (
+      {(!collapsed || peek.peeking) && (
         <Sidebar
           recent={recent.list}
           showing={place?.page}
@@ -1291,11 +1296,20 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           onJournal={() => step(home)}
           onAllPages={() => step(browse)}
           onOpen={open}
+          floating={collapsed}
+          onPointerEnter={peek.stay}
+          onPointerLeave={peek.leave}
         />
       )}
       {titlebarStart !== null &&
         createPortal(
-          <Toggle collapsed={collapsed} mac={mac} onToggle={() => toggle.current()} />,
+          <Toggle
+            collapsed={collapsed}
+            mac={mac}
+            onToggle={() => toggle.current()}
+            onPointerEnter={peek.start}
+            onPointerLeave={peek.leave}
+          />,
           titlebarStart,
         )}
       {finding && (
