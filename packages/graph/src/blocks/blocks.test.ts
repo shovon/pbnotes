@@ -14,6 +14,7 @@ import { getPage, getReferences, graphFold, read, searchBlocks, searchPages } fr
 import type { Graph } from "../graph.ts";
 import type { Block } from "./blocks.ts";
 import type { PageEvent } from "../events/blocks/slice.ts";
+import { from, get } from "../immutable/immutable.ts";
 
 const TODAY = "2026-09-21";
 
@@ -93,7 +94,7 @@ test("an event is folded under its namespaced name and no other", () => {
   assert.deepEqual(reduce(none, event(`${NAMESPACE}block.created`, 1, payload)), {
     ...none,
     blocks: new Map([[TODAY, [{ id: "b1", text: "first", children: [] }]]]),
-    titles: new Map([[TODAY, TODAY]]),
+    titles: from([[TODAY, TODAY]]),
   });
   assert.equal(reduce(none, event("block.created", 1, payload)), none);
   // Only the exact prefix. A slash is what #37 first proposed and is not it.
@@ -175,7 +176,7 @@ test("a page named after an Object.prototype property folds like any other", () 
     const key = title.toLowerCase();
     assert.deepEqual(state.blocks.get(key), [{ id: "b1", text: "hi", children: [] }], title);
     assert.deepEqual([...state.blocks.keys()], [key], title);
-    assert.equal(state.titles.get(key), title, title);
+    assert.equal(get(state.titles, key), title, title);
   }
 });
 

@@ -21,6 +21,7 @@ import { getTaggedBy, getTags } from "./tags.ts";
 import { predictTags, reduce } from "../events/tags/slice.ts";
 import { tagAdded } from "../events/tags/added/added.ts";
 import { tagRemoved } from "../events/tags/removed/removed.ts";
+import { get } from "../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -53,7 +54,7 @@ test("tags compare through canonicalize, and show the first spelling the fold sa
   const state = fold([added("foo", "Work"), added("Other", "Fresh"), added("Other", " fresh ")], view.state);
   assert.deepEqual(getTags(state, "Foo"), ["WORK"]);
   assert.deepEqual(getTags(state, "other"), ["Fresh"]);
-  assert.equal(state.titles.get("foo"), "Foo");
+  assert.equal(get(state.titles, "foo"), "Foo");
 });
 
 test("a page named only by tags is a page: search and the page list find it, and the tag", () => {
@@ -71,7 +72,7 @@ test("a tag names a page, never creates one: removing it unnames both", () => {
   assert.equal(state.tags.size, 0);
   assert.deepEqual(searchPages(state, ""), []);
   // The spelling stays, as a link's does once the link is gone.
-  assert.equal(state.titles.get("work"), "Work");
+  assert.equal(get(state.titles, "work"), "Work");
 });
 
 test("getTaggedBy lists every page tagging a page, and drops one when its tag goes", () => {

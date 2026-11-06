@@ -12,6 +12,7 @@ import type { Graph, GraphView } from "../graph.ts";
 import { predictProperties, reduce } from "../events/properties/slice.ts";
 import { propertySet } from "../events/properties/set/set.ts";
 import { propertyRemoved } from "../events/properties/removed/removed.ts";
+import { get } from "../immutable/immutable.ts";
 
 type Event = { type: string; v: number; payload: unknown };
 
@@ -50,7 +51,7 @@ test("keys and pages compare through canonicalize, and show the first spelling t
   );
   assert.deepEqual(getProperties(state, "Foo"), [{ key: "STATUS", value: "b" }]);
   assert.deepEqual(getProperties(state, "other"), [{ key: "Fresh", value: "d" }]);
-  assert.equal(state.titles.get("foo"), "Foo");
+  assert.equal(get(state.titles, "foo"), "Foo");
 });
 
 test("a page named only by properties is a page: search finds it, and the key", () => {
@@ -64,7 +65,7 @@ test("a property names a page, never creates one: removing it unnames both", () 
   assert.equal(state.properties.size, 0);
   assert.deepEqual(searchPages(state, ""), []);
   // The spelling stays, as a link's does once the link is gone.
-  assert.equal(state.titles.get("widget"), "Widget");
+  assert.equal(get(state.titles, "widget"), "Widget");
 });
 
 test("a key that is also written on stays a page when the property goes", async () => {

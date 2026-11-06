@@ -11,6 +11,7 @@ import type { Graph } from "../../../graph.ts";
 import { getTags } from "../../../tags/tags.ts";
 import { tagAdded } from "../added/added.ts";
 import { TAG_REMOVED, tagRemoved } from "./removed.ts";
+import { get } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -32,7 +33,7 @@ test("removing a tag the page lacks changes nothing but the spellings", () => {
   assert.equal(graphFold.reduce(state, removed("foo", "b")), state);
   const named = graphFold.reduce(state, removed("Foo", "Nothing"));
   assert.equal(named.tags, state.tags);
-  assert.equal(named.titles.get("nothing"), "Nothing");
+  assert.equal(get(named.titles, "nothing"), "Nothing");
 });
 
 test("tagRemoved writes the event's own type and v", () => {

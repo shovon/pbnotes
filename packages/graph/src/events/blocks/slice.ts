@@ -4,6 +4,7 @@
  * every event module, and is imported by none of them.
  */
 import { canonicalize } from "../../canonicalize/canonicalize.ts";
+import { from as fromPairs } from "../../immutable/immutable.ts";
 import { each } from "../batch/batch.ts";
 import type { EventOf } from "../../over/over.ts";
 import { BLOCK, blocksOn } from "../../blocks/blocks.ts";
@@ -69,7 +70,7 @@ export function predict(
   const key = canonicalize(page.title);
   let state: BlockState = {
     blocks: new Map([[key, page.blocks]]),
-    titles: new Map([[key, page.title]]),
+    titles: fromPairs([[key, page.title]]),
   };
   for (const event of each(events)) {
     if (!BLOCKS.landed(state, event)) state = reduce(state, event);

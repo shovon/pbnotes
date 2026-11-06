@@ -10,6 +10,7 @@ import { graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph } from "../../../graph.ts";
 import { aliasAdded } from "../added/added.ts";
 import { ALIAS_REMOVED, aliasRemoved } from "./removed.ts";
+import { get } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -24,7 +25,7 @@ test("removing an alias the page lacks changes nothing but the spelling", () => 
   const before = fold([added("A", "B")]);
   const after = graphFold.reduce(before, removed("A", "C"));
   assert.equal(after.aliases, before.aliases);
-  assert.equal(after.titles.get("c"), "C");
+  assert.equal(get(after.titles, "c"), "C");
   assert.equal(graphFold.reduce(after, removed("a", "c")), after);
 });
 

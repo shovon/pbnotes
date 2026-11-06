@@ -10,6 +10,7 @@ import { addBlock, getAliases, graphFold, holds, invert, remember } from "../../
 import type { Graph, GraphView } from "../../../graph.ts";
 import { ALIAS_ADDED, aliasAdded } from "./added.ts";
 import { aliasRemoved } from "../removed/removed.ts";
+import { get } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -37,8 +38,8 @@ test("an added gives the page that alias, and names both", () => {
   const state = fold([added("JavaScript", "JS")]);
   assert.deepEqual(state.aliases, new Map([["javascript", new Set(["js"])]]));
   assert.deepEqual(getAliases(state, "javascript"), ["JS"]);
-  assert.equal(state.titles.get("javascript"), "JavaScript");
-  assert.equal(state.titles.get("js"), "JS");
+  assert.equal(get(state.titles, "javascript"), "JavaScript");
+  assert.equal(get(state.titles, "js"), "JS");
   assert.equal(state.blocks.size, 0);
 });
 
@@ -49,7 +50,7 @@ test("an added over a populated state keeps what was there", async () => {
   const state = fold([added("JavaScript", "JS"), added("JavaScript", "ECMAScript")], before);
   assert.equal(state.blocks, before.blocks);
   assert.deepEqual(getAliases(state, "JavaScript"), ["ECMAScript", "JS"]);
-  assert.equal(state.titles.get("node"), "Node");
+  assert.equal(get(state.titles, "node"), "Node");
 });
 
 test("aliasAdded writes the event's own type and v", () => {
