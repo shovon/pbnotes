@@ -9,6 +9,7 @@ import TaggedBy from './TaggedBy/TaggedBy';
 import Properties from './Properties/Properties';
 import type { Write } from './Properties/rows';
 import Tags from './Tags/Tags';
+import Title from './Title/Title';
 import {
   add,
   addTag,
@@ -107,6 +108,13 @@ type Props = {
    */
   linked?: boolean;
   /**
+   * Renames the page (#109): its title is edited in place. Resolves once
+   * main has written it, and rejects with main's reason when it refuses.
+   * Left off where the title is not the page's to rename here: the journal,
+   * a cut, a card.
+   */
+  onRename?: (to: string) => Promise<unknown>;
+  /**
    * Which view this is, for selecting blocks (#253): the same block shows in
    * more than one, and is selected in one at a time. The page's title when
    * left off; a cut is `under` the view it is shown in.
@@ -144,6 +152,7 @@ export default function PageView({
   zoom,
   onZoom,
   linked = false,
+  onRename,
   scope: scoped,
   act,
 }: Props) {
@@ -748,6 +757,8 @@ export default function PageView({
               </Fragment>
             ))}
           </nav>
+        ) : onRename && !linked ? (
+          <Title title={title} onRename={onRename} />
         ) : (
           <h2 className="mt-6 mb-4 text-2xl font-semibold">
             {/* A heading still, not a link in the text: no accent, and only

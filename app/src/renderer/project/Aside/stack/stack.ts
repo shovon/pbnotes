@@ -27,3 +27,16 @@ export function unshelve(stack: readonly string[], page: string): string[] {
   const kept = stack.filter((it) => canonicalize(it) !== key);
   return kept.length === stack.length ? (stack as string[]) : kept;
 }
+
+/**
+ * The page `from` is now called `to` (#109): its card reads `to`, where it
+ * was in the stack, and any other card for `to` goes. The same stack when
+ * `from` had no card.
+ */
+export function renamedIn(stack: readonly string[], from: string, to: string): string[] {
+  const was = canonicalize(from);
+  const now = canonicalize(to);
+  const at = stack.findIndex((it) => canonicalize(it) === was);
+  if (at === -1 || stack[at] === to) return stack as string[];
+  return stack.flatMap((it, i) => (i === at ? [to] : canonicalize(it) === now ? [] : [it]));
+}

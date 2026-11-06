@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shelve, unshelve } from './stack.ts';
+import { renamedIn, shelve, unshelve } from './stack.ts';
 
 test('the first page opened makes a stack of one', () => {
   assert.deepEqual(shelve([], 'Mira'), ['Mira']);
@@ -36,4 +36,12 @@ test('closing a card takes it off the stack, by canonical title', () => {
 test('closing a page not on the stack leaves the very same stack', () => {
   const stack = ['Mira'];
   assert.equal(unshelve(stack, 'Bar'), stack);
+});
+
+test('a rename keeps the card where it was, under its new title (#109)', () => {
+  assert.deepEqual(renamedIn(['Bar', 'mira', 'Baz'], 'Mira', 'Mira Sato'), ['Bar', 'Mira Sato', 'Baz']);
+  // Another card for the new title is the same page now: one card.
+  assert.deepEqual(renamedIn(['Mira', 'mira sato'], 'Mira', 'Mira Sato'), ['Mira Sato']);
+  const stack = ['Bar'];
+  assert.equal(renamedIn(stack, 'Mira', 'Mira Sato'), stack, 'the same stack');
 });
