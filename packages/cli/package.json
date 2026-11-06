@@ -1,7 +1,7 @@
 {
   "name": "@pbnotes/cli",
   "version": "0.1.0",
-  "description": "pbnotes append: write one block to the end of today's journal page, without opening the app.",
+  "description": "pbnotes on the command line: append a block to today's journal page, or import a Logseq graph into a new project.",
   "private": true,
   "type": "module",
   "bin": {
@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@pbnotes/ledger": "*",
-    "@pbnotes/graph": "*"
+    "@pbnotes/graph": "*",
+    "@pbnotes/logseq": "*"
   },
   "license": "MIT"
 }

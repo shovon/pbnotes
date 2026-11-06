@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * pbnotes append <project-folder> ["text"]
  *
@@ -12,20 +11,20 @@ import { randomUUID } from "node:crypto";
 import { text as readAll } from "node:stream/consumers";
 import { openWriter } from "@pbnotes/ledger";
 import { blockCreated, today } from "@pbnotes/graph";
+import { USAGE } from "./usage.ts";
+import type { Command } from "./usage.ts";
 
-const [command, folder, ...rest] = process.argv.slice(2);
-if (command !== "append" || !folder) {
-  console.error('usage: pbnotes append <project-folder> ["text of the block"]');
-  process.exit(2);
-}
-
-try {
-  const text = rest.length ? rest.join(" ") : (await readAll(process.stdin)).replace(/\n$/, "");
-  await using w = await openWriter(folder, "pbnotes-cli");
-  // The CLI is its own composition root: the clock and the id are chosen here.
-  const e = blockCreated(today(new Date()), text, undefined, randomUUID());
-  await w.post(e.v, e.type, e.payload);
-} catch (err) {
-  console.error((err as Error).message);
-  process.exitCode = 1;
-}
+export const append: Command = async ([folder, ...rest]) => {
+  if (!folder) return USAGE;
+  try {
+    const text = rest.length ? rest.join(" ") : (await readAll(process.stdin)).replace(/\n$/, "");
+    await using w = await openWriter(folder, "pbnotes-cli");
+    // The command is its own composition root: the clock and the id are chosen here.
+    const e = blockCreated(today(new Date()), text, undefined, randomUUID());
+    await w.post(e.v, e.type, e.payload);
+    return 0;
+  } catch (err) {
+    console.error((err as Error).message);
+    return 1;
+  }
+};
