@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ALL_PAGES, back, browse, go, home, label, leave, placeOf, rezoom } from "./trail.ts";
+import { ALL_PAGES, back, browse, go, home, label, leave, placeOf, renamed, rezoom } from "./trail.ts";
 import type { Stop } from "./trail.ts";
 
 test("a link to where the view already is adds nothing", () => {
@@ -119,4 +119,18 @@ test("the list is on no page: it is no place, and its own label", () => {
   assert.equal(label(ALL_PAGES), "All pages");
   assert.equal(label(undefined), "Journal");
   assert.equal(label({ page: "Mira", block: "b" }), "Mira");
+});
+
+test("a rename moves every stop on the page to its new title, zoom kept (#109)", () => {
+  const trail: Stop[] = [undefined, { page: "mira" }, ALL_PAGES, { page: "Mira", block: "b1" }, { page: "Bar" }];
+  assert.deepEqual(renamed(trail, "Mira", "Mira Sato"), [
+    undefined,
+    { page: "Mira Sato" },
+    ALL_PAGES,
+    { page: "Mira Sato", block: "b1" },
+    { page: "Bar" },
+  ]);
+  assert.equal(renamed(trail, "Nobody", "Else"), trail, "the same trail");
+  const done = renamed(trail, "Mira", "Mira Sato");
+  assert.equal(renamed(done, "Mira Sato", "Mira Sato"), done, "already there");
 });

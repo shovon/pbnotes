@@ -7,6 +7,7 @@ import ProjectView from '../project/ProjectView';
 import type { ProjectViewGraph } from '../project/ProjectView';
 import Welcome from '../Welcome/Welcome';
 import type { Act } from '../ui';
+import { humanize } from '../humanize/humanize';
 
 /**
  * Handed in by the composition root (`index.tsx`), never read off `window`.
@@ -27,19 +28,6 @@ type Props = {
   /** Whether this is macOS, passed on to the project that is open. */
   mac: boolean;
 };
-
-/**
- * Main rejects with messages meant for the user to read ("That directory is
- * already tracked as …"), but Electron wraps them in its own IPC prefix on the
- * way across. Strip the plumbing and keep the sentence.
- */
-function humanize(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.replace(
-    /^Error invoking remote method '[^']*':\s*(?:\w*Error:\s*)?/,
-    '',
-  );
-}
 
 export default function App({ projects: api, graph, bench, now, mac }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);

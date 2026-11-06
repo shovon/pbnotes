@@ -244,3 +244,67 @@ test("undo stops once the renamed page has changed since", () => {
   assert.equal(holds(fold(AFTER, blockCreated("Bridal Falls", "late", undefined, "late")), step), false);
   assert.equal(holds(fold(AFTER, aliasRemoved("Lake Lindeman", "Bridal Falls")), step), false);
 });
+
+// ── A page with nothing on it, only links to it ─────────────────────────────
+
+/** `Bridal Falls` is written nowhere: other pages link to it, tag it and key a property by it. */
+const LINKED_ONLY = fold(
+  graphFold.initial,
+  blockCreated("Trip", "saw [[Bridal Falls]], #[[bridal falls]] and [the falls]([[Bridal Falls]])", undefined, "t"),
+  tagAdded("Hikes", "Bridal Falls"),
+  propertySet("Hikes", "Bridal Falls", "June"),
+);
+
+test("a page with nothing on it is renamed: every link, tag and key to it follows", () => {
+  const state = fold(LINKED_ONLY, pageRenamed("Bridal Falls", "Waterfall"));
+  assert.equal(textOf(state, "Trip", "t"), "saw [[Waterfall]], #[[Waterfall]] and [the falls]([[Waterfall]])");
+  assert.deepEqual(getTags(state, "Hikes"), ["Waterfall"]);
+  assert.deepEqual(getProperties(state, "Hikes"), [{ key: "Waterfall", value: "June" }]);
+  assert.equal(getPage(state, "Bridal Falls").title, "Waterfall");
+  assert.deepEqual(getReferences(state, "Waterfall").map((it) => it.title), ["Trip"]);
+});
+
+test("a link to the old title that sorts after it still opens the renamed page, and a write there lands on it", () => {
+  const state = fold(
+    LINKED_ONLY,
+    pageRenamed("Bridal Falls", "Waterfall"),
+    blockCreated("Diary", "back at [[Bridal Falls]]", undefined, "d"),
+    blockCreated("Bridal Falls", "first note", undefined, "f"),
+  );
+  assert.equal(textOf(state, "Diary", "d"), "back at [[Bridal Falls]]");
+  assert.deepEqual(ids(getPage(state, "Waterfall").blocks), ["f"]);
+  assert.equal(getPage(state, "Bridal Falls").title, "Waterfall");
+});
+
+test("two renames of a page with nothing on it: the first in fold order wins, and the other does nothing", () => {
+  const toB = pageRenamed("Bridal Falls", "B");
+  const toC = pageRenamed("Bridal Falls", "C");
+  const one = fold(LINKED_ONLY, toB);
+  const other = fold(LINKED_ONLY, toC);
+  assert.equal(fold(one, toC), one);
+  assert.equal(fold(other, toB), other);
+  assert.equal(textOf(one, "Trip", "t")?.includes("[[B]]"), true);
+  assert.equal(textOf(other, "Trip", "t")?.includes("[[C]]"), true);
+});
+
+test("a name another page claims as an alias is not renamed out from under it", () => {
+  const state = fold(
+    graphFold.initial,
+    blockCreated("JavaScript", "x", undefined, "x"),
+    aliasAdded("JavaScript", "JS"),
+    blockCreated("Notes", "[[JS]]", undefined, "n"),
+  );
+  assert.equal(fold(state, pageRenamed("JS", "Script")), state);
+});
+
+test("renaming a page with nothing on it is undone by renaming back, leaving nothing behind", () => {
+  const events = [pageRenamed("Bridal Falls", "Waterfall")];
+  const after = fold(LINKED_ONLY, ...events);
+  const inverse = invert(LINKED_ONLY, events)!;
+  const undone = fold(after, ...inverse);
+  assert.equal(textOf(undone, "Trip", "t"), "saw [[Bridal Falls]], #[[Bridal Falls]] and [the falls]([[Bridal Falls]])");
+  assert.deepEqual(getAliases(undone, "Bridal Falls"), []);
+  assert.deepEqual(getAliases(undone, "Waterfall"), []);
+  assert.equal(getPage(undone, "Bridal Falls").title, "Bridal Falls");
+  assert.ok(holds(after, remember(LINKED_ONLY, events)));
+});

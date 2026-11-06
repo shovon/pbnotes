@@ -97,3 +97,19 @@ export function leave(trail: Stop[], page: string): Stop[] {
   const kept = end === trail.length ? trail : trail.slice(0, end);
   return kept.length === 1 && kept[0] === undefined ? [] : kept;
 }
+
+/**
+ * The page `from` is now called `to` (#109): every stop on it, zoom kept,
+ * names `to` instead, by `canonicalize`. The same trail when none was on it.
+ */
+export function renamed(trail: Stop[], from: string, to: string): Stop[] {
+  const key = canonicalize(from);
+  let changed = false;
+  const next = trail.map((stop) => {
+    const at = placeOf(stop);
+    if (at === undefined || canonicalize(at.page) !== key || at.page === to) return stop;
+    changed = true;
+    return { ...at, page: to };
+  });
+  return changed ? next : trail;
+}

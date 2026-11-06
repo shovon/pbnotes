@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RECENT_LIMIT, forget, isShowing, visit } from "./recent.ts";
+import { RECENT_LIMIT, forget, isShowing, renamedIn, visit } from "./recent.ts";
 
 test("a page opened goes first", () => {
   assert.deepEqual(visit(["Bar", "Baz"], "Mira"), ["Mira", "Bar", "Baz"]);
@@ -45,4 +45,11 @@ test("the page on screen is told apart in any spelling, and the journal is no pa
   assert.equal(isShowing("Mira", "mira"), true);
   assert.equal(isShowing("Mira", "Bar"), false);
   assert.equal(isShowing("Mira", undefined), false);
+});
+
+test("a rename keeps the entry where it was, under its new title (#109)", () => {
+  assert.deepEqual(renamedIn(["Bar", "mira", "Baz"], "Mira", "Mira Sato"), ["Bar", "Mira Sato", "Baz"]);
+  assert.deepEqual(renamedIn(["Mira Sato", "Mira"], "Mira", "mira sato"), ["mira sato"]);
+  const recent = ["Bar"];
+  assert.equal(renamedIn(recent, "Mira", "Mira Sato"), recent, "the same list");
 });

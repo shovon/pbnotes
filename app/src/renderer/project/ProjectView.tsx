@@ -9,7 +9,7 @@ import { Previews } from './Block/Block';
 import PageView from './PageView/PageView';
 import type { PageViewGraph } from './PageView/PageView';
 import { imageTarget, placeNew } from './placement/placement';
-import { ALL_PAGES, back, browse, go, home, label, leave, placeOf, rezoom } from './trail/trail';
+import { ALL_PAGES, back, browse, go, home, label, leave, placeOf, renamed, rezoom } from './trail/trail';
 import type { Stop } from './trail/trail';
 import { samePlace } from './held/held';
 import type { Held } from './held/held';
@@ -20,10 +20,11 @@ import { INITIAL } from './AllPages/sort/sort';
 import type { Sort } from './AllPages/sort/sort';
 import PageMenu from './PageMenu/PageMenu';
 import { deletedSince } from './deleted/deleted';
+import { renamedSince } from './renamed/renamed';
 import { opensFinder } from './Finder/shortcut/shortcut';
 import Sidebar from './Sidebar/Sidebar';
 import Toggle from './Sidebar/Toggle/Toggle';
-import { forget, visit } from './Sidebar/recent/recent';
+import { forget, renamedIn as renamedInRecent, visit } from './Sidebar/recent/recent';
 import { togglesSidebar } from './Sidebar/shortcut/shortcut';
 import { createDispatcher } from './undo/dispatcher/dispatcher';
 import { watchFields } from './undo/fields';
@@ -55,7 +56,7 @@ import { decode } from './selection/clip/clip';
 import Aside from './Aside/Aside';
 import Card from './Aside/Card/Card';
 import type { Shown as CardShown } from './Aside/Card/Card';
-import { shelve, unshelve } from './Aside/stack/stack';
+import { renamedIn as renamedInStack, shelve, unshelve } from './Aside/stack/stack';
 import { INITIAL_WIDTH } from './Aside/width/width';
 import type { Clipped } from './selection/clip/clip';
 import { asText, dataUrl, imageNames, picked } from './selection/copy/copy';
@@ -193,6 +194,26 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   };
 
   /**
+   * The page `from` is now called `to` (#109): the trail, Recent and the
+   * sidebar's cards read `to` wherever they held `from`, so the window moves
+   * with the page. Silent, and the same whoever renamed it: this window, or
+   * another window or machine (`renamed/`). Each step hands back what it was
+   * given when nothing changes, so following twice is following once.
+   */
+  const followRename = useRef<(from: string, to: string) => void>(() => undefined);
+  followRename.current = (from, to) => {
+    setTrail((trail) => renamed(trail, from, to));
+    setRecent((recent) => ({ ...recent, list: renamedInRecent(recent.list, from, to) }));
+    setAside((stack) => renamedInStack(stack, from, to));
+    setAsideShown((all) => {
+      if (!all.has(canonicalize(from))) return all;
+      const left = new Map(all);
+      left.delete(canonicalize(from));
+      return left;
+    });
+  };
+
+  /**
    * When to ask main what shows here, and which answer to draw (`fetcher/`).
    * A failure goes through `act`, so a project that cannot be reached still
    * says so; the fetch itself does not, since it is not a gesture and runs
@@ -204,9 +225,16 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       where: () => latest.current,
       onAnswer: (next) => {
         const gone = deletedSince(shown.current, next);
+        const moved = renamedSince(shown.current, next);
         shown.current = next;
         setHeld(next);
         if (gone !== undefined) deletedElsewhere.current(gone);
+        if (moved !== undefined) {
+          // The trail holds the name the window asked by, which may be an
+          // alias or a date name rather than the title.
+          followRename.current(moved.from, moved.to);
+          if (next.place) followRename.current(next.place.page, moved.to);
+        }
       },
       onError: (error) => act(() => Promise.reject(error)),
     }),
@@ -494,6 +522,20 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       throw new Error('That block no longer exists.');
     });
   }, [zoom, zoomed]);
+
+  /**
+   * The title edited in place (#109): `from` renamed to `to`, and the window
+   * goes with it once main has written it. By the title and by the name the
+   * view was asked for, which may be an alias or a date name: a day renamed
+   * away leaves no alias, so the window has to move itself. Not through
+   * `act`: the title shows a refusal under itself, and keeps what was typed.
+   */
+  const renamePage = async (from: string, to: string) => {
+    const by = asked;
+    await bridge.run({ type: 'renamePage', title: from, to });
+    followRename.current(from, to);
+    if (by !== null) followRename.current(by, to);
+  };
 
   /**
    * The ⋯ menu's delete, once confirmed. Off the page first, back past every
@@ -1358,6 +1400,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
                   onZoom={(block) => step((trail) => rezoom(trail, block))}
                   // No title is the journal: each day heads one of many.
                   linked={title === null}
+                  onRename={(to) => renamePage(page.title, to)}
                   act={act}
                 />
               </div>
