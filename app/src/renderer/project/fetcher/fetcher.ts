@@ -3,10 +3,11 @@
  * keeps. It asks on every move, and on hearing the fold reached a version
  * the view it holds lacks, unless a fetch already on its way covers it.
  *
- * On the journal it also holds which days to ask for (#282): every day on
- * or after `from`. Main picks the first `from`, and the fetcher keeps asking
- * for that one, so a change never shrinks the journal under the user's
- * scroll; `more` lowers it to the `from` main named for older days.
+ * It also holds how far the place's list is loaded (`PlaceView.list`): the
+ * journal's days (#282), or a page's linked references (#285). Main picks
+ * the first `through`, and the fetcher keeps asking for that one, so a
+ * change never shrinks the list under the user's scroll; `more` moves it on
+ * to the `through` main named for a chunk more. Each place starts over.
  *
  * Built from what it reaches outside, so a test can hand it a fake `view`
  * whose answers arrive late, out of order, or not at all. `ProjectView`
@@ -17,8 +18,8 @@ import { keep, samePlace } from '../held/held.ts';
 import type { Held } from '../held/held.ts';
 
 export type FetcherPorts = {
-  /** Asks main what shows at a place, or on the journal from `from` on. */
-  view: (place: Place | undefined, from: string | undefined) => Promise<PlaceView>;
+  /** Asks main what shows at a place, its list loaded `through` a day or title. */
+  view: (place: Place | undefined, through: string | undefined) => Promise<PlaceView>;
   /** The place the window is on now. */
   where: () => Place | undefined;
   /** A new view to draw. */
@@ -33,8 +34,9 @@ export type Fetcher = {
   /** The fold reached `v`: a notice from main, or a write's reply. */
   heard: (v: number) => void;
   /**
-   * The journal's older days are wanted: ask for the ones main said come
-   * next. Nothing on a page, with no older days, or with them already asked.
+   * More of the list is wanted: the journal's older days, or a page's next
+   * linked references. Asks for the chunk main said comes next; nothing
+   * when all of it is loaded, or the chunk is asked for already.
    */
   more: () => void;
 };
@@ -45,26 +47,27 @@ export function createFetcher({ view, where, onAnswer, onError }: FetcherPorts):
   let known = 0;
   /** The highest version a fetch already asked for is sure to reach. */
   let covered = 0;
-  /** Where the journal starts, or undefined until main first says. */
-  let from: string | undefined;
+  /** How far the list is loaded, or undefined until main first says. */
+  let through: string | undefined;
 
   /**
    * Main reads the fold when it answers, so the answer holds every version
    * heard of by now. An answer that lands after the window has moved on, or
-   * behind one already held, is dropped (`held/`). So is a journal read for
-   * a window since widened: the fetch for the wider one is on its way, and
-   * when it is not (two first answers, each with a `from` of main's), the
-   * newer version is asked for again over the window held.
+   * behind one already held, is dropped (`held/`). So is one read for a
+   * list loaded less far than it is now: the fetch for the longer one is on
+   * its way, and when it is not (two first answers, each with a `through` of
+   * main's), the newer version is asked for again over what is held.
    */
   const ask = () => {
     const at = where();
-    const window = at ? undefined : from;
+    const asked = through;
     covered = known;
-    view(at, window).then(
+    view(at, asked).then(
       (answer) => {
-        const journal = !at && !where();
-        if (journal && from === undefined) from = answer.journal?.from;
-        else if (journal && window !== from) {
+        const here = samePlace(at, where());
+        if (here && asked === undefined && through === undefined) {
+          through = answer.list?.through ?? undefined;
+        } else if (here && asked !== through) {
           if (answer.version > (held?.view.version ?? 0)) ask();
           return;
         }
@@ -82,8 +85,9 @@ export function createFetcher({ view, where, onAnswer, onError }: FetcherPorts):
 
   return {
     moved: () => {
-      // Back on the journal from elsewhere, it starts over at main's newest days.
-      if (where()) from = undefined;
+      // A place's list is its own: the journal starts over at its newest
+      // days, and a page at its own blocks.
+      through = undefined;
       ask();
     },
     heard: (v) => {
@@ -93,9 +97,9 @@ export function createFetcher({ view, where, onAnswer, onError }: FetcherPorts):
       ask();
     },
     more: () => {
-      const next = held && !held.place && !where() ? held.view.journal?.next : undefined;
-      if (!next || (from !== undefined && next >= from)) return;
-      from = next;
+      const next = held && samePlace(held.place, where()) ? held.view.list?.next : undefined;
+      if (!next || next === through) return;
+      through = next;
       ask();
     },
   };

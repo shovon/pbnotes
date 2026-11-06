@@ -103,13 +103,19 @@ function requirePlace(place: unknown): Place | undefined {
  * scheme against `images`.
  */
 export function registerGraphIpc(session: GraphSession, images: Images): void {
-  ipcMain.handle(GRAPH_CHANNELS.view, (_event, place: unknown, today: unknown, from: unknown) =>
-    session.view(
-      requirePlace(place),
+  // How far the view's list is loaded: a day on the journal (#282), a
+  // title on a page (#285). Any string for a title: it is only compared,
+  // and it is the spelling a link gave a page, which a title check could refuse.
+  ipcMain.handle(GRAPH_CHANNELS.view, (_event, place: unknown, today: unknown, through: unknown) => {
+    const at = requirePlace(place);
+    return session.view(
+      at,
       requireDay(today),
-      from === undefined || from === null ? undefined : requireDay(from, "from"),
-    ),
-  );
+      through === undefined || through === null
+        ? undefined
+        : at ? requireString(through, "through") : requireDay(through, "through"),
+    );
+  });
 
   ipcMain.handle(GRAPH_CHANNELS.locate, (_event, blockId: unknown) =>
     session.locate(requireString(blockId, "blockId")),

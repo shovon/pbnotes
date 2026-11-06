@@ -304,7 +304,8 @@ test("a page's own view counts the refs other graph hold to its blocks", async (
   await graph.run({ type: "addBlock", id: "a3", title: TODAY, text: "((a1))" });
   const own = (await graph.view({ page: "Mira" }, TODAY)).showing[0];
   assert.equal(own.refsTo, 2);
-  assert.equal(own.references[0].blocks.length, 1);
+  // The one block linking here, counted before any is loaded (#285).
+  assert.equal(own.links, 1);
   // Not walked where no delete is offered.
   assert.equal((await graph.view({ page: "Mira", block: "a1" }, TODAY)).showing[0].refsTo, 0);
   assert.ok((await graph.view(undefined, TODAY)).showing.every((it) => it.refsTo === 0));
