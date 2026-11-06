@@ -181,27 +181,37 @@ export default function App({ projects: api, graph, bench, now, mac }: Props) {
           window, so docked DevTools caps it too. Its rule hangs just below
           the measured strip rather than inside it, where the Windows and
           Linux controls, which are opaque, would paint over its right end.
-          It is a handle as well: the gap beside the buttons drags too. */}
+          It is a handle as well: the gap beside the buttons drags too.
+
+          The header is a layer above the backing, because the sidebar's
+          column reaches up through the strip, over the backing and under
+          the toggle and picker. */}
       <div
         aria-hidden
         className="app-region-drag fixed inset-x-0 top-0 z-20 box-content h-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] border-b border-line bg-bg"
       />
       <header
         id="titlebar"
-        className="app-region-drag fixed z-20 top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,5rem)] flex h-[env(titlebar-area-height,var(--spacing-titlebar))] w-[env(titlebar-area-width,calc(100%-5rem))] max-w-[calc(100%-env(titlebar-area-x,5rem))] items-center"
+        className="app-region-drag fixed z-30 top-[env(titlebar-area-y,0px)] left-[env(titlebar-area-x,5rem)] flex h-[env(titlebar-area-height,var(--spacing-titlebar))] w-[env(titlebar-area-width,calc(100%-5rem))] max-w-[calc(100%-env(titlebar-area-x,5rem))] items-center"
       >
         {/* Where the open project puts its sidebar toggle: first, before the
             picker. A portal adds to the end of what it is handed, so the
             project is handed this rather than the header. */}
-        <div id="titlebar-start" className="contents" />
-        {project && (
-          <ProjectPicker
-            projects={projects}
-            projectId={project.id}
-            onSelect={openProject}
-            onAdd={addProjects}
-          />
-        )}
+        {/* While the sidebar is open, the toggle and picker take at least
+            the sidebar's width, so what the page adds after them (the way
+            back) starts past its edge rather than over it. A long project
+            name pushes it further, never under. */}
+        <div className="flex shrink-0 items-center [:root:has([data-sidebar])_&]:min-w-[calc(var(--spacing-sidebar)-env(titlebar-area-x,5rem))]">
+          <div id="titlebar-start" className="contents" />
+          {project && (
+            <ProjectPicker
+              projects={projects}
+              projectId={project.id}
+              onSelect={openProject}
+              onAdd={addProjects}
+            />
+          )}
+        </div>
       </header>
 
       {/* While the sidebar is in the DOM (it is left out when collapsed),
