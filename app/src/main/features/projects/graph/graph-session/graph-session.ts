@@ -17,6 +17,7 @@ import {
   outdentBlocks,
   pasteBlocks,
   deletePage,
+  renamePage,
   editBlock,
   indentBlock,
   listPages,
@@ -284,6 +285,8 @@ function apply(view: GraphView, command: Exclude<Command, Taking>): Promise<unkn
       return removeTag(view, command.title, command.tag);
     case "deletePage":
       return deletePage(view, command.title);
+    case "renamePage":
+      return renamePage(view, command.title, command.to);
     default: {
       // Does not compile once `Command` has a case this switch lacks.
       const unhandled: never = command;

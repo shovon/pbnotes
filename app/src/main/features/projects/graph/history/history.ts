@@ -69,7 +69,9 @@ function whereOf(before: Graph, after: Graph, events: readonly Batched[]): Where
     const id = text(event.payload, "id");
     const found = id === undefined ? undefined : find(after, id) ?? find(before, id);
     if (id !== undefined && found) return { page: found.page, block: id };
-    const page = text(event.payload, "page");
+    // A rename by its old name, which opens the page whichever way the step
+    // was last taken: the page itself once undone, its alias once redone.
+    const page = text(event.payload, "page") ?? text(event.payload, "from");
     if (page !== undefined) return { page: titleOf(after, page) };
   }
   return undefined;

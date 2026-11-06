@@ -9,6 +9,7 @@
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { field } from "../events/events.ts";
 import { keyOf } from "../blocks/blocks.ts";
+import { dateOf } from "../journal/journal.ts";
 import type { BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { DeleteState } from "../deletes/deletes.ts";
@@ -36,8 +37,9 @@ function when(event: { at?: unknown }): number | undefined {
 }
 
 /**
- * The page an event is about: the one its payload names, or for a block
- * event that names only a block, the page that block is on before or after.
+ * The page an event is about: the one its payload names (a rename's `to`),
+ * or for a block event that names only a block, the page that block is on
+ * before or after.
  */
 function pageOf(
   before: BlockState,
@@ -47,6 +49,9 @@ function pageOf(
   if (typeof payload !== "object" || payload === null) return undefined;
   const page = field(payload, "page");
   if (typeof page === "string") return page;
+  // A rename changes the page it lands on, which a date name files as its day.
+  const to = field(payload, "to");
+  if (typeof to === "string") return dateOf(to) ?? to;
   const id = field(payload, "id");
   if (typeof id !== "string") return undefined;
   return keyOf(before, id) ?? keyOf(after, id);

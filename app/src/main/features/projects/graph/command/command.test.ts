@@ -32,6 +32,7 @@ test("each command passes with the fields it reads", () => {
     { type: "addTag", title: "Mira", tag: "Work" },
     { type: "removeTag", title: "Mira", tag: "Work" },
     { type: "deletePage", title: "Mira" },
+    { type: "renamePage", title: "Mira", to: "Mira Sato" },
     { type: "undo" },
     { type: "redo" },
   ];
@@ -98,6 +99,10 @@ test("a missing or wrong-typed field is refused", () => {
     { type: "deletePage", title: 3 },
     { type: "deletePage", title: "" },
     { type: "deletePage", title: " Mira" },
+    { type: "renamePage", title: "Mira" },
+    { type: "renamePage", title: "Mira", to: "" },
+    { type: "renamePage", title: "Mira", to: " Sato" },
+    { type: "renamePage", title: 1, to: "Sato" },
   ];
   for (const command of bad) {
     assert.throws(() => requireCommand(command), TypeError, JSON.stringify(command));

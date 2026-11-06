@@ -289,6 +289,22 @@ test("a page delete is recorded in order with the writes around it", async () =>
   assert.equal(seen.showing[0].deletions, 1);
 });
 
+test("a rename is one write, one undo step, and refused with a reason when the fold would skip it (#108)", async () => {
+  const { view } = ledger();
+  const { graph } = session(view);
+  await graph.run({ type: "addBlock", id: "a1", title: "Mira", text: "hello" });
+  await graph.run({ type: "addBlock", id: "b1", title: "Notes", text: "met [[Mira]]" });
+  const before = view.version;
+  assert.equal(await graph.run({ type: "renamePage", title: "mira", to: "Mira Sato" }), before + 1);
+  assert.deepEqual(blocksOn(view.state, "Mira Sato").map((it) => it.id), ["a1"]);
+  assert.deepEqual(blocksOn(view.state, "Notes").map((it) => it.text), ["met [[Mira Sato]]"]);
+  await assert.rejects(graph.run({ type: "renamePage", title: "Mira Sato", to: "Notes" }), /already has content/);
+  const undone = await graph.run({ type: "undo" });
+  assert.deepEqual([undone.result, undone.page], ["done", "Mira"]);
+  assert.deepEqual(blocksOn(view.state, "Mira").map((it) => it.id), ["a1"]);
+  assert.deepEqual(blocksOn(view.state, "Notes").map((it) => it.text), ["met [[Mira]]"]);
+});
+
 test("deleting a page with nothing on it writes nothing", async () => {
   const { view } = ledger();
   const { graph } = session(view);
