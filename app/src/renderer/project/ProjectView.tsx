@@ -39,6 +39,7 @@ import {
   emptyPages as readEmptyPages,
   rows as readRows,
   shown as readShown,
+  beside as besideScope,
 } from './selection/shown';
 import { watchDrag } from './selection/sweep/watch';
 import { THRESHOLD } from './selection/sweep/sweep';
@@ -51,6 +52,11 @@ import type { Entry } from './selection/shown';
 import { covered, roots } from './selection/roots/roots';
 import { command, picks } from './selection/shortcut/shortcut';
 import { decode } from './selection/clip/clip';
+import Aside from './Aside/Aside';
+import Card from './Aside/Card/Card';
+import type { Shown as CardShown } from './Aside/Card/Card';
+import { shelve, unshelve } from './Aside/stack/stack';
+import { INITIAL_WIDTH } from './Aside/width/width';
 import type { Clipped } from './selection/clip/clip';
 import { asText, dataUrl, imageNames, picked } from './selection/copy/copy';
 import { asHtml } from './selection/copy/html/html';
@@ -305,6 +311,31 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   };
 
   /**
+   * The pages kept open in the right sidebar (#287), most recently opened
+   * first (`Aside/stack/`), and how wide it is. Neither is kept: the
+   * sidebar starts empty, and hidden, every time. Each card is a page view
+   * of its own, inside this view's, so selecting, dragging and following a
+   * link work there as they do on the page.
+   */
+  const [aside, setAside] = useState<string[]>([]);
+  const [asideWidth, setAsideWidth] = useState(INITIAL_WIDTH);
+  /** What each card draws, by canonical title: for a copy of blocks selected in one. */
+  const [asideShown, setAsideShown] = useState<ReadonlyMap<string, CardShown>>(new Map());
+  /** Shift+click on a page, wherever it is: on top of the right sidebar. */
+  const putAside = (page: string) => act(async () => setAside((stack) => shelve(stack, page)));
+  /** A click on a page, Shift held or not. */
+  const open = (page: string, beside: boolean) =>
+    beside ? putAside(page) : step((trail) => go(trail, { page }));
+  const closeCard = (page: string) => {
+    setAside((stack) => unshelve(stack, page));
+    setAsideShown((all) => {
+      const left = new Map(all);
+      left.delete(canonicalize(page));
+      return left;
+    });
+  };
+
+  /**
    * Undo (#247): the menu's Undo and Redo, and the browser's own undo from
    * any field, go to one dispatcher. The open field's history first, then
    * main's, through `act`, so a refused undo lands in the app's notice.
@@ -530,6 +561,13 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
     const page = link?.getAttribute('href')?.slice(1);
     if (!page) return;
     event.preventDefault();
+    // Shift+click keeps the page open beside this one (#287), wherever the
+    // link is, a card's own blocks included.
+    if (event.shiftKey) {
+      event.stopPropagation();
+      putAside(page);
+      return;
+    }
     // A link to the page already open goes nowhere, so there is no
     // navigation here to keep the editor closed for: let the click through
     // to the block, which opens it. Every block listed under a page holds
@@ -717,7 +755,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
         if (!around && !root.contains(target)) return undefined;
         const row = target.closest<HTMLElement>('[data-slot]')?.dataset.slot;
         const own = target.closest(
-          '[data-block-ref], a, img, button, input, select, [contenteditable="true"], [role="button"]:not([data-block-id])',
+          '[data-block-ref], a, img, button, input, select, [contenteditable="true"], [role="button"]:not([data-block-id]), [role="separator"]',
         );
         if (own) return undefined;
         if (target.closest('textarea') && row === undefined) return undefined;
@@ -860,7 +898,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   /** What shows has changed: what is gone drops out of the selection. */
   useEffect(() => {
     setChosen((it) => it && followShown(it, onScreen().map((entry) => entry.key)));
-  }, [held, browsing]);
+  }, [held, browsing, asideShown]);
 
   /** Up and Down keep the block they reach in sight. */
   useEffect(() => {
@@ -955,10 +993,13 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    */
   const shownBlocks = (blockIds: string[]): Block[] => {
     if (!held) return [];
-    const trees = held.view.showing.flatMap(({ page, references }) => [
-      page.blocks,
-      ...references.map((it) => it.blocks),
-    ]);
+    const trees = [
+      ...held.view.showing.flatMap(({ page, references }) => [
+        page.blocks,
+        ...references.map((it) => it.blocks),
+      ]),
+      ...[...asideShown.values()].map((it) => it.page.blocks),
+    ];
     return picked(trees, blockIds);
   };
   /**
@@ -1207,7 +1248,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           browsing={browsing}
           onJournal={() => step(home)}
           onAllPages={() => step(browse)}
-          onOpen={(page) => step((trail) => go(trail, { page }))}
+          onOpen={open}
         />
       )}
       {titlebarStart !== null &&
@@ -1218,10 +1259,10 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       {finding && (
         <Finder
           find={graph.find}
-          onOpen={(hit) => {
+          onOpen={(hit, beside) => {
             setFinding(false);
             if ('block' in hit) goToBlock(hit.block);
-            else step((trail) => go(trail, { page: hit.page }));
+            else open(hit.page, beside);
           }}
           onClose={() => setFinding(false)}
         />
@@ -1229,6 +1270,13 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
       <div
         ref={wrapper}
         onClickCapture={follow}
+        // Shift+click on a link opens it beside (#287): not a run of text
+        // selected up to it on the way down.
+        onMouseDown={(event) => {
+          if (event.shiftKey && (event.target as Element).closest('a.wikilink[href]')) {
+            event.preventDefault();
+          }
+        }}
         onContextMenu={blockMenu}
         // A drop is only offered where `dragover` was refused its default.
         onDragOver={(event) => {
@@ -1264,7 +1312,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
             graph={graph}
             sort={sort}
             onSort={setSort}
-            onOpen={(page) => step((trail) => go(trail, { page }))}
+            onOpen={open}
             onError={(error) => act(() => Promise.reject(error))}
           />
         )}
@@ -1316,6 +1364,28 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
             ))
           )}
         </Previews>
+        {/* Inside the view, so a card's blocks are selected, dragged and
+            followed like the page's. */}
+        {aside.length > 0 && (
+          <Aside width={asideWidth} onResize={setAsideWidth}>
+            {aside.map((page) => (
+              // By canonical title, so a card is never handed another
+              // page's editor state, as the pages on the left are not.
+              <Card
+                key={canonicalize(page)}
+                graph={graph}
+                title={page}
+                now={now}
+                scope={besideScope(page)}
+                onClose={() => closeCard(page)}
+                onShown={(it) =>
+                  setAsideShown((all) => new Map(all).set(canonicalize(page), it))
+                }
+                act={act}
+              />
+            ))}
+          </Aside>
+        )}
         </Dragging.Provider>
         {!browsing && held?.view.list?.next && (
           <p ref={older} className="mt-1 text-sm text-muted">

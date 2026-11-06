@@ -30,6 +30,14 @@ export function under(scope: string, title: string): string {
 }
 
 /**
+ * The scope of `title` kept open in the right sidebar (#287): never the
+ * scope the same page has on the left, or a cut of it.
+ */
+export function beside(title: string): string {
+  return JSON.stringify({ beside: title });
+}
+
+/**
  * The attributes a view puts on a block it draws. `parent` is the block it
  * shows under, if any; `whole` says the view shows the whole page, so its
  * top blocks are the page's top level, which a drop above them can name

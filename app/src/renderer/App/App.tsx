@@ -218,8 +218,10 @@ export default function App({ projects: api, graph, bench, now, mac }: Props) {
 
       {/* While the sidebar is in the DOM (it is left out when collapsed),
           the page is centred in the room beside it rather than in the
-          window, and narrows when there is less than its width. */}
-      <div className="has-[[data-sidebar]]:pl-sidebar">
+          window, and narrows when there is less than its width. The same
+          for the right sidebar (#287), which is there only while it holds a
+          page, and sets its own width. */}
+      <div className="has-[[data-sidebar]]:pl-sidebar has-[[data-aside]]:pr-(--aside-width)">
         <main className="mx-auto box-content max-w-page px-6 pt-[calc(var(--spacing-titlebar)+--spacing(3))] pb-12">
           {notice && (
             <p

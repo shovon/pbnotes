@@ -19,7 +19,8 @@ type Props = {
   browsing: boolean;
   onJournal: () => void;
   onAllPages: () => void;
-  onOpen: (page: string) => void;
+  /** A recent page was clicked; `beside` is Shift held, for the right sidebar (#287). */
+  onOpen: (page: string, beside: boolean) => void;
 };
 
 const entry =
@@ -69,7 +70,7 @@ export default function Sidebar({ recent, showing, browsing, onJournal, onAllPag
                   aria-current={here ? 'page' : undefined}
                   // Truncated to one line; the whole title on hover.
                   title={page}
-                  onClick={() => onOpen(page)}
+                  onClick={(event) => onOpen(page, event.shiftKey)}
                 >
                   {page}
                 </button>
