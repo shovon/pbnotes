@@ -14,7 +14,9 @@ import { canonicalize } from "../../../canonicalize/canonicalize.ts";
 import { field, namespaced } from "../../events.ts";
 import type { Named } from "../../events.ts";
 import type { Written } from "../../../over/over.ts";
-import { ids, stillGone } from "../../../blocks/blocks.ts";
+import * as forest from "../../../forest/forest.ts";
+import * as map from "../../../immutable/immutable.ts";
+import { pageBlocks, stillGone } from "../../../blocks/blocks.ts";
 import { recreate } from "../../blocks/created/created.ts";
 import { propertySet } from "../../properties/set/set.ts";
 import { tagAdded } from "../../tags/added/added.ts";
@@ -34,16 +36,14 @@ export const PAGE_DELETED = DELETE.define({
   },
   apply: (state, { page }) => {
     const key = canonicalize(page);
-    const blocks = new Map(state.blocks);
-    blocks.delete(key);
-    const properties = new Map(state.properties);
-    properties.delete(key);
-    const tags = new Map(state.tags);
-    tags.delete(key);
-    const aliases = new Map(state.aliases);
-    aliases.delete(key);
-    const deletions = new Map(state.deletions).set(key, (state.deletions.get(key) ?? 0) + 1);
-    return { ...state, blocks, properties, tags, aliases, deletions };
+    let texts = state.texts;
+    for (const gone of forest.inGroup(state.forest, key)) texts = map.remove(texts, gone);
+    const blocks = forest.dropGroup(state.forest, key);
+    const properties = map.remove(state.properties, key);
+    const tags = map.remove(state.tags, key);
+    const aliases = map.remove(state.aliases, key);
+    const deletions = map.put(state.deletions, key, (map.get(state.deletions, key) ?? 0) + 1);
+    return { ...state, forest: blocks, texts, properties, tags, aliases, deletions };
   },
   undo: {
     // Every block back in place, then every property, tag and alias, each
@@ -51,23 +51,23 @@ export const PAGE_DELETED = DELETE.define({
     inverse: (state, { page }) => {
       const key = canonicalize(page);
       const title = titleOf(state, page);
-      const blocks = state.blocks.get(key) ?? [];
+      const blocks = pageBlocks(state, key);
       return [
         ...blocks.flatMap((block, at) =>
           recreate(title, block, at === 0 ? { first: true } : { after: blocks[at - 1].id }),
         ),
-        ...[...(state.properties.get(key) ?? [])].map(([name, value]) =>
+        ...[...(map.get(state.properties, key) ?? [])].map(([name, value]) =>
           propertySet(title, titleOf(state, name), value),
         ),
-        ...[...(state.tags.get(key) ?? [])].map((tag) => tagAdded(title, titleOf(state, tag))),
-        ...[...(state.aliases.get(key) ?? [])].map((alias) =>
+        ...[...(map.get(state.tags, key) ?? [])].map((tag) => tagAdded(title, titleOf(state, tag))),
+        ...[...(map.get(state.aliases, key) ?? [])].map((alias) =>
           aliasAdded(title, titleOf(state, alias)),
         ),
       ];
     },
     // A page that gained something since still takes its old content back
     // (#224): only what it held coming back from elsewhere stops it.
-    touched: (state, { page }) => [stillGone(ids(state.blocks.get(canonicalize(page)) ?? []))],
+    touched: (state, { page }) => [stillGone(forest.inGroup(state.forest, canonicalize(page)))],
   },
 });
 

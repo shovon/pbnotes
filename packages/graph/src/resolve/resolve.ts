@@ -20,12 +20,14 @@
  * Read, never stored: removing an alias, or writing on a name, changes what
  * it opens at once, and no ledger needs a migration.
  */
+import * as map from "../immutable/immutable.ts";
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { DATE_PATTERN, dateOf, namesOf } from "../journal/journal.ts";
 import { titleOf } from "../titles/titles.ts";
 import { claims } from "../aliases/aliases.ts";
 import type { AliasState } from "../aliases/aliases.ts";
 import type { BlockState } from "../blocks/blocks.ts";
+import * as forest from "../forest/forest.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { TagState } from "../tags/tags.ts";
 
@@ -61,13 +63,13 @@ export function resolver(state: Holds): Resolver {
 
   /** Rule 1: blocks, properties or tags of its own. Aliases are rule 4. */
   const own = (key: string) =>
-    (state.blocks.get(key)?.length ?? 0) > 0 ||
-    (state.properties.get(key)?.size ?? 0) > 0 ||
-    (state.tags.get(key)?.size ?? 0) > 0;
+    forest.rootsOf(state.forest, key).length > 0 ||
+    (map.get(state.properties, key)?.size ?? 0) > 0 ||
+    (map.get(state.tags, key)?.size ?? 0) > 0;
 
   /** Whether rules 1 to 4 leave `key` to an alias. */
   const free = (key: string) =>
-    !own(key) && dateOf(key) === undefined && !DATE_PATTERN.test(key) && !state.aliases.has(key);
+    !own(key) && dateOf(key) === undefined && !DATE_PATTERN.test(key) && !map.has(state.aliases, key);
 
   /** A page an alias opens, as rules 1 and 2 have it: a date name is its day. */
   const settle = (key: string) => (own(key) ? key : dateOf(key) ?? key);
@@ -99,11 +101,11 @@ export function resolver(state: Holds): Resolver {
       return to === undefined ? undefined : titleOf(state, to);
     },
     aliases: (page) =>
-      [...(state.aliases.get(page) ?? [])].filter((alias) => alias !== page && key(alias) === page),
+      [...(map.get(state.aliases, page) ?? [])].filter((alias) => alias !== page && key(alias) === page),
     names: (page) => [
       page,
       ...new Set(
-        [...namesOf(page).map(canonicalize), ...(state.aliases.get(page) ?? [])].filter(
+        [...namesOf(page).map(canonicalize), ...(map.get(state.aliases, page) ?? [])].filter(
           (name) => name !== page && key(name) === page,
         ),
       ),

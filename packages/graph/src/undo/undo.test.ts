@@ -35,6 +35,7 @@ import {
 import type { Batched, Graph } from "../graph.ts";
 import { CANNOT, holds as holdsWith, invert as invertWith, remember as rememberWith, same } from "./undo.ts";
 import type { Undo, UndoTable } from "./undo.ts";
+import { get } from "../immutable/immutable.ts";
 
 /** `invert`'s answer for a step that can be undone: never `undefined`. */
 function inverseOf(before: Graph, events: Batched[]): Batched[] {
@@ -53,8 +54,8 @@ function fold(state: Graph, ...events: Batched[]): Graph {
  * gains spellings, and not `deletions` or `edited`, which count and date.
  */
 function held(graph: Graph) {
-  const { blocks, properties, tags, aliases } = graph;
-  return { blocks, properties, tags, aliases };
+  const { forest, texts, properties, tags, aliases } = graph;
+  return { forest, texts, properties, tags, aliases };
 }
 
 /**
@@ -162,7 +163,7 @@ test("an outdent that took siblings along goes back exactly", () => {
 test("a deleted page comes back whole, spelled as it was", () => {
   const { undone } = roundTrip("delete Foo", [pageDeleted("foo")]);
   assert.equal(shape(undone), "a(a1 a2) b(b1) c");
-  assert.deepEqual(undone.properties.get("foo"), new Map([["owner", "Mira"]]));
+  assert.deepEqual(get(undone.properties, "foo"), new Map([["owner", "Mira"]]));
   const inverse = inverseOf(START, [pageDeleted("foo")]);
   assert.ok(inverse.every((it) => (it.payload as { page: string }).page === "Foo"));
 });
@@ -336,7 +337,7 @@ test("a remembered step holds no graph, neither the one before it nor the one af
   const after = fold(START, ...events);
   const remembered = remember(START, events);
   for (const graph of [START, after]) {
-    for (const part of [graph, graph.blocks, graph.properties, graph.titles, graph.tags]) {
+    for (const part of [graph, graph.forest, graph.texts, graph.properties, graph.titles, graph.tags]) {
       assert.equal(reaches(remembered, part), false);
     }
   }

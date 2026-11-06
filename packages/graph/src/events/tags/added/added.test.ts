@@ -41,7 +41,7 @@ test("an added gives the page that tag, and names both pages", () => {
   assert.deepEqual(getTaggedBy(state, "work"), ["Foo"]);
   assert.equal(get(state.titles, "foo"), "Foo");
   assert.equal(get(state.titles, "work"), "Work");
-  assert.equal(state.blocks.size, 0);
+  assert.equal(state.forest.nodes.size, 0);
 });
 
 test("an added over a populated state keeps what was there", async () => {
@@ -49,7 +49,8 @@ test("an added over a populated state keeps what was there", async () => {
   await addBlock(view, "Foo", "see [[Baz]]", undefined, "f");
   const before = fold([added("Foo", "Work")], view.state);
   const state = fold([added("Foo", "Home"), added("Bar", "Work")], before);
-  assert.equal(state.blocks, before.blocks);
+  assert.equal(state.forest, before.forest);
+  assert.equal(state.texts, before.texts);
   assert.deepEqual(getTags(state, "Foo"), ["Home", "Work"]);
   assert.deepEqual(getTags(state, "Bar"), ["Work"]);
   assert.equal(get(state.titles, "baz"), "Baz");

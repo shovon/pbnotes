@@ -9,19 +9,8 @@ import type { Named } from "../../events.ts";
 import type { Written } from "../../../over/over.ts";
 import { spell } from "../../../titles/titles.ts";
 import { same } from "../../../undo/undo.ts";
-import {
-  BLOCK,
-  blocksOn,
-  find,
-  ids,
-  placeOf,
-  placedAt,
-  position,
-  sitsAt,
-  stringField,
-  withId,
-  without,
-} from "../../../blocks/blocks.ts";
+import * as forest from "../../../forest/forest.ts";
+import { BLOCK, find, placeOf, placedAt, position, sitsAt, stringField, withId } from "../../../blocks/blocks.ts";
 import type { BlockMoved, BlockState } from "../../../blocks/blocks.ts";
 
 export const BLOCK_MOVED = BLOCK.define({
@@ -70,20 +59,14 @@ export const BLOCK_MOVED = BLOCK.define({
  */
 function moved<S extends BlockState>(state: S, it: BlockMoved): S | undefined {
   const { id, page, ...place } = it;
-  const found = find(state, id);
-  if (!found || sitsAt(state, id, page, place)) return undefined;
-  // Read before the detach, so the whole subtree moves.
-  const moving = found.siblings[found.at];
-  const inside = new Set(ids([moving]));
-  if ((place.after && inside.has(place.after)) || (place.parent && inside.has(place.parent))) {
-    return undefined;
-  }
-  const blocks = new Map(state.blocks).set(canonicalize(found.page), without(found.blocks, id));
-  const next = placedAt(blocksOn({ blocks }, page), moving, place);
-  if (!next) return undefined;
+  if (!forest.has(state.forest, id) || sitsAt(state, id, page, place)) return undefined;
+  const inside = (other: string | undefined) => other !== undefined && forest.within(state.forest, other, id);
+  if (inside(place.after) || inside(place.parent)) return undefined;
+  const spot = placedAt(state, canonicalize(page), place);
+  if (!spot) return undefined;
   return {
     ...state,
-    blocks: blocks.set(canonicalize(page), next),
+    forest: forest.move(state.forest, id, spot),
     // A page nothing was written on yet is spelled as the move wrote it.
     titles: spell(state.titles, [page]),
   };

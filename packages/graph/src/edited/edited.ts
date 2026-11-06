@@ -8,7 +8,7 @@
  */
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { field } from "../events/events.ts";
-import { find } from "../blocks/blocks.ts";
+import { keyOf } from "../blocks/blocks.ts";
 import type { BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { DeleteState } from "../deletes/deletes.ts";
@@ -49,7 +49,7 @@ function pageOf(
   if (typeof page === "string") return page;
   const id = field(payload, "id");
   if (typeof id !== "string") return undefined;
-  return (find(before, id) ?? find(after, id))?.page;
+  return keyOf(before, id) ?? keyOf(after, id);
 }
 
 /**
@@ -66,7 +66,8 @@ export function reduce<S extends Holds>(
   event: { at?: unknown; payload: unknown },
 ): S {
   if (
-    after.blocks === before.blocks &&
+    after.forest === before.forest &&
+    after.texts === before.texts &&
     after.properties === before.properties &&
     after.tags === before.tags &&
     after.aliases === before.aliases &&

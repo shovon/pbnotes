@@ -3,8 +3,12 @@
  * builds and dispatches. Each event's builder is its own module.
  */
 import type { Written } from "../over/over.ts";
-import { blocksOn, find, ids, indented, locate, outdented, placedAt, sitsAt } from "./blocks.ts";
-import type { Block, BlockState, Found, Page, Place } from "./blocks.ts";
+import { canonicalize } from "../canonicalize/canonicalize.ts";
+import * as forest from "../forest/forest.ts";
+import { blocksOn, find, isOn, placedAt, sitsAt } from "./blocks.ts";
+import type { BlockState, Found, Page, Place } from "./blocks.ts";
+import { ids, locate } from "./tree.ts";
+import type { Block } from "./tree.ts";
 import { getPage } from "./queries.ts";
 import { reduce } from "../events/blocks/slice.ts";
 import type { PageEvent } from "../events/blocks/slice.ts";
@@ -76,14 +80,8 @@ export async function addBlock(
   if (first && (after || parent)) {
     throw new Error("A first block cannot have an after or a parent");
   }
-  const blocks = blocksOn(view.state, title);
-  const sibling = after ? locate(blocks, after) : undefined;
-  if (after && !sibling) throw new Error("No such block");
-  if (parent && !locate(blocks, parent)) throw new Error("No such block");
-  if (after && parent && sibling?.parent?.id !== parent) {
-    throw new Error("That block is not a child of the parent");
-  }
-  if (find(view.state, id)) throw new Error("That block already exists");
+  checkPlace(view.state, canonicalize(title), { after, parent });
+  if (forest.has(view.state.forest, id)) throw new Error("That block already exists");
   // dispatch appends before it folds, so the page handed back can never show
   // something a crash takes.
   await append(view, blockCreated(title, text, after, id, parent, first));
@@ -148,22 +146,19 @@ export async function pasteBlocks(
   const resolved = kept(view.state, pasting);
   const named = ids(resolved);
   if (new Set(named).size !== named.length) throw new Error("A pasted block is named twice");
-  if (named.some((id) => find(view.state, id))) throw new Error("That block already exists");
-  const blocks = blocksOn(view.state, title);
+  if (named.some((id) => forest.has(view.state.forest, id))) throw new Error("That block already exists");
+  const key = canonicalize(title);
   if ("into" in at) {
-    if (!locate(blocks, at.into)) throw new Error("No such block");
+    if (!isOn(view.state, at.into, key)) throw new Error("No such block");
   } else {
     const { after, parent, first } = at;
     if (first && (after || parent)) {
       throw new Error("A first block cannot have an after or a parent");
     }
-    const sibling = after ? locate(blocks, after) : undefined;
-    if (after && !sibling) throw new Error("No such block");
-    if (parent && !locate(blocks, parent)) throw new Error("No such block");
-    if (after && parent && sibling?.parent?.id !== parent) {
-      throw new Error("That block is not a child of the parent");
-    }
+    checkPlace(view.state, key, { after, parent });
   }
+  // A paste is built from the page as a tree, as a view drawing it ahead builds it.
+  const blocks = blocksOn(view.state, title);
   const events =
     ("into" in at && resolved[0].id === pasting[0].was
       ? replacing(blocks, title, resolved, at.into)
@@ -181,7 +176,7 @@ function kept(state: BlockState, pasting: readonly Pasting[]): Block[] {
   const taken = new Set<string>();
   const walk = (blocks: readonly Pasting[]): Block[] =>
     blocks.map(({ id, text, children, was }) => {
-      const keep = was !== undefined && !taken.has(was) && !find(state, was);
+      const keep = was !== undefined && !taken.has(was) && !forest.has(state.forest, was);
       if (keep) taken.add(was);
       return { id: keep ? was : id, text, children: walk(children) };
     });
@@ -220,8 +215,7 @@ function replacing(blocks: Block[], title: string, pasting: Block[], into: strin
  */
 export function indentBlocks(view: BlocksView, blockIds: readonly string[]): Promise<void> {
   return inTurn(view, blockIds, (state, id) => {
-    const found = find(state, id);
-    const payload = found && indented(found.blocks, id);
+    const payload = indentOf(state, id);
     return payload && blockIndented(payload);
   });
 }
@@ -238,8 +232,7 @@ export function indentBlocks(view: BlocksView, blockIds: readonly string[]): Pro
  */
 export function outdentBlocks(view: BlocksView, blockIds: readonly string[]): Promise<void> {
   return inTurn(view, blockIds, (state, id) => {
-    const found = find(state, id);
-    const payload = found && outdented(found.blocks, id);
+    const payload = outdentOf(state, id);
     return payload && blockOutdented(payload);
   });
 }
@@ -276,12 +269,12 @@ async function inTurn(
 function topMost(state: BlockState, blockIds: readonly string[]): string[] {
   const asked = new Set(blockIds);
   const held = (id: string): boolean => {
-    for (let up = find(state, id)?.parent; up; up = find(state, up.id)?.parent) {
-      if (asked.has(up.id)) return true;
+    for (let up = forest.node(state.forest, id)?.parent; up; up = forest.node(state.forest, up)?.parent) {
+      if (asked.has(up)) return true;
     }
     return false;
   };
-  return [...asked].filter((id) => find(state, id) && !held(id));
+  return [...asked].filter((id) => forest.has(state.forest, id) && !held(id));
 }
 
 /**
@@ -290,8 +283,8 @@ function topMost(state: BlockState, blockIds: readonly string[]): string[] {
  * siblings writes nothing.
  */
 export function indentBlock(view: BlocksView, blockId: string): Promise<Page> {
-  return onExisting(view, blockId, (found) => {
-    const payload = indented(found.blocks, blockId);
+  return onExisting(view, blockId, () => {
+    const payload = indentOf(view.state, blockId);
     return payload && blockIndented(payload);
   });
 }
@@ -301,8 +294,8 @@ export function indentBlock(view: BlocksView, blockId: string): Promise<Page> {
  * siblings below it as its children. A top-level block writes nothing.
  */
 export function outdentBlock(view: BlocksView, blockId: string): Promise<Page> {
-  return onExisting(view, blockId, (found) => {
-    const payload = outdented(found.blocks, blockId);
+  return onExisting(view, blockId, () => {
+    const payload = outdentOf(view.state, blockId);
     return payload && blockOutdented(payload);
   });
 }
@@ -356,7 +349,7 @@ export async function moveBlocks(
       events.push(event);
       state = reduce(state, event);
     }
-    const parent = find(state, id)?.parent?.id;
+    const parent = find(state, id)?.parent;
     at = { after: id, ...(parent === undefined ? {} : { parent }) };
   }
   if (events.length > 0) await append(view, events.length === 1 ? events[0] : batch(events));
@@ -375,18 +368,39 @@ function checkMove(state: BlockState, blockIds: readonly string[], title: string
   if (blockIds.length === 0) throw new Error("No such block");
   const inside = new Set<string>();
   for (const id of blockIds) {
-    const found = find(state, id);
-    if (!found) throw new Error("No such block");
-    for (const it of ids([found.siblings[found.at]])) inside.add(it);
+    if (!forest.has(state.forest, id)) throw new Error("No such block");
+    for (const it of forest.subtree(state.forest, id)) inside.add(it);
   }
   if ((after && inside.has(after)) || (parent && inside.has(parent))) {
     throw new Error("A block cannot move into itself");
   }
-  const blocks = blocksOn(state, title);
-  if (after && !locate(blocks, after)) throw new Error("No such block");
-  if (parent && !locate(blocks, parent)) throw new Error("No such block");
-  const found = find(state, blockIds[0]);
-  if (found && !placedAt(blocks, found.siblings[found.at], place)) {
+  const key = canonicalize(title);
+  if (after && !isOn(state, after, key)) throw new Error("No such block");
+  if (parent && !isOn(state, parent, key)) throw new Error("No such block");
+  if (!placedAt(state, key, place)) throw new Error("That block is not a child of the parent");
+}
+
+/**
+ * Throws unless `after` and `parent` mean something on the page `key`, as a
+ * new block's place: each on the page, and `after` one of `parent`'s
+ * children when both are given.
+ */
+function checkPlace(state: BlockState, key: string, { after, parent }: Place): void {
+  if (after && !isOn(state, after, key)) throw new Error("No such block");
+  if (parent && !isOn(state, parent, key)) throw new Error("No such block");
+  if (after && parent && forest.node(state.forest, after)!.parent !== parent) {
     throw new Error("That block is not a child of the parent");
   }
+}
+
+/** What indenting the block `id` is: filed under the sibling above it. Undefined for one first among its siblings. */
+function indentOf(state: BlockState, id: string): { id: string; parent: string } | undefined {
+  const found = find(state, id);
+  return found && found.at > 0 ? { id, parent: found.siblings[found.at - 1] } : undefined;
+}
+
+/** What outdenting the block `id` is: directly beneath the block it hangs under. Undefined at the top level. */
+function outdentOf(state: BlockState, id: string): { id: string; after: string } | undefined {
+  const parent = find(state, id)?.parent;
+  return parent ? { id, after: parent } : undefined;
 }

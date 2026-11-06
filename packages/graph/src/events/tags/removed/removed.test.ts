@@ -11,7 +11,7 @@ import type { Graph } from "../../../graph.ts";
 import { getTags } from "../../../tags/tags.ts";
 import { tagAdded } from "../added/added.ts";
 import { TAG_REMOVED, tagRemoved } from "./removed.ts";
-import { get } from "../../../immutable/immutable.ts";
+import { get, has } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -25,7 +25,7 @@ const removed = (page: string, tag: string): Event => tagRemoved(page, tag);
 test("removing a page's last tag deletes its entry; removing one of two keeps the other", () => {
   const two = fold([added("Foo", "A"), added("Foo", "B")]);
   assert.deepEqual(getTags(fold([removed("Foo", "A")], two), "Foo"), ["B"]);
-  assert.equal(fold([removed("Foo", "A"), removed("Foo", "B")], two).tags.has("foo"), false);
+  assert.equal(has(fold([removed("Foo", "A"), removed("Foo", "B")], two).tags, "foo"), false);
 });
 
 test("removing a tag the page lacks changes nothing but the spellings", () => {

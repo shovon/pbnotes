@@ -39,7 +39,7 @@ test("a set gives the page that property, and names both the page and the key", 
   assert.deepEqual(getProperties(state, "bar"), [{ key: "Widget", value: "blue" }]);
   assert.equal(get(state.titles, "bar"), "Bar");
   assert.equal(get(state.titles, "widget"), "Widget");
-  assert.equal(state.blocks.size, 0);
+  assert.equal(state.forest.nodes.size, 0);
 });
 
 test("a set over a populated state keeps what was there", async () => {
@@ -47,7 +47,8 @@ test("a set over a populated state keeps what was there", async () => {
   await addBlock(view, "Foo", "see [[Baz]]", undefined, "f");
   const before = view.state;
   const state = fold([set("Bar", "Widget", "blue"), set("Foo", "Status", "done")], before);
-  assert.equal(state.blocks, before.blocks);
+  assert.equal(state.forest, before.forest);
+  assert.equal(state.texts, before.texts);
   assert.deepEqual(getProperties(state, "Foo"), [{ key: "Status", value: "done" }]);
   assert.deepEqual(getProperties(state, "Bar"), [{ key: "Widget", value: "blue" }]);
   assert.equal(get(state.titles, "baz"), "Baz");

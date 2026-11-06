@@ -91,3 +91,13 @@ test("an event this build skips leaves the graph as it was, edited included", ()
   });
   assert.equal(skipped, state);
 });
+
+test("an edit to the text a block already has is a repeat: it changes nothing, and the page is not edited", () => {
+  const written = fold(
+    [blockCreated("Mira", "hi", undefined, "a"), "2026-11-01T10:00:00.000Z"],
+    [blockEdited("a", "hello"), "2026-11-02T09:00:00.000Z"],
+  );
+  const again = graphFold.reduce(written, { ...blockEdited("a", "hello"), at: "2026-11-03T09:00:00.000Z" });
+  assert.equal(again, written, "the same graph, so undo sees no step either");
+  assert.equal(getEdited(again, "Mira"), ms("2026-11-02T09:00:00.000Z"));
+});

@@ -7,6 +7,7 @@
  * folds to nothing, and writes nothing for a change that changes nothing, so
  * the log does not collect events that mean nothing.
  */
+import * as map from "../immutable/immutable.ts";
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { getTags } from "./tags.ts";
 import type { TagState } from "./tags.ts";
@@ -26,7 +27,7 @@ export type TagsView = {
 
 /** Whether `page` points to `tag` as the fold holds it. */
 function has(state: TagState, page: string, tag: string): boolean {
-  return state.tags.get(canonicalize(page))?.has(canonicalize(tag)) ?? false;
+  return map.get(state.tags, canonicalize(page))?.has(canonicalize(tag)) ?? false;
 }
 
 /** The fold's rule for a page or a tag: something, once trimmed. */

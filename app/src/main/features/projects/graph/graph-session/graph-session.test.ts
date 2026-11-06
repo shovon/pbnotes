@@ -1,12 +1,15 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blockEdited, blockIndented, graphFold } from "@pbnotes/graph";
+import { blockEdited, blockIndented, blocksOn, getDeletions, graphFold, listPages } from "@pbnotes/graph";
 import type { Batched, Graph } from "@pbnotes/graph";
 import { createGraphSession } from "./graph-session.ts";
 import { createHistory, stepOf } from "../history/history.ts";
 import type { History } from "../history/history.ts";
 import type { GraphView } from "./graph-session.ts";
+
+/** Every page, by title, with its blocks: in title order, so a test can read them in order. */
+const pagesOf = (graph: Graph) => listPages(graph).map(({ title }) => [title, blocksOn(graph, title)] as const);
 
 /**
  * A ledger held in memory: the real fold, a version that moves with it as
@@ -46,7 +49,7 @@ function ledger() {
   };
   /** Every top-level block's text, page by page. */
   const texts = () =>
-    [...state.blocks.values()].flatMap((blocks) =>
+    pagesOf(state).flatMap(([, blocks]) =>
       blocks.map((block) => block.text),
     );
   return { view, hold, texts, arrive: fold, writes: () => writes };
@@ -314,11 +317,11 @@ test("a page's own view counts the refs other graph hold to its blocks", async (
  * A page with no blocks is left out: every page is in the graph, and one
  * whose last block moved away again is the same as one never written.
  */
-const held = ({ blocks, properties, tags, aliases }: Graph) => ({
-  blocks: new Map([...blocks].filter(([, it]) => it.length > 0)),
-  properties,
-  tags,
-  aliases,
+const held = (graph: Graph) => ({
+  blocks: new Map(pagesOf(graph).filter(([, it]) => it.length > 0)),
+  properties: graph.properties,
+  tags: graph.tags,
+  aliases: graph.aliases,
 });
 
 /** Ids for the blocks the tests write. */
@@ -393,7 +396,7 @@ test("undoing a delete writes one record, and says where it was", async () => {
   assert.equal(writes(), before + 1, "one batch");
   assert.deepEqual(undone, { version: view.version, result: "done", page: "Foo", block: A });
   assert.deepEqual(
-    (view.state.blocks.get("foo") ?? []).map((it) => it.id),
+    (blocksOn(view.state, "foo")).map((it) => it.id),
     [A, C],
     "back in its place, its child with it",
   );
@@ -405,7 +408,7 @@ test("undoing a delete writes one record, and says where it was", async () => {
 test("deleting several blocks, across pages, is one step that one undo brings back (#258)", async () => {
   const { graph, view, writes } = await written();
   const shape = () =>
-    ["foo", "bar"].map((page) => (view.state.blocks.get(page) ?? []).map((it) => it.id).join(" "));
+    ["foo", "bar"].map((page) => blocksOn(view.state, page).map((it) => it.id).join(" "));
   const start = shape();
   const before = writes();
   // `b1` is under `a1`, and goes with it.
@@ -415,7 +418,7 @@ test("deleting several blocks, across pages, is one step that one undo brings ba
   const undone = await graph.run({ type: "undo" });
   assert.deepEqual([undone.result, undone.page, undone.block], ["done", "Foo", A]);
   assert.deepEqual(shape(), start, "every block back where it was");
-  assert.equal((view.state.blocks.get("foo") ?? [])[0]?.children[0]?.id, B, "the child under its parent");
+  assert.equal((blocksOn(view.state, "foo"))[0]?.children[0]?.id, B, "the child under its parent");
   assert.equal((await graph.run({ type: "undo" })).result, "done", "the step before it, not more of this one");
 });
 
@@ -425,7 +428,7 @@ test("a Tab with one block that cannot indent, on any page, writes nothing and i
   // `c1` can go under `a1`, but `d1` is first on `Bar`.
   await graph.run({ type: "indentBlocks", blockIds: [C, "d1"] });
   assert.equal(writes(), before, "nothing written");
-  assert.equal((view.state.blocks.get("foo") ?? []).at(-1)?.id, C, "c1 where it was");
+  assert.equal((blocksOn(view.state, "foo")).at(-1)?.id, C, "c1 where it was");
   const undone = await graph.run({ type: "undo" });
   assert.notEqual(undone.block, C, "undo takes the step before, not a Tab that did nothing");
 });
@@ -436,7 +439,7 @@ test("a Shift+Tab with one block already top-level, on any page, writes nothing 
   // `b1` can come out from under `a1`, but `d1` is top-level on `Bar`.
   await graph.run({ type: "outdentBlocks", blockIds: [B, "d1"] });
   assert.equal(writes(), before, "nothing written");
-  assert.equal((view.state.blocks.get("foo") ?? [])[0]?.children[0]?.id, B, "b1 where it was");
+  assert.equal((blocksOn(view.state, "foo"))[0]?.children[0]?.id, B, "b1 where it was");
   const undone = await graph.run({ type: "undo" });
   assert.notEqual(undone.block, B, "undo takes the step before, not a Shift+Tab that did nothing");
 });
@@ -492,11 +495,11 @@ test("a move to where the block already is writes nothing and is no step (#251)"
 test("redoing a page delete deletes the page again, not its blocks one by one", async () => {
   const { graph, view } = await written();
   await graph.run({ type: "deletePage", title: "Foo" });
-  const deleted = view.state.deletions.get("foo");
+  const deleted = getDeletions(view.state, "foo");
   await graph.run({ type: "undo" });
   await graph.run({ type: "redo" });
-  assert.equal(view.state.deletions.get("foo"), (deleted ?? 0) + 1, "a page delete, counted");
-  assert.equal(view.state.blocks.has("foo"), false);
+  assert.equal(getDeletions(view.state, "foo"), deleted + 1, "a page delete, counted");
+  assert.deepEqual(blocksOn(view.state, "foo"), [], "and nothing left on it");
 });
 
 test("undo goes back step by step, last first", async () => {
