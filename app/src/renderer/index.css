@@ -254,3 +254,11 @@ html[data-dragging-block],
 html[data-dragging-block] * {
   cursor: grabbing !important;
 }
+
+/* Resizing the right sidebar (#287): the same, for its edge, and no text
+   selected under the pointer on the way. */
+html[data-resizing-aside],
+html[data-resizing-aside] * {
+  cursor: col-resize !important;
+  user-select: none;
+}
