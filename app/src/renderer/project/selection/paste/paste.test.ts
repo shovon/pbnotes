@@ -19,6 +19,15 @@ test('every pasted block gets a new id, nested as it was copied', () => {
   );
 });
 
+test('a cut block carries the id it was cut with beside its new one (#246)', () => {
+  let n = 0;
+  const newId = () => `id-${++n}`;
+  assert.deepEqual(
+    withIds([{ text: 'a', id: 'old-a', children: [{ text: 'b', children: [] }] }], newId),
+    [{ id: 'id-1', was: 'old-a', text: 'a', children: [{ id: 'id-2', text: 'b', children: [] }] }],
+  );
+});
+
 test('the end of the page with no zoom, and the end of the zoomed block with one', () => {
   assert.deepEqual(endOf(undefined), {});
   assert.deepEqual(endOf(block('r', 'R', block('x', 'X'), block('y', 'Y'))), { after: 'y', parent: 'r' });

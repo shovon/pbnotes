@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deleteLabel, readOffer } from "./block-menu.ts";
+import { cutLabel, deleteLabel, readOffer } from "./block-menu.ts";
 
 test("an offer to delete is read", () => {
   assert.deepEqual(readOffer({ delete: true }), { delete: true });
@@ -40,4 +40,9 @@ test("Copy Block Reference is hidden by a plain false, and by nothing else (#261
 test("the delete item names how many blocks go", () => {
   assert.equal(deleteLabel({ delete: true }), "Delete Block");
   assert.equal(deleteLabel({ delete: true, count: 3 }), "Delete 3 Blocks");
+});
+
+test("the cut item names how many blocks go, as the delete item does (#246)", () => {
+  assert.equal(cutLabel({ delete: true }), "Cut Block");
+  assert.equal(cutLabel({ delete: true, count: 3 }), "Cut 3 Blocks");
 });

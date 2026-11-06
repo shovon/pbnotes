@@ -13,12 +13,17 @@ import { localImage } from '../copy/copy.ts';
 /** Where the first pasted block goes, as `pasteBlocks` takes it. */
 export type Spot = { after?: string; parent?: string } | { into: string };
 
-/** `blocks` with a new id each, from `newId`, nested as they were. */
+/**
+ * `blocks` with a new id each, from `newId`, nested as they were. A block
+ * from a cut (#246) also carries the id it was cut with, which main keeps
+ * when the project does not hold it.
+ */
 export function withIds(blocks: readonly Copied[], newId: () => string): Pasted[] {
   return blocks.map((block) => ({
     id: newId(),
     text: block.text,
     children: withIds(block.children, newId),
+    ...(block.id === undefined ? {} : { was: block.id }),
   }));
 }
 
@@ -68,7 +73,7 @@ export function relinked(blocks: readonly Copied[], renames: ReadonlyMap<string,
       text += block.text.slice(at, span.start) + source.replace(`images/${localImage(span.url)}`, `images/${to}`);
       at = span.end;
     }
-    return { text: text + block.text.slice(at), children: relinked(block.children, renames) };
+    return { ...block, text: text + block.text.slice(at), children: relinked(block.children, renames) };
   });
 }
 

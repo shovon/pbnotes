@@ -326,10 +326,14 @@ export default function PageView({
       if (count !== undefined && count > 1) {
         // Copy Block Reference would copy one of them: not offered (#261).
         const offer = { delete: true, count, reference: false };
-        if ((await graph.blockMenu(block.id, offer)) === 'delete') selecting.removeChosen();
+        const pick = await graph.blockMenu(block.id, offer);
+        if (pick === 'delete') selecting.removeChosen();
+        if (pick === 'cut') selecting.cut(slotKey(scope, block.id), block.id);
         return;
       }
       const pick = await graph.blockMenu(block.id, { delete: true });
+      // Cut is the project view's, which puts it on the clipboard first (#246).
+      if (pick === 'cut') return selecting.cut(slotKey(scope, block.id), block.id);
       if (pick !== 'delete') return;
       const now = latest.current;
       const next = afterRemove(now.blocks, block.id, {

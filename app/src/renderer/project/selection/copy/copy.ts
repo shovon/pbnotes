@@ -43,9 +43,16 @@ function every(block: Block): string[] {
   return [block.id, ...block.children.flatMap(every)];
 }
 
-/** `blocks` as they travel: their text and their nesting, and no ids. */
-export function copied(blocks: readonly Block[]): Copied[] {
-  return blocks.map((block) => ({ text: block.text, children: copied(block.children) }));
+/**
+ * `blocks` as they travel: their text and their nesting, and with `ids`
+ * (a cut, #246) each block's id. A copy carries none.
+ */
+export function copied(blocks: readonly Block[], ids = false): Copied[] {
+  return blocks.map((block) => ({
+    text: block.text,
+    children: copied(block.children, ids),
+    ...(ids ? { id: block.id } : {}),
+  }));
 }
 
 /** How deep a ref is followed into the block it shows, and that block's refs into theirs. */

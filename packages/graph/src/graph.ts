@@ -144,6 +144,7 @@ export {
   outdentBlock,
   pasteBlocks,
 } from "./blocks/commands.ts";
+export type { Pasting } from "./blocks/commands.ts";
 export { pasted } from "./blocks/paste/paste.ts";
 export type { PasteAt } from "./blocks/paste/paste.ts";
 export { getEdited } from "./edited/edited.ts";

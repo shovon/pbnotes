@@ -22,6 +22,11 @@ export function readOffer(offer: unknown): BlockMenuOffer {
     : { ...hidden, delete: true };
 }
 
+/** What the cut item says (#246): the block alone, or how many go, as for delete. */
+export function cutLabel(offer: BlockMenuOffer): string {
+  return offer.count ? `Cut ${offer.count} Blocks` : "Cut Block";
+}
+
 /** What the delete item says: the block alone, or how many go. */
 export function deleteLabel(offer: BlockMenuOffer): string {
   return offer.count ? `Delete ${offer.count} Blocks` : "Delete Block";

@@ -12,8 +12,12 @@
  * Pure, and free of the DOM, so it runs under `node --test`.
  */
 
-/** A copied block: its text, and what hangs under it. No id: a paste names its own. */
-export type Copied = { text: string; children: Copied[] };
+/**
+ * A copied block: its text, and what hangs under it. A copy carries no id,
+ * since a paste names its own. A cut (#246) carries the id the block had, so
+ * the first paste of it can put that very block back.
+ */
+export type Copied = { text: string; children: Copied[]; id?: string };
 
 /** The attribute the blocks ride in. */
 export const ATTRIBUTE = 'data-pbnotes';
@@ -71,7 +75,11 @@ export function decode(html: string): Clipped | undefined {
   }
 }
 
-/** `raw` as copied blocks, built fresh from the two fields each reads, or undefined. */
+/**
+ * `raw` as copied blocks, built fresh from the fields each reads, or
+ * undefined. An `id` that is not a short string is left off: the block is
+ * still read, and pastes as a copy.
+ */
 function blocksOf(raw: unknown): Copied[] | undefined {
   let count = 0;
   const read = (it: unknown, depth: number): Copied[] | undefined => {
@@ -85,7 +93,9 @@ function blocksOf(raw: unknown): Copied[] | undefined {
         ? read((block as { children: unknown }).children, depth + 1)
         : undefined;
       if (typeof text !== 'string' || !under) return undefined;
-      out.push({ text, children: under });
+      const id = Object.hasOwn(block, 'id') ? (block as { id: unknown }).id : undefined;
+      const named = typeof id === 'string' && id.length > 0 && id.length <= 64 ? { id } : {};
+      out.push({ text, children: under, ...named });
     }
     return out;
   };

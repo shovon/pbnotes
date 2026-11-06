@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 import { CARRY_COUNT, CARRY_LIMIT, IMAGE_SCHEME, GRAPH_CHANNELS } from "../../../../shared/graph";
 import type { BlockMenuPick, CarriedImage, Clip, PageMenuPick, Place } from "../../../../shared/graph";
 import { requireString } from "../../../ipc";
-import { deleteLabel, readOffer } from "./block-menu/block-menu";
+import { cutLabel, deleteLabel, readOffer } from "./block-menu/block-menu";
 import { readOffer as readPageOffer, readPoint } from "./page-menu/page-menu";
 import { requireCommand, requireDay, requireTitle } from "./command/command";
 import type { GraphSession } from "./graph-session/graph-session";
@@ -222,6 +222,11 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
             // Apart from copying: one leaves the notes as they were, and
             // this one does not.
             ...(items.length > 0 ? [{ type: "separator" as const }] : []),
+            // Cut takes the blocks off the page, as delete does (#246).
+            {
+              label: cutLabel(offered),
+              click: () => resolve("cut"),
+            },
             {
               label: deleteLabel(offered),
               click: () => resolve("delete"),
