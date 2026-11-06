@@ -96,7 +96,7 @@ export type {
   Place,
 } from "./blocks/blocks.ts";
 export type { PageEvent } from "./events/blocks/slice.ts";
-export { getPages, getPreviews, linking, locateBlock, searchBlocks } from "./blocks/queries.ts";
+export { getDays, getPages, getPreviews, linking, locateBlock, searchBlocks } from "./blocks/queries.ts";
 export type { BlockMatch } from "./blocks/queries.ts";
 export { propertySet } from "./events/properties/set/set.ts";
 export { propertyRemoved } from "./events/properties/removed/removed.ts";

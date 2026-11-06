@@ -57,8 +57,9 @@ export type PlaceView = {
    */
   version: number;
   /**
-   * What is showing: the one page at the place, or the journal — every day
-   * with something on it, newest first, and today whether or not it has.
+   * What is showing: the one page at the place, or the journal — the days
+   * in `journal`'s window with something on them, newest first, and today
+   * whether or not it has.
    * Each with what links to it, cut down to the blocks that do; none under a
    * zoom, where what links to one block is not what links to its page. And
    * each with its properties, in every mode: whether to draw them is the
@@ -84,12 +85,20 @@ export type PlaceView = {
     refsTo: number;
   }[];
   /**
-   * What each `((id))` in the project shows: the id and the Markdown of that
-   * block's first paragraph, or null for an id the project does not have.
+   * What each `((id))` on the pages showing shows, and each one inside
+   * those (#282): the id and the Markdown of that block's first paragraph,
+   * or null for an id the project does not have.
    * Pairs, not an object: an id is whatever was typed between the
    * parentheses, and `((__proto__))` is a key an object does not hold.
    */
   previews: [string, string | null][];
+  /**
+   * Which days the journal shows (#282), on the journal only: every day on
+   * or after `from`, and today. `next` is the `from` to ask for to show more
+   * days, or null when there are none older. A window that asks again keeps
+   * asking for the `from` it holds, so the days on screen stay on screen.
+   */
+  journal?: { from: string; next: string | null };
 };
 
 /** What `find` answers with: page titles, each with the page it opens, then blocks. */
@@ -146,10 +155,11 @@ export const GRAPH_CHANNELS = {
 export type GraphApi = {
   /**
    * What shows at `place`, or with none the journal, read with `today` as
-   * the day on top of it. `today` is the window's clock, not main's.
+   * the day on top of it: every day on or after `from` (#282), or the newest
+   * few without one. `today` is the window's clock, not main's.
    * Rejects when the project cannot be reached.
    */
-  view(place: Place | undefined, today: string): Promise<PlaceView>;
+  view(place: Place | undefined, today: string, from?: string): Promise<PlaceView>;
   /**
    * Calls `listener` with the fold's version every time it moves: a write
    * from any window, and another device's segment landing in the folder

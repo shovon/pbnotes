@@ -8,7 +8,10 @@ import { createFetcher } from './fetcher.ts';
 /** A fetch the test answers by hand. */
 type Asked = {
   place: Place | undefined;
-  answer: (version: number) => Promise<void>;
+  /** Where the journal was asked from: undefined for main's newest days. */
+  from: string | undefined;
+  /** Answers at `version`, on the journal with `journal` as its window. */
+  answer: (version: number, journal?: PlaceView['journal']) => Promise<void>;
   fail: (error: unknown) => Promise<void>;
 };
 
@@ -21,12 +24,13 @@ const setup = (start?: Place) => {
   const answers: Held[] = [];
   const errors: unknown[] = [];
   const fetcher = createFetcher({
-    view: (place) =>
+    view: (place, from) =>
       new Promise<PlaceView>((resolve, reject) => {
         asked.push({
           place,
-          answer: (version) => {
-            resolve({ version, showing: [], previews: [] });
+          from,
+          answer: (version, journal) => {
+            resolve({ version, showing: [], previews: [], ...(journal ? { journal } : {}) });
             return settle();
           },
           fail: (error) => {
@@ -149,4 +153,71 @@ test('a failed fetch is reported, and the next notice fetches again', async () =
   assert.deepEqual(errors, [error]);
   fetcher.heard(6);
   assert.equal(asked.length, 3);
+});
+
+test('the journal asks from where main first said, every time after (#282)', async () => {
+  const { fetcher, asked } = setup();
+  fetcher.moved();
+  await asked[0].answer(5, { from: '2026-09-10', next: '2026-08-30' });
+  fetcher.heard(6);
+  assert.deepEqual(asked.map((it) => it.from), [undefined, '2026-09-10']);
+});
+
+test('more asks from the next older days once, and holds the wider journal (#282)', async () => {
+  const { fetcher, asked, answers } = setup();
+  fetcher.moved();
+  await asked[0].answer(5, { from: '2026-09-10', next: '2026-08-30' });
+  fetcher.more();
+  fetcher.more(); // the marker seen again before the answer
+  assert.deepEqual(asked.map((it) => it.from), [undefined, '2026-08-30']);
+  await asked[1].answer(5, { from: '2026-08-30', next: null });
+  assert.deepEqual(answers.map((it) => it.view.journal?.from), ['2026-09-10', '2026-08-30']);
+  fetcher.more(); // nothing older
+  fetcher.heard(6);
+  assert.deepEqual(asked.map((it) => it.from), [undefined, '2026-08-30', '2026-08-30']);
+});
+
+test('a journal read for the window before more is not held, even when it lands last (#282)', async () => {
+  const { fetcher, asked, answers } = setup();
+  fetcher.moved();
+  await asked[0].answer(5, { from: '2026-09-10', next: '2026-08-30' });
+  fetcher.heard(6); // asks from 09-10
+  fetcher.more(); // asks from 08-30
+  await asked[2].answer(6, { from: '2026-08-30', next: null });
+  await asked[1].answer(6, { from: '2026-09-10', next: '2026-08-30' });
+  assert.deepEqual(answers.map((it) => it.view.journal?.from), ['2026-09-10', '2026-08-30']);
+  assert.equal(asked.length, 3, "the wider one held it already: nothing asked again");
+});
+
+test('a second first answer, newer than the one held, is asked for again over the window held (#282)', async () => {
+  const { fetcher, asked, answers } = setup();
+  fetcher.moved();
+  fetcher.heard(6); // before any answer: a second fetch from main's newest days
+  await asked[0].answer(5, { from: '2026-09-10', next: null });
+  // A day arrived between the two, so main's newest days start later.
+  await asked[1].answer(6, { from: '2026-09-11', next: '2026-09-10' });
+  assert.deepEqual(asked.map((it) => it.from), [undefined, undefined, '2026-09-10']);
+  await asked[2].answer(6, { from: '2026-09-10', next: null });
+  assert.deepEqual(answers.map((it) => [it.view.version, it.view.journal?.from]), [
+    [5, '2026-09-10'],
+    [6, '2026-09-10'],
+  ]);
+});
+
+test('more does nothing on a page, and the journal starts over after one (#282)', async () => {
+  const { fetcher, asked, go } = setup();
+  fetcher.moved();
+  await asked[0].answer(5, { from: '2026-09-10', next: '2026-08-30' });
+  fetcher.more();
+  await asked[1].answer(5, { from: '2026-08-30', next: '2026-08-01' });
+  go(mira);
+  fetcher.more();
+  await asked[2].answer(5);
+  go(undefined);
+  assert.deepEqual(asked.map((it) => [it.place, it.from]), [
+    [undefined, undefined],
+    [undefined, '2026-08-30'],
+    [mira, undefined],
+    [undefined, undefined],
+  ]);
 });

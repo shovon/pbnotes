@@ -194,7 +194,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    */
   const [fetcher] = useState(() =>
     createFetcher({
-      view: (at) => graph.view(at, today(now())),
+      view: (at, from) => graph.view(at, today(now()), from),
       where: () => latest.current,
       onAnswer: (next) => {
         const gone = deletedSince(shown.current, next);
@@ -212,6 +212,26 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
 
   // On mount, and every time the window moves.
   useEffect(fetcher.moved, [place?.page, place?.block]);
+
+  /**
+   * Below the journal's last day while older ones are left (#282): coming
+   * within a couple of screens of view asks for them. Observed afresh with
+   * every view, so a marker still in reach once more days are drawn asks
+   * again; a drag held at the window's edge scrolls it into reach too.
+   */
+  const older = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    const marker = older.current;
+    if (!marker) return;
+    const seen = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((it) => it.isIntersecting)) fetcher.more();
+      },
+      { rootMargin: '0px 0px 200% 0px' },
+    );
+    seen.observe(marker);
+    return () => seen.disconnect();
+  }, [held]);
 
   /**
    * The pages opened lately (`Sidebar/recent/`). Empty, and saved nowhere,
@@ -1293,6 +1313,11 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           )}
         </Previews>
         </Dragging.Provider>
+        {!browsing && held && !held.place && held.view.journal?.next && (
+          <p ref={older} className="mt-1 text-sm text-muted">
+            Loading older days…
+          </p>
+        )}
         </Selecting.Provider>
         {/* Where a dragged block will land (#251), over everything, in page
             coordinates: the body is what it is placed against. */}

@@ -23,10 +23,22 @@ export function getPage(state: BlockState, title: string): Page {
  * itself.
  */
 export function getPages(state: BlockState): Page[] {
+  return journalKeys(state).map((key) => ({ title: spelled(state.titles, key), blocks: pageBlocks(state, key) }));
+}
+
+/**
+ * The journal's days, as `getPages` has them, without their blocks: what a
+ * caller reads to pick which days to show before it builds any (#282).
+ */
+export function getDays(state: BlockState): string[] {
+  return journalKeys(state).map((key) => spelled(state.titles, key));
+}
+
+/** Every day with something on it, by key, newest first. */
+function journalKeys(state: BlockState): string[] {
   return [...forest.groups(state.forest)]
     .filter((key) => forest.rootsOf(state.forest, key).length > 0 && DATE_PATTERN.test(key))
-    .sort((a, b) => b.localeCompare(a))
-    .map((key) => ({ title: spelled(state.titles, key), blocks: pageBlocks(state, key) }));
+    .sort((a, b) => b.localeCompare(a));
 }
 
 /** Every page that has had blocks, by key, with its blocks' ids depth first. */
@@ -140,16 +152,31 @@ export function searchBlocks(state: BlockState, query: string, limit = 20): Bloc
  * Every block the pages refer to with `((id))`, and what a ref to it shows:
  * the target's first paragraph, or null for an id the ledger lacks.
  *
+ * Given `pages`, only the refs on them (#282), and the refs in what those
+ * show, and so on, so whoever swaps a ref for its preview can swap the refs
+ * inside it too. Without, every ref in the project.
+ *
  * Pairs, not an object: an id is whatever was typed, and `((__proto__))` is a
  * key an object does not hold.
  */
-export function getPreviews(state: BlockState): [string, string | null][] {
-  const ids = new Set<string>();
-  for (const text of map.values(state.texts)) read(text).refs.forEach((id) => ids.add(id));
-  return [...ids].sort().map((id) => {
-    const text = textOf(state, id);
-    return [id, text === undefined ? null : read(text).preview];
-  });
+export function getPreviews(state: BlockState, pages?: readonly Page[]): [string, string | null][] {
+  const previews = new Map<string, string | null>();
+  const quote = (text: string) => {
+    for (const id of read(text).refs) {
+      if (previews.has(id)) continue;
+      const target = textOf(state, id);
+      const preview = target === undefined ? null : read(target).preview;
+      previews.set(id, preview);
+      if (pages && preview) quote(preview);
+    }
+  };
+  if (pages) {
+    const walk = (blocks: readonly Block[]) => blocks.forEach((block) => (quote(block.text), walk(block.children)));
+    pages.forEach((page) => walk(page.blocks));
+  } else {
+    for (const text of map.values(state.texts)) quote(text);
+  }
+  return [...previews].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 /**
