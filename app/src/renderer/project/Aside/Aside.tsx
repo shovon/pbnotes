@@ -76,7 +76,9 @@ export default function Aside({ width: chosen, onResize, children }: Props) {
         className="absolute inset-y-0 -left-1 z-20 w-2 cursor-col-resize hover:bg-accent/30"
         onMouseDown={startResize}
       />
-      <div className="flex h-full flex-col gap-3 overflow-y-auto p-3">{children}</div>
+      {/* The cards edge to edge, the full width of the column and flush with
+          its top; each card rules itself off below. */}
+      <div className="flex h-full flex-col overflow-y-auto">{children}</div>
     </aside>
   );
 }
