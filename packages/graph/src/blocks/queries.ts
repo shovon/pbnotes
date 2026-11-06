@@ -5,7 +5,7 @@
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { DATE_PATTERN } from "../journal/journal.ts";
 import { read } from "../reading/reading.ts";
-import { titleOf } from "../titles/titles.ts";
+import { spelled, titleOf } from "../titles/titles.ts";
 import { blocksOn, find } from "./blocks.ts";
 import type { Block, BlockState, Page } from "./blocks.ts";
 
@@ -24,7 +24,7 @@ export function getPages(state: BlockState): Page[] {
   return [...state.blocks]
     .filter(([key, blocks]) => blocks.length > 0 && DATE_PATTERN.test(key))
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([key, blocks]) => ({ title: state.titles.get(key) ?? key, blocks }));
+    .map(([key, blocks]) => ({ title: spelled(state.titles, key), blocks }));
 }
 
 /** Every block in a tree, depth first. */
@@ -72,7 +72,7 @@ export function getReferences(
   const keys = new Set([key, ...[...also].map(canonicalize)]);
   return [...state.blocks]
     .filter(([page]) => page !== key)
-    .map(([page, on]) => ({ title: state.titles.get(page) ?? page, blocks: linkingAny(on, keys) }))
+    .map(([page, on]) => ({ title: spelled(state.titles, page), blocks: linkingAny(on, keys) }))
     .filter((page) => page.blocks.length > 0)
     .sort((a, b) => shownOrder(a.title, b.title));
 }
@@ -105,7 +105,7 @@ export function searchBlocks(state: BlockState, query: string, limit = 20): Bloc
   const q = canonicalize(query);
   if (!q) return [];
   const pages = [...state.blocks]
-    .map(([key, blocks]) => ({ title: state.titles.get(key) ?? key, blocks }))
+    .map(([key, blocks]) => ({ title: spelled(state.titles, key), blocks }))
     .sort((a, b) => shownOrder(a.title, b.title));
   const found: BlockMatch[] = [];
   for (const page of pages) {

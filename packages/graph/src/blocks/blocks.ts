@@ -19,6 +19,7 @@ import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { field } from "../events/events.ts";
 import { over } from "../over/over.ts";
 import type { Check } from "../undo/undo.ts";
+import { spelled } from "../titles/titles.ts";
 import type { Titles } from "../titles/titles.ts";
 
 export type Block = {
@@ -172,7 +173,7 @@ export type Found = NonNullable<ReturnType<typeof locate>> & {
 export function find(state: BlockState, id: string): Found | undefined {
   for (const [key, blocks] of state.blocks) {
     const where = locate(blocks, id);
-    if (where) return { page: state.titles.get(key) ?? key, blocks, ...where };
+    if (where) return { page: spelled(state.titles, key), blocks, ...where };
   }
   return undefined;
 }

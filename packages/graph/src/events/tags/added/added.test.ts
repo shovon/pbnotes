@@ -11,6 +11,7 @@ import type { Graph, GraphView } from "../../../graph.ts";
 import { getTaggedBy, getTags } from "../../../tags/tags.ts";
 import { TAG_ADDED, tagAdded } from "./added.ts";
 import { tagRemoved } from "../removed/removed.ts";
+import { get } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -38,8 +39,8 @@ test("an added gives the page that tag, and names both pages", () => {
   const state = fold([added("Foo", "Work")]);
   assert.deepEqual(getTags(state, "foo"), ["Work"]);
   assert.deepEqual(getTaggedBy(state, "work"), ["Foo"]);
-  assert.equal(state.titles.get("foo"), "Foo");
-  assert.equal(state.titles.get("work"), "Work");
+  assert.equal(get(state.titles, "foo"), "Foo");
+  assert.equal(get(state.titles, "work"), "Work");
   assert.equal(state.blocks.size, 0);
 });
 
@@ -51,7 +52,7 @@ test("an added over a populated state keeps what was there", async () => {
   assert.equal(state.blocks, before.blocks);
   assert.deepEqual(getTags(state, "Foo"), ["Home", "Work"]);
   assert.deepEqual(getTags(state, "Bar"), ["Work"]);
-  assert.equal(state.titles.get("baz"), "Baz");
+  assert.equal(get(state.titles, "baz"), "Baz");
 });
 
 test("tagAdded writes the event's own type and v", () => {

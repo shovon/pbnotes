@@ -10,6 +10,7 @@ import { getProperties, graphFold, holds, invert, remember } from "../../../grap
 import type { Graph } from "../../../graph.ts";
 import { propertySet } from "../set/set.ts";
 import { PROPERTY_REMOVED, propertyRemoved } from "./removed.ts";
+import { get } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; payload: unknown };
 
@@ -31,7 +32,7 @@ test("removing a key the page lacks changes nothing but the spellings", () => {
   assert.equal(graphFold.reduce(state, removed("bar", "b")), state);
   const named = graphFold.reduce(state, removed("Bar", "Nothing"));
   assert.equal(named.properties, state.properties);
-  assert.equal(named.titles.get("nothing"), "Nothing");
+  assert.equal(get(named.titles, "nothing"), "Nothing");
 });
 
 test("propertyRemoved writes the event's own type and v", () => {

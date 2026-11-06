@@ -14,10 +14,15 @@ import type { PropertyState } from "../properties/properties.ts";
 import type { DeleteState } from "../deletes/deletes.ts";
 import type { TagState } from "../tags/tags.ts";
 import type { AliasState } from "../aliases/aliases.ts";
+import { get, put } from "../immutable/immutable.ts";
+import type { ImmutableMap } from "../immutable/immutable.ts";
 
-/** Page key (`canonicalize`) → when it last changed, in ms since the epoch. */
+/**
+ * Page key (`canonicalize`) → when it last changed, in ms since the epoch.
+ * Immutable (#276): nearly every event changes one key of it.
+ */
 export type EditedState = {
-  readonly edited: Map<string, number>;
+  readonly edited: ImmutableMap<number>;
 };
 
 /** What a change is read off: the parts of the graph that hold what a user wrote. */
@@ -73,12 +78,12 @@ export function reduce<S extends Holds>(
   const page = pageOf(before, after, event.payload);
   if (ms === undefined || page === undefined) return after;
   const key = canonicalize(page);
-  const last = after.edited.get(key);
+  const last = get(after.edited, key);
   if (last !== undefined && last >= ms) return after;
-  return { ...after, edited: new Map(after.edited).set(key, ms) };
+  return { ...after, edited: put(after.edited, key, ms) };
 }
 
 /** When `page` last changed, or undefined if nothing ever changed it. */
 export function getEdited(state: EditedState, page: string): number | undefined {
-  return state.edited.get(canonicalize(page));
+  return get(state.edited, canonicalize(page));
 }

@@ -69,6 +69,7 @@ import type { EditedState } from "./edited/edited.ts";
 import { search } from "./search/search.ts";
 import { titleOf } from "./titles/titles.ts";
 import { canonicalize } from "./canonicalize/canonicalize.ts";
+import { empty as emptyMap, get as getKey } from "./immutable/immutable.ts";
 
 export { canonicalize } from "./canonicalize/canonicalize.ts";
 export { NAMESPACE } from "./events/events.ts";
@@ -215,12 +216,12 @@ export const graphFold = {
   },
   initial: {
     blocks: new Map(),
-    titles: new Map(),
+    titles: emptyMap(),
     properties: new Map(),
     tags: new Map(),
     aliases: new Map(),
     deletions: new Map(),
-    edited: new Map(),
+    edited: emptyMap(),
   } as Graph,
 };
 
@@ -463,7 +464,7 @@ export function listPages(state: Graph): PageListing[] {
   const keys = new Set(named(state).map(names.key));
   return [...keys]
     .map((key) => {
-      const edited = state.edited.get(key);
+      const edited = getKey(state.edited, key);
       return {
         title: titleOf(state, key),
         blocks: countBlocks(state, key),

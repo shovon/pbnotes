@@ -10,6 +10,7 @@ import { addBlock, getProperties, graphFold, holds, invert, remember } from "../
 import type { Graph, GraphView } from "../../../graph.ts";
 import { PROPERTY_SET, propertySet } from "./set.ts";
 import { propertyRemoved } from "../removed/removed.ts";
+import { get, has } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; payload: unknown };
 
@@ -36,8 +37,8 @@ function memory(): GraphView {
 test("a set gives the page that property, and names both the page and the key", () => {
   const state = fold([set("Bar", "Widget", "blue")]);
   assert.deepEqual(getProperties(state, "bar"), [{ key: "Widget", value: "blue" }]);
-  assert.equal(state.titles.get("bar"), "Bar");
-  assert.equal(state.titles.get("widget"), "Widget");
+  assert.equal(get(state.titles, "bar"), "Bar");
+  assert.equal(get(state.titles, "widget"), "Widget");
   assert.equal(state.blocks.size, 0);
 });
 
@@ -49,7 +50,7 @@ test("a set over a populated state keeps what was there", async () => {
   assert.equal(state.blocks, before.blocks);
   assert.deepEqual(getProperties(state, "Foo"), [{ key: "Status", value: "done" }]);
   assert.deepEqual(getProperties(state, "Bar"), [{ key: "Widget", value: "blue" }]);
-  assert.equal(state.titles.get("baz"), "Baz");
+  assert.equal(get(state.titles, "baz"), "Baz");
 });
 
 test("a value is a plain string: empty is kept, and a link in it names nothing", () => {
@@ -58,7 +59,7 @@ test("a value is a plain string: empty is kept, and a link in it names nothing",
     { key: "Empty", value: "" },
     { key: "Link", value: "[[Gadget]]" },
   ]);
-  assert.equal(state.titles.has("gadget"), false);
+  assert.equal(has(state.titles, "gadget"), false);
 });
 
 test("propertySet writes the event's own type and v", () => {

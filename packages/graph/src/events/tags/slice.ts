@@ -4,6 +4,7 @@
  * every event module, and is imported by none of them.
  */
 import { canonicalize } from "../../canonicalize/canonicalize.ts";
+import { from as fromPairs } from "../../immutable/immutable.ts";
 import { each } from "../batch/batch.ts";
 import type { EventOf } from "../../over/over.ts";
 import { TAG, getTags } from "../../tags/tags.ts";
@@ -59,7 +60,7 @@ export function predictTags(
   const held = new Set(tags.map(canonicalize));
   let state: TagState = {
     tags: held.size === 0 ? new Map() : new Map([[at, held]]),
-    titles: new Map([
+    titles: fromPairs([
       [at, page],
       ...tags.map((tag): [string, string] => [canonicalize(tag), tag]),
     ]),

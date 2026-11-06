@@ -21,6 +21,7 @@ import {
   propertySet,
 } from "../../graph.ts";
 import type { Graph } from "../../graph.ts";
+import { get } from "../../immutable/immutable.ts";
 
 const BATCH = `${NAMESPACE}batch`;
 
@@ -140,8 +141,8 @@ test("an inner event that changes nothing still folds as it would alone", () => 
 test("each event in a batch is dated by the batch's at", () => {
   const at = "2026-11-03T10:00:00.000Z";
   const graph = fold({ ...batch([blockCreated("Foo", "x", undefined, "a"), propertySet("Bar", "k", "v")]), at });
-  assert.equal(graph.edited.get("foo"), Date.parse(at));
-  assert.equal(graph.edited.get("bar"), Date.parse(at));
+  assert.equal(get(graph.edited, "foo"), Date.parse(at));
+  assert.equal(get(graph.edited, "bar"), Date.parse(at));
 });
 
 test("predictions draw an in-flight batch as the fold will hold it", () => {
