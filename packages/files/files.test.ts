@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { find, save } from './files.ts';
+import { find, nameOf, save } from './files.ts';
 
 const scratch = () => mkdtemp(path.join(tmpdir(), 'pbnotes-files-'));
 const bytes = new TextEncoder().encode('any bytes at all');
@@ -51,4 +51,11 @@ test('looking in a directory that is not there finds nothing and makes nothing',
   const dir = path.join(await scratch(), 'absent');
   assert.equal(await find(dir, 'kept', 'shed.bin'), undefined);
   await assert.rejects(readdir(dir));
+});
+
+test('nameOf is the name save stores under, and writes nothing', async () => {
+  const dir = await scratch();
+  const named = nameOf(bytes, 'bin');
+  assert.deepEqual(await readdir(dir), []);
+  assert.equal(await save(dir, 'device-a', 'kept', bytes, 'bin'), named);
 });

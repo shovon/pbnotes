@@ -36,6 +36,14 @@ async function isFile(file: string): Promise<boolean> {
 }
 
 /**
+ * The name `save` stores `bytes` under: `<sha256>.<extension>`. Writes
+ * nothing, so a caller can know a file's name before, or without, storing it.
+ */
+export function nameOf(bytes: Uint8Array, extension: string): string {
+  return `${createHash('sha256').update(bytes).digest('hex')}.${extension}`;
+}
+
+/**
  * Stores `bytes` in this device's `folder` and returns the name to find them
  * by: `<sha256>.<extension>`.
  *
@@ -52,7 +60,7 @@ export async function save(
   bytes: Uint8Array,
   extension: string,
 ): Promise<string> {
-  const name = `${createHash('sha256').update(bytes).digest('hex')}.${extension}`;
+  const name = nameOf(bytes, extension);
   const into = path.join(directory, device, folder);
   const file = path.join(into, name);
   if (!(await isFile(file))) {
