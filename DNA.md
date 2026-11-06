@@ -67,7 +67,7 @@ Everything that gives events meaning, and everything that draws them:
 - `@pbnotes/graph`: the `block.*` and `property.*` events, the fold, its queries and commands, `predict`, the journal and the link syntax.
 - The app's `graph:*` IPC, `Command`, `Place`, `PlaceView`.
 - The renderer, all of it.
-- The CLI's `pbnotes append`, which writes `block.created`.
+- The CLI's `pbnotes append`, which writes `block.created`, and `pbnotes import-logseq`, over `@pbnotes/logseq`, which writes a Logseq graph into a new project.
 - The bench, and everything on it.
 
 These should be easy to change. Don't write rules for them as if they were permanent, and don't let them leak below the line: the ledger never imports `graph`, and the projects registry never imports anything a project contains, nor stores it.

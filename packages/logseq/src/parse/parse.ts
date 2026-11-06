@@ -9,6 +9,9 @@
  * writes `\t - ` and `\t\t- ` side by side, so a fixed width per level is
  * wrong.
  *
+ * Page properties are the `key:: value` lines before the first block, and
+ * YAML front matter's `key: value` pairs when the file opens with it.
+ *
  * Consumed from a block, and nothing else: an `id::` line among its leading
  * property lines (it becomes the block's id), a `collapsed::` line among
  * them, and `:LOGBOOK:` … `:END:` drawers. Everything else stays in the text.
@@ -123,8 +126,38 @@ function preBlock(lines: string[]): { properties: [string, string][]; rest: stri
   return { properties, rest: trimBlankEnds(lines.slice(at)) };
 }
 
+/** A YAML value as written, its quotes gone. */
+const unquoted = (value: string) => {
+  const found = /^"((?:[^"\\]|\\.)*)"$|^'((?:[^']|'')*)'$/.exec(value);
+  if (!found) return value;
+  return found[1] !== undefined ? found[1].replace(/\\(.)/g, "$1") : found[2].replaceAll("''", "'");
+};
+
+/**
+ * YAML front matter at the very top (`---`, `key: value` lines, `---`), as
+ * properties, and the lines after it; or no properties and every line, when
+ * the file opens with none. Only flat `key: value` pairs: a value on the
+ * lines after its key is joined onto it with spaces.
+ */
+function frontMatter(lines: string[]): { properties: [string, string][]; rest: string[] } {
+  if (lines[0]?.trim() !== "---") return { properties: [], rest: lines };
+  const end = lines.findIndex((line, i) => i > 0 && line.trim() === "---");
+  if (end === -1) return { properties: [], rest: lines };
+  const properties: [string, string][] = [];
+  for (const line of lines.slice(1, end)) {
+    const found = /^([A-Za-z0-9_][\w\-.]*):(?:[ \t]+(.*))?$/.exec(line.trim());
+    if (found) properties.push([found[1], (found[2] ?? "").trim()]);
+    else if (properties.length > 0 && line.trim() !== "") {
+      const last = properties.at(-1)!;
+      last[1] = last[1] === "" ? line.trim() : `${last[1]} ${line.trim()}`;
+    }
+  }
+  return { properties: properties.map(([key, value]) => [key, unquoted(value)]), rest: lines.slice(end + 1) };
+}
+
 export function parse(text: string): Parsed {
-  const lines = text.split(/\r?\n/);
+  const front = frontMatter(text.split(/\r?\n/));
+  const lines = front.rest;
   const pre: string[] = [];
   const raws: Raw[] = [];
   const fence = fences();
@@ -167,5 +200,5 @@ export function parse(text: string): Parsed {
     (stack.at(-1)?.tree.children ?? blocks).push(tree);
     stack.push({ indent: raw.indent, tree });
   }
-  return { properties, blocks, logbooks };
+  return { properties: [...front.properties, ...properties], blocks, logbooks };
 }

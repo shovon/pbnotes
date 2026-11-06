@@ -1,31 +1,20 @@
 #!/usr/bin/env node
 /**
- * pbnotes append <project-folder> ["text"]
+ * pbnotes <command> …
  *
- * Appends one top-level block to the end of today's journal page, reading the
- * text from stdin when it is not given. Writes only: it reads no page and no
- * writer directory but its own, so it needs no fold and no check (#60). A
- * folder that is not a ledger is refused by `openWriter`, which never creates
- * one.
+ * Only dispatches: each command is its own file, and its own composition
+ * root. No command, an unknown one, or wrong arguments print the usage and
+ * exit 2.
  */
-import { randomUUID } from "node:crypto";
-import { text as readAll } from "node:stream/consumers";
-import { openWriter } from "@pbnotes/ledger";
-import { blockCreated, today } from "@pbnotes/graph";
+import { append } from "./append.ts";
+import { importLogseq } from "./import-logseq.ts";
+import { USAGE, USAGE_TEXT } from "./usage.ts";
+import type { Command } from "./usage.ts";
 
-const [command, folder, ...rest] = process.argv.slice(2);
-if (command !== "append" || !folder) {
-  console.error('usage: pbnotes append <project-folder> ["text of the block"]');
-  process.exit(2);
-}
+const COMMANDS: Record<string, Command> = { append, "import-logseq": importLogseq };
 
-try {
-  const text = rest.length ? rest.join(" ") : (await readAll(process.stdin)).replace(/\n$/, "");
-  await using w = await openWriter(folder, "pbnotes-cli");
-  // The CLI is its own composition root: the clock and the id are chosen here.
-  const e = blockCreated(today(new Date()), text, undefined, randomUUID());
-  await w.post(e.v, e.type, e.payload);
-} catch (err) {
-  console.error((err as Error).message);
-  process.exitCode = 1;
-}
+const [name, ...args] = process.argv.slice(2);
+const command = name !== undefined && Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined;
+const code = command ? await command(args) : USAGE;
+if (code === USAGE) console.error(USAGE_TEXT);
+process.exitCode = code === USAGE ? 2 : code;

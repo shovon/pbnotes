@@ -34,3 +34,8 @@ test("swapped links are rewritten, the others left as written", () => {
   const [a] = assetLinks(text);
   assert.equal(relinked(text, new Map([[a, "![a](images/abc.png)"]])), "![a](images/abc.png) and ![b](../assets/b.gif)");
 });
+
+test("an asset name with spaces in it, as Logseq writes one", () => {
+  const [link] = assetLinks("![shot.png](../assets/Screenshot_2025-09-13_at_5.12.41 PM_1757808791994_0.png)");
+  assert.equal(link.asset, "assets/Screenshot_2025-09-13_at_5.12.41 PM_1757808791994_0.png");
+});

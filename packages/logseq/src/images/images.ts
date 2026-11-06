@@ -23,7 +23,8 @@ export type AssetLink = {
   asset: string | undefined;
 };
 
-const LINK = /(!?)\[([^\]\n]*)\]\(((?:\.\.\/)?assets\/[^)\s]+)\)(\{[^}\n]*\})?/g;
+// The target runs to the closing parenthesis: Logseq writes spaces in asset names as they are.
+const LINK = /(!?)\[([^\]\n]*)\]\(((?:\.\.\/)?assets\/[^)\n]+)\)(\{[^}\n]*\})?/g;
 
 /** `assets/<name>` for a target, decoded, or undefined for one that would leave the folder. */
 function assetOf(target: string): string | undefined {
