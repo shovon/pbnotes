@@ -25,7 +25,7 @@ import { DATE_PATTERN, dateOf, namesOf } from "../journal/journal.ts";
 import { read } from "../reading/reading.ts";
 import { relink } from "../relink/relink.ts";
 import { spell, titleOf } from "../titles/titles.ts";
-import { answersTo } from "../aliases/aliases.ts";
+import { answersTo, claims } from "../aliases/aliases.ts";
 import type { AliasState } from "../aliases/aliases.ts";
 import { hasContent } from "../deletes/deletes.ts";
 import type { Holds as DeleteHolds } from "../deletes/deletes.ts";
@@ -82,16 +82,31 @@ export function redirect(state: RenameState & AliasState, page: string): string 
  * What a rename does at this point in fold order:
  *
  * - `spell`: the keys are the same and the spelling is new, so it changes how the page is shown.
- * - `move`: the page and everything on it go to `to`.
- * - `nothing`: the spelling is already `to`, a day's case changed, `from` has nothing on it, `to` has content of its own, or `to` is a name a rename sends to another page. The rename that sorts first wins, and nothing is merged without being asked (#110).
+ * - `move`: the page and everything on it go to `to`, and what links to it follows. A page with nothing on it is renamed too: every page already exists, and the links to it are what there is to rename.
+ * - `nothing`: the spelling is already `to`, a day's case changed, `from` is empty and nothing names it (there is nothing to rename) or another page claims it as an alias, `to` has content of its own, or `to` is a name a rename sends to another page. The first holds the second of two renames of one page: the first left `from` empty and claimed by the page it became. The rename that sorts first wins, and nothing is merged without being asked (#110).
  */
 export function outcome(state: Holds, { from, to }: PageRenamed): "spell" | "move" | "nothing" {
   const was = keyFor(from);
   const now = keyFor(to);
   if (was === now) return isDay(now) || titleOf(state, now) === to ? "nothing" : "spell";
-  if (!hasContent(state, was) || hasContent(state, now)) return "nothing";
+  if (hasContent(state, now)) return "nothing";
+  if (!hasContent(state, was) && (claims(state).has(was) || !namedBy(state, was))) return "nothing";
   const taken = redirect(state, now);
   return taken === undefined || taken === was ? "move" : "nothing";
+}
+
+/**
+ * Whether anything names the page at `key`, as a rename rewrites it: a link
+ * in a block, a tag on a page, or a property key. For a day, by any of its
+ * date names too.
+ */
+export function namedBy(state: Holds, key: string): boolean {
+  const names = new Set([key, ...namesOf(key).map(canonicalize)]);
+  const named = (page: string) => names.has(canonicalize(page));
+  for (const [, text] of map.entries(state.texts)) if (read(text).links.some(named)) return true;
+  for (const [, set] of map.entries(state.tags)) if ([...set].some((it) => names.has(it))) return true;
+  for (const [, props] of map.entries(state.properties)) if ([...props.keys()].some((it) => names.has(it))) return true;
+  return false;
 }
 
 /** `held` with the entry at `from` moved to `to`. Nothing is at `to` already (`outcome`). */

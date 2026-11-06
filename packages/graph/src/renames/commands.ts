@@ -11,7 +11,7 @@ import { pageRenamed } from "../events/pages/renamed/renamed.ts";
 import { resolver } from "../resolve/resolve.ts";
 import { titleOf } from "../titles/titles.ts";
 import { hasContent } from "../deletes/deletes.ts";
-import { keyFor, outcome, redirect } from "./renames.ts";
+import { keyFor, outcome, redirect, namedBy } from "./renames.ts";
 import type { Holds } from "./renames.ts";
 
 /**
@@ -37,7 +37,8 @@ function requireTitle(to: string): void {
  * The page `from` opens is now called `to`, as one `page.renamed`. Hands back
  * the page's title as it then shows.
  *
- * Refuses a page with nothing on it, a `to` that has content of its own
+ * A page with nothing on it is renamed like any other: the links to it
+ * follow. One nothing names either writes nothing, and hands back `to`. Refuses a `to` that has content of its own
  * (that would be a merge, #110), and a `to` that opens another page, through
  * an alias or a rename. A `to` only links name has no content, and a rename
  * onto it goes through. A rename to the spelling the page has writes nothing.
@@ -47,16 +48,19 @@ export async function renamePage(view: RenamesView, from: string, to: string): P
   const names = resolver(view.state);
   const page = names.title(from);
   const it = { from: page, to };
-  if (outcome(view.state, it) === "nothing") {
-    const was = keyFor(page);
-    const now = keyFor(to);
-    if (was === now) return titleOf(view.state, now);
-    if (!hasContent(view.state, was)) throw new Error("There's nothing on this page to rename");
-    if (hasContent(view.state, now)) throw new Error(`“${titleOf(view.state, now)}” already has content`);
+  const was = keyFor(page);
+  const now = keyFor(to);
+  const does = outcome(view.state, it);
+  if (does === "nothing" && was === now) return titleOf(view.state, now);
+  if (hasContent(view.state, now)) throw new Error(`“${titleOf(view.state, now)}” already has content`);
+  const opens = names.key(to);
+  if (opens !== now && opens !== was && redirect(view.state, to) === undefined) {
     throw new Error(`“${to}” already opens another page`);
   }
-  const opens = names.key(to);
-  if (opens !== keyFor(to) && opens !== keyFor(page) && redirect(view.state, to) === undefined) {
+  if (does === "nothing") {
+    // A page nothing is on and nothing names has nothing to rename: the
+    // window goes to `to`, which is as empty, and the log keeps no event.
+    if (!hasContent(view.state, was) && !namedBy(view.state, was)) return to;
     throw new Error(`“${to}” already opens another page`);
   }
   const event = pageRenamed(page, to);

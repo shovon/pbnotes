@@ -501,11 +501,12 @@ export type Command =
    * Appends one `page.renamed` (#108): the page `title` opens is now called
    * `to`, with everything on it, and every link, tag and property key that
    * named it names `to`. The old title stays as an alias, so a link the
-   * rewrite can't reach still opens the page. Main refuses a page with
-   * nothing on it, a `to` with content of its own (a merge, #110) and a `to`
-   * that opens another page, with a reason the window can show. A rename to
-   * the spelling the page already has resolves with nothing written; one
-   * that only changes case changes how the page is spelled (#89).
+   * rewrite can't reach still opens the page. A page with nothing on it is
+   * renamed too, its links following. Main refuses a `to` with content of
+   * its own (a merge, #110) and a `to` that opens another page, with a
+   * reason the window can show. A rename to the spelling the page already
+   * has, or of a page nothing is on or names, resolves with nothing written;
+   * one that only changes case changes how the page is spelled (#89).
    */
   | { type: 'renamePage'; title: string; to: string }
   /**

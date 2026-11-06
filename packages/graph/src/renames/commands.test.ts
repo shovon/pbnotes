@@ -47,7 +47,6 @@ test("refuses, writing nothing, what the fold would skip", async () => {
     blockCreated("JavaScript", "z", undefined, "z"),
     aliasAdded("JavaScript", "JS"),
   );
-  await assert.rejects(renamePage(view, "Empty", "Anything"), /nothing on this page/);
   await assert.rejects(renamePage(view, "A", "b"), /“B” already has content/);
   await assert.rejects(renamePage(view, "A", "JS"), /already opens another page/);
   await assert.rejects(renamePage(view, "A", " "), /needs a title/);
@@ -61,4 +60,21 @@ test("renaming back onto a name the page left behind goes through", async () => 
   await renamePage(view, "A", "B");
   assert.equal(await renamePage(view, "B", "A"), "A");
   assert.equal(getPage(view.state, "B").title, "A");
+});
+
+test("a page with nothing on it but links to it is renamed, and the links follow", async () => {
+  const view = memory(blockCreated("Notes", "met [[Bridal Falls]] and #[[bridal falls]]", undefined, "n"));
+  assert.equal(await renamePage(view, "Bridal Falls", "Waterfall"), "Waterfall");
+  assert.equal(view.events.length, 1);
+  assert.deepEqual(
+    getPage(view.state, "Notes").blocks.map((it) => it.text),
+    ["met [[Waterfall]] and #[[Waterfall]]"],
+  );
+  assert.equal(getPage(view.state, "Bridal Falls").title, "Waterfall");
+});
+
+test("a page nothing is on and nothing names is renamed by writing nothing", async () => {
+  const view = memory(blockCreated("Notes", "nothing here", undefined, "n"));
+  assert.equal(await renamePage(view, "Untitled", "Plans"), "Plans");
+  assert.equal(view.events.length, 0);
 });
