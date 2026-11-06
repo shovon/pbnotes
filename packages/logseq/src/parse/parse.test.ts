@@ -145,3 +145,20 @@ test("macros, task markers and scheduling stay as text", () => {
 test("Windows line endings", () => {
   assert.deepEqual(shape(parse("- a\r\n\t- b\r\n").blocks), [["a", ["b"]]]);
 });
+
+test("YAML front matter is page properties, quotes gone", () => {
+  const parsed = parse('---\ntitle: /r/tressless: "7 months of progress"\nkind: \'it\'\'s\'\n---\n\n- body');
+  assert.deepEqual(parsed.properties, [["title", '/r/tressless: "7 months of progress"'], ["kind", "it's"]]);
+  assert.deepEqual(shape(parsed.blocks), ["body"]);
+});
+
+test("a front-matter value on the lines after its key is joined onto it", () => {
+  const parsed = parse("---\ntitle: \nHow To Hire And Manage\nVirtual Assistants\n---\n- body");
+  assert.deepEqual(parsed.properties, [["title", "How To Hire And Manage Virtual Assistants"]]);
+  assert.deepEqual(shape(parsed.blocks), ["body"]);
+});
+
+test("front matter and :: properties together, and an unclosed --- is text", () => {
+  assert.deepEqual(parse("---\ntitle: A\n---\ntype:: b\n- x").properties, [["title", "A"], ["type", "b"]]);
+  assert.deepEqual(shape(parse("---\ntitle: A\n- x").blocks), ["---\ntitle: A", "x"]);
+});
