@@ -59,7 +59,7 @@ export function predictTags(
   const at = canonicalize(page);
   const held = new Set(tags.map(canonicalize));
   let state: TagState = {
-    tags: held.size === 0 ? new Map() : new Map([[at, held]]),
+    tags: held.size === 0 ? fromPairs([]) : fromPairs([[at, held]]),
     titles: fromPairs([
       [at, page],
       ...tags.map((tag): [string, string] => [canonicalize(tag), tag]),

@@ -10,7 +10,7 @@ import { getProperties, graphFold, holds, invert, remember } from "../../../grap
 import type { Graph } from "../../../graph.ts";
 import { propertySet } from "../set/set.ts";
 import { PROPERTY_REMOVED, propertyRemoved } from "./removed.ts";
-import { get } from "../../../immutable/immutable.ts";
+import { get, has } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; payload: unknown };
 
@@ -24,7 +24,7 @@ const removed = (page: string, key: string): Event => propertyRemoved(page, key)
 test("removing a page's last property deletes its entry; removing one of two keeps the other", () => {
   const two = fold([set("Bar", "A", "1"), set("Bar", "B", "2")]);
   assert.deepEqual(getProperties(fold([removed("Bar", "A")], two), "Bar"), [{ key: "B", value: "2" }]);
-  assert.equal(fold([removed("Bar", "A"), removed("Bar", "B")], two).properties.has("bar"), false);
+  assert.equal(has(fold([removed("Bar", "A"), removed("Bar", "B")], two).properties, "bar"), false);
 });
 
 test("removing a key the page lacks changes nothing but the spellings", () => {

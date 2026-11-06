@@ -15,6 +15,7 @@ import {
   blockIndented,
   graphFold,
   tagAdded,
+  blocksOn,
 } from "@pbnotes/graph";
 import type { Batched, Graph } from "@pbnotes/graph";
 import { createHistory, LIMIT, stepOf, takenBack } from "./history.ts";
@@ -166,7 +167,7 @@ test("past the limit the oldest step goes, and the ones kept still undo", () => 
     graph = undone;
   }
   assert.deepEqual(taken, entries.slice(1).reverse(), "the first of four is gone");
-  assert.equal(graph.blocks.get("foo")?.[0].text, "1");
+  assert.equal(blocksOn(graph, "foo")[0]?.text, "1");
 });
 
 /** Whether `value` holds `target` anywhere inside it, through objects, arrays and Maps. */
@@ -181,7 +182,7 @@ function reaches(value: unknown, target: object, seen = new Set<unknown>()): boo
 test("a kept step holds no graph, neither the one before it nor the one after (#242)", () => {
   const { entry, after } = step(FOO, blockEdited("b", "B!"), tagAdded("Foo", "Work"));
   for (const graph of [FOO, after]) {
-    for (const part of [graph, graph.blocks, graph.titles, graph.tags]) {
+    for (const part of [graph, graph.forest, graph.texts, graph.titles, graph.tags]) {
       assert.equal(reaches(entry, part), false);
     }
   }

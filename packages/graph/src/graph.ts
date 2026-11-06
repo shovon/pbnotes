@@ -8,6 +8,7 @@
  * module, because the app's renderer bundles this too. A caller hands the
  * commands a view whose `dispatch` writes to its own log.
  */
+import { noBlocks } from "./blocks/blocks.ts";
 import type { BlockState } from "./blocks/blocks.ts";
 import { BLOCK_HANDLES, BLOCK_UNDO, reads as readsBlocks, reduce } from "./events/blocks/slice.ts";
 import type { PageEvent } from "./events/blocks/slice.ts";
@@ -79,16 +80,8 @@ export type { Check, Undo } from "./undo/undo.ts";
 export type { BatchEvent, Batched } from "./events/batch/batch.ts";
 export { DATE_PATTERN, dateOf, namesOf, today } from "./journal/journal.ts";
 export { titleOf } from "./titles/titles.ts";
-export {
-  beside,
-  blocksOn,
-  find,
-  indented,
-  lastLeaf,
-  locate,
-  outdented,
-  without,
-} from "./blocks/blocks.ts";
+export { blocksOn, find } from "./blocks/blocks.ts";
+export { beside, indented, lastLeaf, locate, outdented, without } from "./blocks/tree.ts";
 export { predict, reduce } from "./events/blocks/slice.ts";
 export type {
   Block,
@@ -160,8 +153,9 @@ export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
  * its tags, its aliases, the first spelling the fold saw for it, how many
  * times it has been deleted, and when it last changed.
  *
- * `Map` throughout, so a title of `__proto__` is an ordinary key (#62), and
- * it survives the structured clone to the renderer (#146).
+ * A key of `__proto__` is an ordinary key throughout (#62), and all of it
+ * survives a structured clone (#146): every map in it is an immutable map of
+ * plain data (#276), so an event costs the rows it touches.
  */
 export type Graph = BlockState &
   PropertyState &
@@ -215,12 +209,12 @@ export const graphFold = {
     return all(state, events.map((it) => ({ ...it, at })), readable, one);
   },
   initial: {
-    blocks: new Map(),
+    ...noBlocks(),
     titles: emptyMap(),
-    properties: new Map(),
-    tags: new Map(),
-    aliases: new Map(),
-    deletions: new Map(),
+    properties: emptyMap(),
+    tags: emptyMap(),
+    aliases: emptyMap(),
+    deletions: emptyMap(),
     edited: emptyMap(),
   } as Graph,
 };

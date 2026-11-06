@@ -59,7 +59,7 @@ export function predictProperties(
   const at = canonicalize(page);
   const held = new Map(properties.map(({ key, value }) => [canonicalize(key), value]));
   let state: PropertyState = {
-    properties: held.size === 0 ? new Map() : new Map([[at, held]]),
+    properties: held.size === 0 ? fromPairs([]) : fromPairs([[at, held]]),
     titles: fromPairs([
       [at, page],
       ...properties.map(({ key }): [string, string] => [canonicalize(key), key]),

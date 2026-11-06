@@ -15,6 +15,8 @@ import { blockEdited } from "../edited/edited.ts";
 import { blockIndented } from "../indented/indented.ts";
 import { blockOutdented } from "../outdented/outdented.ts";
 import { BLOCK_MOVED, blockMoved } from "./moved.ts";
+import * as forest from "../../../forest/forest.ts";
+import { blocksOn } from "../../../blocks/blocks.ts";
 
 /** `events` folded onto `state`, through the gate. */
 const fold = (state: Graph, ...events: Batched[]): Graph => events.reduce(graphFold.reduce, state);
@@ -26,7 +28,9 @@ const shape = (blocks: Block[]): string =>
 /** Each page that has blocks, as its title and outline. */
 const outline = (graph: Graph) =>
   Object.fromEntries(
-    [...graph.blocks].filter(([, blocks]) => blocks.length).map(([key, blocks]) => [key, shape(blocks)]),
+    [...forest.groups(graph.forest)]
+      .map((key) => [key, shape(blocksOn(graph, key))])
+      .filter(([, outline]) => outline),
   );
 
 /**

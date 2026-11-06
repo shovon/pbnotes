@@ -35,6 +35,15 @@ The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperti
 - **The log.** The fold takes `{ type, v, payload }` and the commands write through `dispatch`. This package does not import `@pbnotes/ledger`, so events can come from anywhere.
 - **Node.** There are no `node:` imports. The app's renderer bundles this package, and it runs under plain `node --test`.
 
+## What the fold holds
+
+The graph `graphFold` folds is plain data: it survives a structured clone, and a title or id of `__proto__` is an ordinary key (#62). It is never changed once handed back, so the ledger can keep earlier graphs to fold a late event from, and undo can read the graph before a step.
+
+- **Blocks are flat** (#276). A forest of block ids grouped by page, each block a row (its page and its parent) and each block's children a list, with every block's text beside it by id. A page is read as a tree (`getPage`, `blocksOn`) when something asks for it, and the tree is built from those rows each time.
+- **Every map in it is immutable** (`immutable/`): a write hands back a new map that shares all but one path of the old one. So an event costs the rows it touches, not a copy of the page or the graph it is in, and folding a log costs time in step with its length.
+- **The tree shape stays the one the app reads.** `Block` and `Page`, and the walks over a page as a tree (`locate`, `beside`, `without`, `indented`, `outdented`, `lastLeaf`), are what the renderer draws and a paste is built from. The fold doesn't use them.
+- **A write that changes nothing hands back the same graph,** and so is not an edit to the page (`getEdited`) or a step for undo. That includes an edit to the text a block already has, which is a repeat.
+
 ## The event names are a contract
 
 Every event type is `NAMESPACE` followed by a name, for example `github.com/shovon/pbnotes#block.created`. `HANDLES` gives the payload `v` that this build reads and writes for each one.
