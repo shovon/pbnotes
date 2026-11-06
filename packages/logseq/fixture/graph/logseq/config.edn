@@ -1,0 +1,5 @@
+{:meta/version 1
+ ;; :file/name-format :legacy
+ :file/name-format :triple-lowbar
+ :journal/page-title-format "MMM do, yyyy"
+ :journal/file-name-format "yyyy_MM_dd"}

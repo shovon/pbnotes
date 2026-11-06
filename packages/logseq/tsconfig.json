@@ -1,0 +1,15 @@
+{
+  // Checks the package and its tests; nothing is built. `node --test` runs
+  // the `.ts` files as they are, which is why imports name their `.ts`.
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

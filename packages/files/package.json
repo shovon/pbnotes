@@ -5,7 +5,10 @@
   "private": true,
   "type": "module",
   "main": "./files.ts",
-  "exports": "./files.ts",
+  "exports": {
+    ".": "./files.ts",
+    "./images": "./images.ts"
+  },
   "scripts": {
     "test": "node --test '*.test.ts'"
   },

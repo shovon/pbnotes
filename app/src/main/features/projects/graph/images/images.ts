@@ -4,35 +4,18 @@
  *
  * Kept by `@pbnotes/files`, which is where the reasoning lives: per device,
  * named by the hash of the bytes, and found in whichever device's folder has
- * arrived. What is here is the part that is about images: which types can be
- * stored, the folder they go in, and what a note links one by.
+ * arrived. Which types can be stored, the folder they go in and what a note
+ * links one by are `@pbnotes/files/images`, shared with anything else that
+ * writes a project (#204). What is here is how the app stores and carries one.
  *
  * Free of `electron` imports, like the store beside it, so it runs under
  * `node --test`.
  */
 import { readFile } from 'node:fs/promises';
 import { find, save } from '@pbnotes/files';
+import { IMAGES, extensionOf, linkOf, mimeOf } from '@pbnotes/files/images';
 
-const IMAGES = 'images';
-
-/** What can be stored, and the extension each is stored under. */
-const EXTENSIONS = new Map([
-  ['image/png', 'png'],
-  ['image/jpeg', 'jpg'],
-  ['image/gif', 'gif'],
-  ['image/webp', 'webp'],
-  ['image/svg+xml', 'svg'],
-]);
-
-/**
- * The type an image was stored as, read off its file's extension, or
- * undefined for a file this module would not have stored.
- */
-export function mimeOf(file: string): string | undefined {
-  const extension = /\.([^./\\]+)$/.exec(file)?.[1]?.toLowerCase();
-  for (const [mime, it] of EXTENSIONS) if (it === extension) return mime;
-  return undefined;
-}
+export { mimeOf };
 
 /**
  * Stores an image in this device's folder and returns what a note links it
@@ -44,9 +27,9 @@ export async function saveImage(
   bytes: Uint8Array,
   mime: string,
 ): Promise<string> {
-  const extension = EXTENSIONS.get(mime);
+  const extension = extensionOf(mime);
   if (!extension) throw new Error(`Cannot store an image of type "${mime}".`);
-  return `${IMAGES}/${await save(directory, device, IMAGES, bytes, extension)}`;
+  return linkOf(await save(directory, device, IMAGES, bytes, extension));
 }
 
 /**
@@ -84,7 +67,7 @@ export async function carryImages(
   const out: (string | undefined)[] = [];
   for (const { name, bytes, mime } of wanted) {
     if (await findImage(directory, name)) {
-      out.push(`${IMAGES}/${name}`);
+      out.push(linkOf(name));
       continue;
     }
     try {
