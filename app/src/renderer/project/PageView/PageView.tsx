@@ -63,8 +63,16 @@ type Props = {
    * dropped by, once it is at or past the version that write's reply named.
    */
   version: number;
-  /** What links here. Left off for a page that is itself shown as one. */
+  /**
+   * What links here: on a page's own view, only the chunks loaded so far
+   * (#285). Left off for a page that is itself shown as one.
+   */
   references?: Page[];
+  /**
+   * How many blocks link here in all, loaded or not (#285): what the
+   * heading counts. The blocks in `references` when left off.
+   */
+  links?: number;
   /**
    * The page's properties, as main last showed them. Left off where none
    * are drawn: a cut, which is another page's blocks under its heading.
@@ -128,6 +136,7 @@ export default function PageView({
   page: sent,
   version,
   references,
+  links = references?.reduce((n, cut) => n + cut.blocks.length, 0) ?? 0,
   properties: sentProperties,
   tags: sentTags,
   taggedBy,
@@ -690,7 +699,7 @@ export default function PageView({
 
   const pageSpace = reference
     ? 'ml-indent cursor-default'
-    : references?.length || taggedBy?.length
+    : links || taggedBy?.length
       ? 'cursor-text pb-5'
       : 'cursor-text pb-12';
 
@@ -828,7 +837,7 @@ export default function PageView({
           the page's own when nothing links here, and less when something
           does. */}
       {taggedBy && taggedBy.length > 0 && !reference && !root && (
-        <div className={references?.length ? 'pb-5' : 'pb-12'}>
+        <div className={links ? 'pb-5' : 'pb-12'}>
           <TaggedBy tag={title} pages={taggedBy} />
         </div>
       )}
@@ -837,6 +846,7 @@ export default function PageView({
         <LinkedReferences
           graph={graph}
           references={references}
+          count={links}
           version={version}
           scope={scope}
           act={act}

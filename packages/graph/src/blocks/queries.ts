@@ -109,9 +109,10 @@ export function getReferences(
 /**
  * The order pages are listed in: journal days first, newest first, then
  * named pages A to Z. Days are told apart before anything is compared, so a
- * page called `1984` does not land among them.
+ * page called `1984` does not land among them. `getReferences` lists in it,
+ * so a caller that loads them a few at a time compares by it too (#285).
  */
-function shownOrder(a: string, b: string): number {
+export function shownOrder(a: string, b: string): number {
   const days = [a, b].map((title) => DATE_PATTERN.test(title));
   if (days[0] !== days[1]) return days[0] ? -1 : 1;
   return days[0] ? b.localeCompare(a) : a.localeCompare(b);

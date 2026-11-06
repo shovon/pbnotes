@@ -214,10 +214,12 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
   useEffect(fetcher.moved, [place?.page, place?.block]);
 
   /**
-   * Below the journal's last day while older ones are left (#282): coming
-   * within a couple of screens of view asks for them. Observed afresh with
-   * every view, so a marker still in reach once more days are drawn asks
-   * again; a drag held at the window's edge scrolls it into reach too.
+   * Below the view while its list has more to load: the journal's older
+   * days (#282), or a page's next linked references (#285), which start
+   * once the page's own blocks are drawn. Coming within a couple of screens
+   * of view asks for them. Observed afresh with every view, so a marker
+   * still in reach once more is drawn asks again; a drag held at the
+   * window's edge scrolls it into reach too.
    */
   const older = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
@@ -1272,7 +1274,8 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
             title={own.page.title}
             canDelete={own.page.blocks.length > 0 || own.properties.length > 0}
             impact={{
-              links: own.references.reduce((sum, it) => sum + it.blocks.length, 0),
+              // Every link, not only the cuts loaded so far (#285).
+              links: own.links,
               refs: own.refsTo,
             }}
             graph={graph}
@@ -1287,7 +1290,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           {browsing ? null : held === null ? (
             <p className="mt-1 text-sm text-muted">Loading…</p>
           ) : (
-            held.view.showing.map(({ page, references, properties, tags, taggedBy }) => (
+            held.view.showing.map(({ page, references, links, properties, tags, taggedBy }) => (
               // Keyed by the title, so a page is never handed another page's
               // editor state — the open box and the block id in it belong to
               // the page they were opened on. The element is only a name on
@@ -1299,6 +1302,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
                   version={version}
                   // Not under a zoom: what links to one block is #2's.
                   references={zoom ? undefined : references}
+                  links={links}
                   taggedBy={zoom ? undefined : taggedBy}
                   properties={properties}
                   tags={tags}
@@ -1313,9 +1317,9 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           )}
         </Previews>
         </Dragging.Provider>
-        {!browsing && held && !held.place && held.view.journal?.next && (
+        {!browsing && held?.view.list?.next && (
           <p ref={older} className="mt-1 text-sm text-muted">
-            Loading older days…
+            {held.place ? 'Loading more linked references…' : 'Loading older days…'}
           </p>
         )}
         </Selecting.Provider>

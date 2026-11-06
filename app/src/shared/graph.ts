@@ -75,7 +75,14 @@ export type PlaceView = {
    */
   showing: {
     page: Page;
+    /**
+     * What links here, each page cut down to the blocks that do. On a page's
+     * own view only the chunks loaded so far (`list`, #285); on a journal
+     * day, every one.
+     */
     references: Page[];
+    /** How many blocks link here, in every cut, loaded or not (#285). */
+    links: number;
     properties: Property[];
     /** The pages it points to, as `getTags` returns them. */
     tags: string[];
@@ -93,12 +100,18 @@ export type PlaceView = {
    */
   previews: [string, string | null][];
   /**
-   * Which days the journal shows (#282), on the journal only: every day on
-   * or after `from`, and today. `next` is the `from` to ask for to show more
-   * days, or null when there are none older. A window that asks again keeps
-   * asking for the `from` it holds, so the days on screen stay on screen.
+   * The list this view loads a chunk at a time, and how far it is loaded:
+   * the journal's days (#282), or a page's linked references (#285). None
+   * under a zoom.
+   *
+   * `through` is the last of it loaded: on the journal a date, every day on
+   * or after it showing; on a page a title, every page linking here up to
+   * and including it, in the order they are listed, or null for none yet.
+   * `next` is the `through` to ask for to load a chunk more, or null when
+   * all of it is loaded. A window that asks again keeps asking for the
+   * `through` it holds, so what is on screen stays on screen.
    */
-  journal?: { from: string; next: string | null };
+  list?: { through: string | null; next: string | null };
 };
 
 /** What `find` answers with: page titles, each with the page it opens, then blocks. */
@@ -155,11 +168,11 @@ export const GRAPH_CHANNELS = {
 export type GraphApi = {
   /**
    * What shows at `place`, or with none the journal, read with `today` as
-   * the day on top of it: every day on or after `from` (#282), or the newest
-   * few without one. `today` is the window's clock, not main's.
-   * Rejects when the project cannot be reached.
+   * the day on top of it, its list loaded `through` the day or title given
+   * (`PlaceView.list`), or just its first chunk without one. `today` is the
+   * window's clock, not main's. Rejects when the project cannot be reached.
    */
-  view(place: Place | undefined, today: string, from?: string): Promise<PlaceView>;
+  view(place: Place | undefined, today: string, through?: string): Promise<PlaceView>;
   /**
    * Calls `listener` with the fold's version every time it moves: a write
    * from any window, and another device's segment landing in the folder
