@@ -10,7 +10,7 @@ import { graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph } from "../../../graph.ts";
 import { aliasAdded } from "../added/added.ts";
 import { ALIAS_REMOVED, aliasRemoved } from "./removed.ts";
-import { get } from "../../../immutable/immutable.ts";
+import { get, has } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -31,7 +31,7 @@ test("removing an alias the page lacks changes nothing but the spelling", () => 
 
 test("removing a page's last alias deletes its entry", () => {
   const state = fold([added("A", "B"), added("A", "C"), removed("A", "B"), removed("A", "C")]);
-  assert.equal(state.aliases.has("a"), false);
+  assert.equal(has(state.aliases, "a"), false);
 });
 
 test("aliasRemoved writes the event's own type and v", () => {

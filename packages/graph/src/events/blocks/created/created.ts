@@ -5,13 +5,15 @@
  */
 import { canonicalize } from "../../../canonicalize/canonicalize.ts";
 import { field, namespaced } from "../../events.ts";
+import * as forest from "../../../forest/forest.ts";
+import * as map from "../../../immutable/immutable.ts";
 import type { Named } from "../../events.ts";
 import type { Batched } from "../../batch/batch.ts";
 import type { Written } from "../../../over/over.ts";
 import { read } from "../../../reading/reading.ts";
-import { spell } from "../../../titles/titles.ts";
+import { spell, spelled } from "../../../titles/titles.ts";
 import { same } from "../../../undo/undo.ts";
-import { BLOCK, blocksOn, find, locate, placed, position, stringField, tree, withId } from "../../../blocks/blocks.ts";
+import { BLOCK, isOn, keyOf, placed, position, stringField, tree, withId } from "../../../blocks/blocks.ts";
 import type { Block, BlockCreated, Place } from "../../../blocks/blocks.ts";
 import { blockDeleted } from "../deleted/deleted.ts";
 
@@ -50,30 +52,29 @@ export const BLOCK_CREATED = BLOCK.define({
     // The first in fold order stands, the same on every machine, and this
     // one changes nothing. Children written under the id land under it. An
     // id that was deleted is not held, so it can be written again.
-    if (find(state, id)) return state;
-    const block: Block = { id, text, children: [] };
+    if (forest.has(state.forest, id)) return state;
     // A parent on another page is followed there: it moved after the writer
     // last saw it (#252), or a skipped create of it put it elsewhere (#273),
     // and either way the block was written under it.
-    const away =
-      it.parent && !locate(blocksOn(state, page), it.parent) ? find(state, it.parent)?.page : undefined;
-    const lands = away ?? page;
+    const elsewhere = it.parent && !isOn(state, it.parent, canonicalize(page)) ? keyOf(state, it.parent) : undefined;
+    const lands = elsewhere === undefined ? page : spelled(state.titles, elsewhere);
     // `addBlock` refuses an `after` or `parent` the page lacks, so a miss
     // here is a log written by something else. Fall back rather than drop:
     // a block in the wrong place can be moved, one the fold discarded is gone.
-    const next = placed(blocksOn(state, lands), block, it);
+    const spot = placed(state, canonicalize(lands), it);
     return {
       ...state,
-      blocks: new Map(state.blocks).set(canonicalize(lands), next),
+      forest: forest.add(state.forest, id, spot),
+      texts: map.put(state.texts, id, text),
       // The page before its links: it is where the user was writing.
       titles: spell(state.titles, [lands, ...read(text).links]),
     };
   },
   // Safe to fold twice since #273, which changes nothing the second time;
   // kept so a prediction says what is already drawn.
-  landed: (state, { id }) => !!find(state, id),
+  landed: (state, { id }) => forest.has(state.forest, id),
   undo: {
-    inverse: (state, { id }) => (find(state, id) ? [] : [blockDeleted(id)]),
+    inverse: (state, { id }) => (forest.has(state.forest, id) ? [] : [blockDeleted(id)]),
     // Undone, it goes with its subtree: nobody may have written under it.
     touched: (_, { id }) => [same((now) => tree(now, id)), same((now) => position(now, id))],
   },

@@ -10,7 +10,7 @@ import { addBlock, getAliases, graphFold, holds, invert, remember } from "../../
 import type { Graph, GraphView } from "../../../graph.ts";
 import { ALIAS_ADDED, aliasAdded } from "./added.ts";
 import { aliasRemoved } from "../removed/removed.ts";
-import { get } from "../../../immutable/immutable.ts";
+import { from, get } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -36,11 +36,11 @@ function memory(): GraphView {
 
 test("an added gives the page that alias, and names both", () => {
   const state = fold([added("JavaScript", "JS")]);
-  assert.deepEqual(state.aliases, new Map([["javascript", new Set(["js"])]]));
+  assert.deepEqual(state.aliases, from([["javascript", new Set(["js"])]]));
   assert.deepEqual(getAliases(state, "javascript"), ["JS"]);
   assert.equal(get(state.titles, "javascript"), "JavaScript");
   assert.equal(get(state.titles, "js"), "JS");
-  assert.equal(state.blocks.size, 0);
+  assert.equal(state.forest.nodes.size, 0);
 });
 
 test("an added over a populated state keeps what was there", async () => {
@@ -48,7 +48,8 @@ test("an added over a populated state keeps what was there", async () => {
   await addBlock(view, "JavaScript", "see [[Node]]", undefined, "j");
   const before = view.state;
   const state = fold([added("JavaScript", "JS"), added("JavaScript", "ECMAScript")], before);
-  assert.equal(state.blocks, before.blocks);
+  assert.equal(state.forest, before.forest);
+  assert.equal(state.texts, before.texts);
   assert.deepEqual(getAliases(state, "JavaScript"), ["ECMAScript", "JS"]);
   assert.equal(get(state.titles, "node"), "Node");
 });

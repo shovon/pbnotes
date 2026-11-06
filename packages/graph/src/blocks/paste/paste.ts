@@ -4,8 +4,9 @@
  * the page's blocks as they stand, so main's command and a view drawing the
  * paste ahead of main build the same events.
  */
-import { locate } from "../blocks.ts";
-import type { Block, Place } from "../blocks.ts";
+import { locate } from "../tree.ts";
+import type { Block } from "../tree.ts";
+import type { Place } from "../blocks.ts";
 import type { Batched } from "../../events/batch/batch.ts";
 import { blockEdited } from "../../events/blocks/edited/edited.ts";
 import { recreate } from "../../events/blocks/created/created.ts";

@@ -7,12 +7,14 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { indented, outdented } from "./blocks.ts";
+import { blocksOn } from "./blocks.ts";
+import { indented, outdented } from "./tree.ts";
+import * as forest from "../forest/forest.ts";
 import { BLOCK_HANDLES, predict, reduce } from "../events/blocks/slice.ts";
 import { NAMESPACE } from "../events/events.ts";
 import { getPage, getReferences, graphFold, read, searchBlocks, searchPages } from "../graph.ts";
 import type { Graph } from "../graph.ts";
-import type { Block } from "./blocks.ts";
+import type { Block } from "./tree.ts";
 import type { PageEvent } from "../events/blocks/slice.ts";
 import { from, get } from "../immutable/immutable.ts";
 
@@ -64,7 +66,7 @@ test("a v1 payload still folds, page and all", async () => {
     nested,
     event(`${NAMESPACE}block.edited`, 1, { page: TODAY, id: "b2", text: "rewritten" }),
   );
-  assert.deepEqual(edited.blocks.get(TODAY), [
+  assert.deepEqual(blocksOn(edited, TODAY), [
     {
       id: "b1",
       text: "first",
@@ -78,8 +80,8 @@ test("a v1 payload still folds, page and all", async () => {
     edited,
     event(`${NAMESPACE}block.edited`, 1, { page: "Mira", id: "b2", text: "again" }),
   );
-  assert.equal(elsewhere.blocks.get(TODAY)?.[0].children[0].text, "again");
-  assert.deepEqual([...elsewhere.blocks.keys()], [TODAY]);
+  assert.equal(blocksOn(elsewhere, TODAY)[0].children[0].text, "again");
+  assert.deepEqual([...forest.groups(elsewhere.forest)], [TODAY]);
 });
 
 /**
@@ -93,7 +95,8 @@ test("an event is folded under its namespaced name and no other", () => {
 
   assert.deepEqual(reduce(none, event(`${NAMESPACE}block.created`, 1, payload)), {
     ...none,
-    blocks: new Map([[TODAY, [{ id: "b1", text: "first", children: [] }]]]),
+    forest: forest.add(none.forest, "b1", { group: TODAY, at: "last" }),
+    texts: from([["b1", "first"]]),
     titles: from([[TODAY, TODAY]]),
   });
   assert.equal(reduce(none, event("block.created", 1, payload)), none);
@@ -174,8 +177,8 @@ test("a page named after an Object.prototype property folds like any other", () 
       event(`${NAMESPACE}block.created`, 1, { page: title, id: "b1", text: "hi" }),
     );
     const key = title.toLowerCase();
-    assert.deepEqual(state.blocks.get(key), [{ id: "b1", text: "hi", children: [] }], title);
-    assert.deepEqual([...state.blocks.keys()], [key], title);
+    assert.deepEqual(blocksOn(state, key), [{ id: "b1", text: "hi", children: [] }], title);
+    assert.deepEqual([...forest.groups(state.forest)], [key], title);
     assert.equal(get(state.titles, key), title, title);
   }
 });
