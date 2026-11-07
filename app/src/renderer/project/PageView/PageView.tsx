@@ -715,82 +715,90 @@ export default function PageView({
   return (
     <>
       {/* The header: the title, and on a page's own view its tags and
-          properties. What is marked `data-reveal` in it ("+ Add tag", and
-          "+ Add property" while there are none) is hidden, so a new page is
-          not two empty placeholders under its title. Each shows only while
-          its own row (the element holding it) is hovered or holds focus, so
-          pointing at the properties does not light up "+ Add tag". While the
-          two share a line, a page with neither, the whole header shows both.
+          properties. While the page has no tags, "+ Add tag" sits beside
+          the title; once it has one, the tags take the line under it.
+          "+ Add property" follows "+ Add tag" on whichever line that is,
+          while the page has no properties; once it has some, or a draft is
+          open, the table takes a line of its own with the button under
+          it. The break after the title is an `::after` ordered between the
+          title and the rest. Only the layout changes, never the tree, so
+          a draft or an open input is not remounted.
+
+          What is marked `data-reveal` ("+ Add tag" and "+ Add property") is
+          hidden, so a new page is not two empty placeholders beside its
+          title. Both show while the title's or the tags' line is hovered or
+          holds focus, "+ Add property" only while it is on that line (no
+          properties yet); pointing at the table under it lights neither
+          that line nor "+ Add tag". The table and its button show "+ Add
+          property" too. While a tag is being typed, "+ Add property" stays
+          hidden: the line is the tag's.
           Hidden is opacity, not removal: they keep their room, and nothing
-          below moves as the pointer crosses the title. */}
-      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity [&_:hover>[data-reveal]]:opacity-100 [&_:focus-within>[data-reveal]]:opacity-100 has-[[data-bare]+[data-bare]]:hover:[&_[data-reveal]]:opacity-100 has-[[data-bare]+[data-bare]]:focus-within:[&_[data-reveal]]:opacity-100">
-        {/* A cut is headed by the page it is cut from, as a link there — the
-            project view follows it like the ones in the blocks. */}
-        {reference ? (
-          <h4 className="mt-3 mb-1 text-sm font-semibold">
-            <a className="wikilink text-accent" href={`#${title}`}>
-              {title}
-            </a>
-          </h4>
-        ) : root ? (
-          /* Zoomed: the title steps back to a link out to the whole page, and
-             what the block hangs under follows it, each a way out to that
-             level. The project view follows both — the title as the wikilink
-             it is, a crumb by its `data-block-ref`, like a dot.
-             ponytail: a crumb is the first line of its block as written,
-             Markdown and all. Render it once a `**` in one looks wrong. */
-          <nav className="mt-6 mb-4 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
-            <a className="wikilink text-accent" href={`#${title}`}>
-              {title}
-            </a>
-            {ancestors.map((ancestor) => (
-              <Fragment key={ancestor.id}>
-                <span aria-hidden>›</span>
-                <a
-                  href="#"
-                  data-block-ref={ancestor.id}
-                  className="max-w-48 truncate hover:text-accent"
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    openMenu(ancestor);
-                  }}
-                >
-                  {ancestor.text.split('\n')[0] || '…'}
-                </a>
-              </Fragment>
-            ))}
-          </nav>
-        ) : onRename && !linked ? (
-          <Title title={title} onRename={onRename} />
-        ) : (
-          <h2 className="mt-6 mb-4 text-2xl font-semibold">
-            {/* A heading still, not a link in the text: no accent, and only
-                the underline on hover says it goes somewhere. The project
-                view follows it like any wikilink. */}
-            {linked ? (
-              <a className="wikilink hover:underline" href={`#${title}`}>
+          moves as the pointer crosses the title. */}
+      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity [&_[data-line]:hover:not(:has(>section:not([data-bare]):hover)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare])>[data-reveal]]:opacity-100 [&_[data-line]:focus-within:not(:has(>section:not([data-bare]):focus-within)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare])>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:hover>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:focus-within>[data-reveal]]:opacity-100">
+        <div
+          data-line
+          className="flex flex-wrap items-baseline gap-x-3 [&>*]:min-w-0 [&>*:not(:first-child)]:order-2 [&>section:not([data-bare])]:basis-full has-[>[aria-label=Tags]:not([data-bare])]:after:order-1 has-[>[aria-label=Tags]:not([data-bare])]:after:basis-full"
+        >
+          {reference ? (
+            <h4 className="mt-3 mb-1 text-sm font-semibold">
+              <a className="wikilink text-accent" href={`#${title}`}>
                 {title}
               </a>
-            ) : (
-              title
-            )}
-          </h2>
-        )}
+            </h4>
+          ) : root ? (
+            /* Zoomed: the title steps back to a link out to the whole page, and
+               what the block hangs under follows it, each a way out to that
+               level. The project view follows both — the title as the wikilink
+               it is, a crumb by its `data-block-ref`, like a dot.
+               ponytail: a crumb is the first line of its block as written,
+               Markdown and all. Render it once a `**` in one looks wrong. */
+            <nav className="mt-6 mb-4 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+              <a className="wikilink text-accent" href={`#${title}`}>
+                {title}
+              </a>
+              {ancestors.map((ancestor) => (
+                <Fragment key={ancestor.id}>
+                  <span aria-hidden>›</span>
+                  <a
+                    href="#"
+                    data-block-ref={ancestor.id}
+                    className="max-w-48 truncate hover:text-accent"
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      openMenu(ancestor);
+                    }}
+                  >
+                    {ancestor.text.split('\n')[0] || '…'}
+                  </a>
+                </Fragment>
+              ))}
+            </nav>
+          ) : onRename && !linked ? (
+            <Title title={title} onRename={onRename} />
+          ) : (
+            <h2 className="mt-6 mb-4 text-2xl font-semibold">
+              {/* A heading still, not a link in the text: no accent, and only
+                  the underline on hover says it goes somewhere. The project
+                  view follows it like any wikilink. */}
+              {linked ? (
+                <a className="wikilink hover:underline" href={`#${title}`}>
+                  {title}
+                </a>
+              ) : (
+                title
+              )}
+            </h2>
+          )}
 
-        {/* While a page has no tags and no properties, "+ Add tag" and "+ Add
-            property" share one line. Each marks itself `data-bare` while it
-            holds nothing; the line breaks as soon as either holds something,
-            an open input or draft included. Only the layout changes, never
-            the tree, so the draft a click opens is not remounted. */}
-        <div className="has-[>[data-bare]+[data-bare]]:flex has-[>[data-bare]+[data-bare]]:gap-1.5">
-          {/* Under the title, above the properties, on the same terms: a journal
-              day shows its tags only when it has some, and neither a zoom nor a
-              cut shows them. */}
+          {/* Beside the title, or under it once there are some, above the
+              properties. A journal day shows its tags only when it has some,
+              and neither a zoom nor a cut shows them. */}
           {tags && !reference && !root && (!linked || tags.length > 0) && (
             <Tags tags={tags} findTags={findTitles} onAdd={tagPage} onRemove={untagPage} />
           )}
 
-          {/* Under the title, on the page's own view. A journal day shows its
+          {/* Under the title, or beside it while empty, on the page's own
+              view. A journal day shows its
               table only when it has something in it: an empty one on every day
               is noise, and the first property on a day is added from its page.
               Not under a zoom, where what shows is a block and the page's

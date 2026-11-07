@@ -36,7 +36,8 @@ const input = 'bg-transparent outline-none placeholder:text-muted';
  * open row is keyed by the key it was opened on, so it stays mounted, caret
  * and all, while new rows arrive around it, even one without it.
  *
- * "+ Add property" is a button under the table, drawn like "+ Add tag". With
+ * "+ Add property" is a button under the table, drawn like "+ Add tag", and
+ * marked `data-reveal` the same way. With
  * no rows and none open there is no table, and the section is marked
  * `data-bare` for a holder that sets it beside something else while there is
  * nothing in it.
@@ -329,12 +330,11 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
           {open && !open.from && editing(open, `draft-${drafts.current}`)}
         </div>
       )}
-      {/* A button under the table, not a row of it. Marked only while there
-          are no rows, so whoever holds the table may hide it until wanted;
-          under rows it stays. */}
+      {/* A button under the table, not a row of it. Marked always, so
+          whoever holds the table may hide it until wanted. */}
       <button
         type="button"
-        data-reveal={bare ? '' : undefined}
+        data-reveal
         className="rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
         onClick={() => start(draft(), 'key')}
       >

@@ -79,7 +79,7 @@ export default function Title({ title, onRename }: Props) {
   }
 
   return (
-    <div className="mt-6 mb-4">
+    <div className="mt-6 mb-4 flex-1">
       <h2 className="text-2xl font-semibold">
         <input
           ref={field}
