@@ -8,9 +8,12 @@ type Props = {
   /** Whether this is macOS, for the shortcut the label names. */
   mac: boolean;
   onToggle: () => void;
+  /** Pointing at it while collapsed shows the sidebar floating (`peek.ts`). */
+  onPointerEnter?: () => void;
+  onPointerLeave?: () => void;
 };
 
-export default function Toggle({ collapsed, mac, onToggle }: Props) {
+export default function Toggle({ collapsed, mac, onToggle, onPointerEnter, onPointerLeave }: Props) {
   const label = `${collapsed ? 'Show' : 'Hide'} sidebar (${mac ? '⌘\\' : 'Ctrl+\\'})`;
   return (
     <button
@@ -22,6 +25,8 @@ export default function Toggle({ collapsed, mac, onToggle }: Props) {
       aria-controls="sidebar"
       title={label}
       onClick={onToggle}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
     >
       {/* A window with a narrow column down its left: the usual picture. */}
       <svg
