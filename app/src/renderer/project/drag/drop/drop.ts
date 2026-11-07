@@ -2,7 +2,7 @@
  * Where a dragged block lands (#251), as arithmetic over the rows on screen.
  * Pure: the rows, the pointer and the block being dragged go in, and out
  * comes the page and place a move names, with where to draw the line that
- * shows it. Nothing here reads the DOM; `ProjectView` reads the rows and
+ * shows it. Nothing here reads the DOM; `Tab` reads the rows and
  * hands them in.
  *
  * The pointer's height picks the gap between two rows, and how far right it

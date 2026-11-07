@@ -22,6 +22,7 @@ import {
   indentBlock,
   listPages,
   locateBlock,
+  getRenamed,
   moveBlock,
   moveBlocks,
   outdentBlock,
@@ -197,6 +198,7 @@ export function createGraphSession(
 
     locate: async (blockId: string) =>
       locateBlock((await open.require()).state, blockId),
+    renamed: async (names: readonly string[]) => getRenamed((await open.require()).state, names),
     search: async (query: string): Promise<PageMatch[]> =>
       searchNames((await open.require()).state, query),
     find: async (query: string): Promise<Matches> => {

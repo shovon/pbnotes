@@ -139,6 +139,7 @@ export const GRAPH_CHANNELS = {
    */
   take: 'graph:take',
   locate: 'graph:locate',
+  renamed: 'graph:renamed',
   search: 'graph:search',
   find: 'graph:find',
   pages: 'graph:pages',
@@ -191,6 +192,13 @@ export type GraphApi = {
    * one whose block was deleted: that is an answer, not an error.
    */
   locate(blockId: string): Promise<{ page: string } | undefined>;
+  /**
+   * Each of `names` that a rename left behind (#108), with the title of the
+   * page it became: how the window follows a rename made elsewhere for a
+   * page it holds but is not showing (#301). An alias someone added is not
+   * a rename, and is not in the answer.
+   */
+  renamed(names: readonly string[]): Promise<{ from: string; to: string }[]>;
   /**
    * The titles of the project's pages that contain `query`, ignoring case:
    * those starting with it first, then A to Z, a handful at most, each with

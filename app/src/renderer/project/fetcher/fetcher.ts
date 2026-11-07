@@ -10,7 +10,7 @@
  * to the `through` main named for a chunk more. Each place starts over.
  *
  * Built from what it reaches outside, so a test can hand it a fake `view`
- * whose answers arrive late, out of order, or not at all. `ProjectView`
+ * whose answers arrive late, out of order, or not at all. `Tab`
  * binds the bridge and the clock, and wires the rest.
  */
 import type { Place, PlaceView } from '../../../shared/graph.ts';

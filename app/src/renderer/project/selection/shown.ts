@@ -1,6 +1,6 @@
 /**
  * Where each block shows, written on the screen and read back off it (#253).
- * A page view marks every block it draws with `slot`; `ProjectView` reads
+ * A page view marks every block it draws with `slot`; `Tab` reads
  * them in document order with `shown`, which is the order a selection runs
  * in, across every day and every linked reference on screen.
  *

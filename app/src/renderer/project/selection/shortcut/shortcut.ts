@@ -4,7 +4,7 @@
  * stays go-to-line-start in a block being written.
  *
  * Pure, and told the platform rather than reading it, so it runs under
- * `node --test`. `ProjectView` and the block box listen for the keys.
+ * `node --test`. `Tab` and the block box listen for the keys.
  */
 
 /** The modifiers on a key press or a click. */

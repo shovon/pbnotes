@@ -1,7 +1,7 @@
 /**
  * A selection of things that show in a line, one after another (#253). Pure,
  * and generic: it knows keys and the order they show in, and nothing of
- * blocks, pages or the DOM. `ProjectView` reads the order off the screen and
+ * blocks, pages or the DOM. `Tab` reads the order off the screen and
  * hands it in each time; each function gives back a new selection, with what
  * it selects worked out against that order.
  *

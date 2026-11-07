@@ -3,7 +3,7 @@
  * place it is on. An answer for a place the window has since left, or older
  * than the one held for this place, loses.
  *
- * Pure, so the rule runs under `node --test`; `ProjectView` holds the view.
+ * Pure, so the rule runs under `node --test`; `Tab` holds the view.
  */
 import type { Place, PlaceView } from '../../../shared/graph.ts';
 

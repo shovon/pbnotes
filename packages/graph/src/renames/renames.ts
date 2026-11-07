@@ -25,6 +25,7 @@ import { DATE_PATTERN, dateOf, namesOf } from "../journal/journal.ts";
 import { read } from "../reading/reading.ts";
 import { relink } from "../relink/relink.ts";
 import { spell, titleOf } from "../titles/titles.ts";
+import type { Titles } from "../titles/titles.ts";
 import { answersTo, claims } from "../aliases/aliases.ts";
 import type { AliasState } from "../aliases/aliases.ts";
 import { hasContent } from "../deletes/deletes.ts";
@@ -194,4 +195,30 @@ export function rename<S extends Holds>(state: S, it: PageRenamed): S {
  */
 export function renamedAway(state: RenameState & AliasState): Set<string> {
   return new Set([...map.keys(state.renames)].filter((key) => redirect(state, key) !== undefined));
+}
+
+/** A name a rename left behind, and the title of the page it became. */
+export type Renamed = { from: string; to: string };
+
+/**
+ * Each of `names` that a rename left behind, with the title of the page it
+ * became, as it shows: what a reader holding the old name should hold
+ * instead. Following a chain of renames, it is the page at its end. A name
+ * no rename left behind is not in the answer: one that names a page of its
+ * own, an alias someone added, a name whose alias was removed since, and a
+ * day, which leaves no name behind. Each name once, as it was given.
+ */
+export function renamedTo(
+  state: RenameState & AliasState & { readonly titles: Titles },
+  names: readonly string[],
+): Renamed[] {
+  const seen = new Set<string>();
+  const found: Renamed[] = [];
+  for (const from of names) {
+    if (seen.has(from)) continue;
+    seen.add(from);
+    const to = redirect(state, from);
+    if (to !== undefined) found.push({ from, to: titleOf(state, to) });
+  }
+  return found;
 }
