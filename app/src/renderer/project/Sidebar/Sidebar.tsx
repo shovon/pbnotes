@@ -1,3 +1,5 @@
+import { CalendarDays, Files } from "lucide-react";
+import Icon from "../../Icon/Icon";
 import { isShowing } from "./recent/recent";
 import type { Keys } from "../opening/opening";
 
@@ -40,6 +42,9 @@ type Props = {
 const entry =
   "block w-full cursor-pointer truncate rounded-md px-2 py-1 text-left text-sm hover:bg-line";
 const current = "bg-line font-medium";
+/** A fixed entry: an icon, then its label, which is cut short if need be. */
+const place =
+  "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-line";
 
 export default function Sidebar({
   recent,
@@ -79,19 +84,21 @@ export default function Sidebar({
       >
         <button
           type="button"
-          className={`${entry} ${journal ? current : ""}`}
+          className={`${place} ${journal ? current : ""}`}
           aria-current={journal ? "page" : undefined}
           onClick={onJournal}
         >
-          Journal
+          <Icon of={CalendarDays} />
+          <span className="truncate">Journal</span>
         </button>
         <button
           type="button"
-          className={`${entry} ${browsing ? current : ""}`}
+          className={`${place} ${browsing ? current : ""}`}
           aria-current={browsing ? "page" : undefined}
           onClick={onAllPages}
         >
-          All pages
+          <Icon of={Files} />
+          <span className="truncate">All pages</span>
         </button>
 
         <h2 className="mt-4 mb-1 px-2 text-xs font-semibold tracking-wide text-muted uppercase">
