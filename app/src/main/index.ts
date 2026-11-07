@@ -20,7 +20,10 @@ import { registerBenchIpc } from "./features/bench/bench-ipc";
 import { benchFiles } from "./features/bench/bench-store";
 import { sidebarSlots } from "./features/sidebar/sidebar-slots";
 import { rendererSource } from "./renderer-source/renderer-source";
-import { mainWindowOptions, windowColors } from "./window-options/window-options";
+import {
+  mainWindowOptions,
+  windowColors,
+} from "./window-options/window-options";
 import { createDisk } from "./features/projects/disk/disk";
 import {
   createProjectsStore,
@@ -28,6 +31,7 @@ import {
 } from "./features/projects/projects-store";
 import { registerProjectIpc } from "./features/projects/projects-ipc";
 import { createOpenProject } from "./features/projects/open-project/open-project";
+import { createInFlight } from "./in-flight";
 import { createLedgers } from "./ledgers";
 import {
   broadcastGraph,
@@ -172,15 +176,27 @@ app.on("ready", () => {
     newId: randomUUID,
     pathKey: pathKeyOn(process.platform),
   });
+  // Every call that may reach a ledger, from the moment it is sent until it
+  // is done: a read, a write, a stored image. A change of project waits for
+  // what was sent before it, so a ledger is closed under none of them, and
+  // none opens one again after it was closed.
+  const inFlight = createInFlight();
+
   // What main holds per project that a change of project has to clear: the
   // open project's bench file, let go so the next call opens the new one's,
-  // and undo's history (#234), so Cmd+Z never reaches back into the project
-  // left. The trail is each window's, and `App` remounts the project view
-  // when the project changes. A feature that holds something gets a line
-  // here. `graph` is made below; this only runs once the app is up.
+  // undo's history (#234), so Cmd+Z never reaches back into the project left,
+  // and every ledger but the new one's, with the log and the graph each holds
+  // (#236), once the calls sent before the change are done. Kept is what is
+  // open then, so a quick switch back keeps the project it went back to. The
+  // trail is each window's, and `App` remounts the project view when the
+  // project changes. A feature that holds something gets a line here. `graph`
+  // is made below; this only runs once the app is up.
   const projects = createOpenProject(store, disk.probe, () => {
     bench.release();
     graph.forget();
+    void inFlight
+      .settled()
+      .then(() => ledgers.keepOnly(projects.currentProject()?.id));
   });
   registerProjectIpc(store, projects);
 
@@ -203,46 +219,64 @@ app.on("ready", () => {
   //
   // `requireProject` settles which project before its first `await`, and is
   // the first thing a read, a write or a stored image calls: one sent just
-  // before the project changed lands where it was sent.
+  // before the project changed lands where it was sent. Each is tracked as it
+  // is sent; a write is tracked until it is recorded, as it waits its turn
+  // after `require` has resolved.
   const graph = createGraphSession(
-    { require: async () => ledgers.graphOf(await projects.requireProject()) },
+    {
+      require: () =>
+        inFlight.track(
+          (async () => ledgers.graphOf(await projects.requireProject()))(),
+        ),
+    },
     // Every window of the app, over `graph:changed`.
     broadcastGraph,
   );
   // What the tokens a copy carries for its images stand for (#261): a
   // project id, kept in main and never sent. The latest few, for this run.
   const imageSources = createTokens<string>({ newId: randomUUID, keep: 50 });
-  registerGraphIpc(graph, {
-    save: async (bytes, mime) => {
-      const project = await projects.requireProject();
-      return saveImage(
-        project.path,
-        await ledgers.writerOf(project),
-        bytes,
-        mime,
-      );
+  registerGraphIpc(
+    { ...graph, run: (command) => inFlight.track(graph.run(command)) },
+    {
+      save: (bytes, mime) =>
+        inFlight.track(
+          (async () => {
+            const project = await projects.requireProject();
+            return saveImage(
+              project.path,
+              await ledgers.writerOf(project),
+              bytes,
+              mime,
+            );
+          })(),
+        ),
+      // `currentProject`, not `requireProject`: this only reads. `findImage`
+      // lists directories and creates none, so an unmounted drive is an image
+      // that is not found, not a path invented on the local disk.
+      find: async (name) => {
+        const project = projects.currentProject();
+        return project ? findImage(project.path, name) : undefined;
+      },
+      // A copy whose images are too big to carry names where they are by a
+      // token (#261), lent here, for the project's id: a project that moves
+      // keeps it, and one removed since stands for nothing.
+      source: async () => {
+        const project = projects.currentProject();
+        return project ? imageSources.lend(project.id) : undefined;
+      },
+      // Tracked like `save`: `writerOf` opens the ledger, so a carry sent just
+      // before a change of project must be done before that ledger is closed.
+      carry: (wanted, source) =>
+        inFlight.track(
+          (async () => {
+            const project = await projects.requireProject();
+            const id = source === undefined ? undefined : imageSources.find(source);
+            const from = id === undefined ? undefined : store.getProject(id)?.path;
+            return carryImages(project.path, await ledgers.writerOf(project), from, wanted);
+          })(),
+        ),
     },
-    // `currentProject`, not `requireProject`: this only reads. `findImage`
-    // lists directories and creates none, so an unmounted drive is an image
-    // that is not found, not a path invented on the local disk.
-    find: async (name) => {
-      const project = projects.currentProject();
-      return project ? findImage(project.path, name) : undefined;
-    },
-    // A copy whose images are too big to carry names where they are by a
-    // token (#261), lent here, for the project's id: a project that moves
-    // keeps it, and one removed since stands for nothing.
-    source: async () => {
-      const project = projects.currentProject();
-      return project ? imageSources.lend(project.id) : undefined;
-    },
-    carry: async (wanted, source) => {
-      const project = await projects.requireProject();
-      const id = source === undefined ? undefined : imageSources.find(source);
-      const from = id === undefined ? undefined : store.getProject(id)?.path;
-      return carryImages(project.path, await ledgers.writerOf(project), from, wanted);
-    },
-  });
+  );
 
   // A project's graph moved: a write of ours, another session's events
   // landing in its folder, or the fold catching up with a write of ours. Every

@@ -108,9 +108,11 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
    * Paces every open ledger by whether a window has focus. Gaining it also
    * reads the folder of the project on screen in full, so what comes on
    * screen never lags by the background pace. The others are only paced: a
-   * full read of every project kept open this session, on every focus, would
-   * be paid for things nobody is looking at. A ledger still opening takes the
-   * pace when it opens: the pace is read then, so the last call wins.
+   * full read of each, on every focus, would be paid for things nobody is
+   * looking at. There are none once a change of project has settled:
+   * `keepOnly` closes all but the open project's. A
+   * ledger still opening takes the pace when it opens: the pace is read then,
+   * so the last call wins.
    */
   function setFocused(focused: boolean, onScreen?: string): void {
     pace = focused ? paces.focused : paces.background;
@@ -226,13 +228,29 @@ export function createLedgers(paces: Paces = PACES, openLedger: OpenLedger = ope
     return path.basename((await opened(project)).ledger.writer().directory);
   }
 
+  /**
+   * Closes every ledger but `projectId`'s, and every one when it is
+   * `undefined`, letting go of the log, the checkpoints and the graph each
+   * held, and stopping its reads (#236). Told which to keep, rather than which
+   * to close, as whoever calls this knows what is open and not what was.
+   *
+   * Closes at once: a `post` still to come on a closed one fails, and a
+   * `graphOf` or `writerOf` still to come opens it again. Whoever calls this
+   * waits for the calls sent before the change first.
+   */
+  async function keepOnly(projectId: string | undefined): Promise<void> {
+    const going = [...entries].filter(([id]) => id !== projectId);
+    for (const [id] of going) entries.delete(id);
+    await Promise.all(going.map(([, entry]) => release(entry)));
+  }
+
   async function closeLedgers(): Promise<void> {
     const open = [...entries.values()];
     entries.clear();
     await Promise.all(open.map(release));
   }
 
-  return { graphOf, writerOf, onChange, setFocused, close: closeLedgers };
+  return { graphOf, writerOf, onChange, setFocused, keepOnly, close: closeLedgers };
 }
 
 export type Ledgers = ReturnType<typeof createLedgers>;
