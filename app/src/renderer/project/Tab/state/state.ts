@@ -6,7 +6,7 @@
  * Only what has to outlive the tab being drawn is here. What a tab draws
  * (main's answer, a selection, a drag) is the drawn tab's own.
  */
-import { renamed, leave } from '../../trail/trail.ts';
+import { renamed, leave, placeOf } from '../../trail/trail.ts';
 import type { Stop } from '../../trail/trail.ts';
 import { renamedIn as renamedInStack } from '../../Aside/stack/stack.ts';
 import { INITIAL_WIDTH } from '../../Aside/width/width.ts';
@@ -72,4 +72,17 @@ export function renamedIn(tab: TabState, from: string, to: string): TabState {
  */
 export function left(tab: TabState, gone: string): TabState {
   return withField(tab, 'trail', leave(tab.trail, gone));
+}
+
+/**
+ * Every page name the tab holds, as it holds it: each stop on the trail
+ * that is on a page, and each card beside it. What to ask main about when
+ * a page may have been renamed while the tab was not looking (#301).
+ */
+export function held(tab: TabState): string[] {
+  const pages = tab.trail.flatMap((stop) => {
+    const at = placeOf(stop);
+    return at === undefined ? [] : [at.page];
+  });
+  return [...pages, ...tab.aside];
 }

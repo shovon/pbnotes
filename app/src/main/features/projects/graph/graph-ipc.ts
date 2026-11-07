@@ -12,7 +12,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { CARRY_COUNT, CARRY_LIMIT, IMAGE_SCHEME, GRAPH_CHANNELS } from "../../../../shared/graph";
 import type { BlockMenuPick, CarriedImage, Clip, PageMenuPick, Place } from "../../../../shared/graph";
-import { requireString } from "../../../ipc";
+import { requireString, requireStringArray } from "../../../ipc";
 import { cutLabel, deleteLabel, readOffer } from "./block-menu/block-menu";
 import { readOffer as readPageOffer, readPoint } from "./page-menu/page-menu";
 import { requireCommand, requireDay, requireTitle } from "./command/command";
@@ -119,6 +119,10 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
 
   ipcMain.handle(GRAPH_CHANNELS.locate, (_event, blockId: unknown) =>
     session.locate(requireString(blockId, "blockId")),
+  );
+
+  ipcMain.handle(GRAPH_CHANNELS.renamed, (_event, names: unknown) =>
+    session.renamed(requireStringArray(names, "names")),
   );
 
   ipcMain.handle(GRAPH_CHANNELS.search, (_event, query: unknown) =>

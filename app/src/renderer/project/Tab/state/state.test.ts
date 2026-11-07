@@ -1,7 +1,8 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NEW_TAB, left, renamedIn, withField } from './state.ts';
+import { NEW_TAB, held, left, renamedIn, withField } from './state.ts';
+import { ALL_PAGES } from '../../trail/trail.ts';
 import type { TabState } from './state.ts';
 
 const on = (page: string, aside: string[] = []): TabState => ({
@@ -46,4 +47,17 @@ test('a page deleted steps the tab off it', () => {
 test('a page deleted that the tab is not on leaves the very same tab', () => {
   const tab = on('Mira');
   assert.equal(left(tab, 'Bar'), tab);
+});
+
+test('a tab holds every page on its trail and beside it, and nothing for the journal or the list', () => {
+  const tab: TabState = {
+    ...NEW_TAB,
+    trail: [undefined, { page: 'Mira' }, ALL_PAGES, { page: 'Bar', block: 'b1' }],
+    aside: ['Baz'],
+  };
+  assert.deepEqual(held(tab), ['Mira', 'Bar', 'Baz']);
+});
+
+test('a new tab holds no page', () => {
+  assert.deepEqual(held(NEW_TAB), []);
 });

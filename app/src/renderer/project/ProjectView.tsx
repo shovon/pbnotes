@@ -19,7 +19,7 @@ import type { Fields } from './undo/fields';
 import { OwnEdit } from './undo/own-edit';
 import { shelve } from './Aside/stack/stack';
 import Tab from './Tab/Tab';
-import { NEW_TAB, left, renamedIn as renamedInTab, withField } from './Tab/state/state';
+import { NEW_TAB, held, left, renamedIn as renamedInTab, withField } from './Tab/state/state';
 import type { TabState } from './Tab/state/state';
 
 /**
@@ -33,6 +33,7 @@ export type ProjectViewGraph = PageViewGraph &
     | 'onTake'
     | 'view'
     | 'locate'
+    | 'renamed'
     | 'find'
     | 'pages'
     | 'addImage'
@@ -129,6 +130,28 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
     setTab((tab) => renamedInTab(tab, from, to));
     setRecent((recent) => ({ ...recent, list: renamedInRecent(recent.list, from, to) }));
   };
+  /**
+   * A page renamed elsewhere (#301), in another window or on another
+   * machine, while the window holds it but is not showing it: a card, a
+   * stop further back, a Recent entry. The tab sees a rename only of the
+   * page on show (`renamed/`), so the window asks main about every name it
+   * holds, and follows each that a rename left behind. An alias someone
+   * added is not a rename, and main leaves it out. A failure says nothing:
+   * the tab's own fetch already says when the project cannot be reached.
+   * Rebound each render, for what is held now.
+   */
+  const followRenames = useRef(() => undefined as void);
+  followRenames.current = () => {
+    const names = [...held(tab), ...recent.list];
+    if (names.length === 0) return;
+    void graph.renamed(names).then(
+      (found) => {
+        for (const { from, to } of found) followRename(from, to);
+      },
+      (): void => undefined,
+    );
+  };
+
   /** The page `gone` was deleted: the tab steps off it, and Recent forgets it. */
   const forgetPage = (gone: string) => {
     setTab((tab) => left(tab, gone));
@@ -172,6 +195,20 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
     if (page === undefined) return;
     setRecent((recent) => (recent.loaded ? { ...recent, list: visit(recent.list, page) } : recent));
   }, [place?.page]);
+
+  // Once Recent has loaded, since it is kept: a page in it may have been
+  // renamed while the app was closed. And on every change after that.
+  useEffect(() => {
+    if (recent.loaded) followRenames.current();
+  }, [recent.loaded]);
+  useEffect(() => {
+    const off = graph.onChanged(() => followRenames.current());
+    // A stubbed bridge — Storybook's — answers with something that is not an
+    // unsubscribe, and a cleanup that is not a function throws.
+    return () => {
+      if (typeof off === 'function') off();
+    };
+  }, [graph]);
 
   // Kept after each change, and only once loaded. `visit` and `forget` hand
   // back the same list when nothing moved, so this runs only on a change;

@@ -172,22 +172,13 @@ export default function Tab({
 
   /**
    * The page `from` is now called `to` (#109): the window reads `to`
-   * wherever it held `from` (`onRenamed`), and so does what the aside's
-   * cards last drew, so the tab moves with the page. Silent, and the same
-   * whoever renamed it: this tab, or another window or machine
-   * (`renamed/`). Each step hands back what it was given when nothing
-   * changes, so following twice is following once.
+   * wherever it held `from` (`onRenamed`), so the tab moves with the page.
+   * Silent, and the same whoever renamed it: this tab, or another window or
+   * machine (`renamed/`). Each step hands back what it was given when
+   * nothing changes, so following twice is following once.
    */
   const followRename = useRef<(from: string, to: string) => void>(() => undefined);
-  followRename.current = (from, to) => {
-    onRenamed(from, to);
-    setAsideShown((all) => {
-      if (!all.has(canonicalize(from))) return all;
-      const left = new Map(all);
-      left.delete(canonicalize(from));
-      return left;
-    });
-  };
+  followRename.current = onRenamed;
 
   /**
    * When to ask main what shows here, and which answer to draw (`fetcher/`).
@@ -251,14 +242,18 @@ export default function Tab({
    * there as they do on the page.
    */
   const [asideShown, setAsideShown] = useState<ReadonlyMap<string, CardShown>>(new Map());
-  const closeCard = (page: string) => {
-    setAside((stack) => unshelve(stack, page));
+  const closeCard = (page: string) => setAside((stack) => unshelve(stack, page));
+  /**
+   * Only the cards still open: one closed, or opened again under a new name
+   * after a rename (#301), leaves nothing of what it drew behind.
+   */
+  useEffect(() => {
     setAsideShown((all) => {
-      const left = new Map(all);
-      left.delete(canonicalize(page));
-      return left;
+      const open = new Set(aside.map(canonicalize));
+      if ([...all.keys()].every((key) => open.has(key))) return all;
+      return new Map([...all].filter(([key]) => open.has(key)));
     });
-  };
+  }, [aside]);
 
   useEffect(() => {
     // A notice and a write's reply take one path, so this tab's writes
