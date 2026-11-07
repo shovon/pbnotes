@@ -10,12 +10,24 @@
  * up into it, the rest the bar's own colour (`bar`, a shade off the page).
  * The colours are placeholders until the strip is designed.
  *
+ * Every tab is one width, whatever it is called (#311), so the strip is
+ * even and a tab's × stays put when its page is renamed. A name that does
+ * not fit is cut short; its tooltip has it whole.
+ *
+ * Closing a tab while the pointer is on the strip keeps every tab the width
+ * it was, as a browser does: the next tab's × comes under the pointer, so a
+ * row of them closes with clicks in one place. Once the pointer leaves the
+ * strip, they take the width that now fits. The strip sits in the title
+ * bar, whose drag region the window hears nothing over, so leaving it is
+ * heard once the pointer reaches somewhere that is not drag region.
+ *
  * Only the entries and the + take the pointer: the room around them stays
- * the title bar, which drags the window. Long names are cut short. Many
- * tabs shrink first, then scroll sideways, with the active one kept in
- * sight and the + outside what scrolls, so it is always there.
+ * the title bar, which drags the window. Many tabs shrink, all alike, to a
+ * width a short name still reads in, then scroll sideways, with the active
+ * one kept in sight and the + outside what scrolls, so it is always there.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
 
 export type StripTab = {
   id: string;
@@ -34,6 +46,14 @@ type Props = {
 
 export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Props) {
   const list = useRef<HTMLDivElement>(null);
+  /** The width every tab keeps after a close, until the pointer leaves the strip. */
+  const [kept, setKept] = useState<number | null>(null);
+  /** Closes `id` from a pointer on its tab, keeping that tab's width for the rest. */
+  const closeFrom = (event: MouseEvent<HTMLElement>, id: string) => {
+    const tab = event.currentTarget.closest('[data-tab]');
+    if (tab) setKept(tab.getBoundingClientRect().width);
+    onClose(id);
+  };
   // The active tab in sight, however it became active: opened past the
   // end of what shows, or reached by a click on a tab half out of view.
   // The whole of it, its × and border too, not only the label it is named by.
@@ -44,7 +64,7 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [active, tabs.length]);
   return (
-    <div className="flex h-full min-w-0 items-stretch">
+    <div className="flex h-full min-w-0 items-stretch" onPointerLeave={() => setKept(null)}>
       <div
         ref={list}
         role="tablist"
@@ -57,7 +77,11 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
             <div
               key={id}
               data-tab
-              className={`app-region-no-drag group flex max-w-44 min-w-16 items-center border-r border-line text-sm ${
+              // One width each, from the same basis, so they shrink alike.
+              // Kept as it was after a close: not shrinking or growing until
+              // the pointer leaves.
+              style={kept === null ? undefined : { width: kept, minWidth: kept, flexShrink: 0 }}
+              className={`app-region-no-drag group flex w-44 min-w-24 shrink items-center border-r border-line text-sm ${
                 on ? 'bg-bg text-fg' : 'text-muted hover:bg-line hover:text-fg'
               }`}
             >
@@ -70,7 +94,7 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
                 onClick={() => onSelect(id)}
                 // A middle click closes, as in a browser.
                 onAuxClick={(event) => {
-                  if (event.button === 1) onClose(id);
+                  if (event.button === 1) closeFrom(event, id);
                 }}
               >
                 {label}
@@ -82,7 +106,7 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
                 className={`h-full cursor-pointer px-1.5 leading-none hover:text-accent ${
                   on ? '' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                 }`}
-                onClick={() => onClose(id)}
+                onClick={(event) => closeFrom(event, id)}
               >
                 ×
               </button>
