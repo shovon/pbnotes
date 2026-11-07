@@ -271,6 +271,7 @@ export default function App({ projects: api, graph, bench, closeWindow, onTab, n
                 onTab={onTab}
                 recentPages={kept.recentPages}
                 sidebar={kept.sidebar}
+                recentSection={kept.recentSection}
               />
             )
           ) : (

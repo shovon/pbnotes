@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { recentPages, sidebar, sidebarSlots } from "./sidebar-slots.ts";
+import { recentPages, recentSection, sidebar, sidebarSlots } from "./sidebar-slots.ts";
 
 test("recent pages: a list of titles, and nothing else", () => {
   assert.deepEqual(recentPages.decode(["Mira", "2026-10-28"]), ["Mira", "2026-10-28"]);
@@ -20,6 +20,12 @@ test("sidebar: whether it is collapsed, and the rest dropped", () => {
   assert.equal(sidebar.decode(true), undefined);
 });
 
-test("both are declared under the names the renderer uses", () => {
-  assert.deepEqual([...sidebarSlots.keys()].sort(), ["recent-pages", "sidebar"]);
+test("recent section: whether it is collapsed, and the rest dropped", () => {
+  assert.deepEqual(recentSection.decode({ collapsed: true }), { collapsed: true });
+  assert.equal(recentSection.decode({ collapsed: 1 }), undefined);
+  assert.equal(recentSection.decode(undefined), undefined);
+});
+
+test("all are declared under the names the renderer uses", () => {
+  assert.deepEqual([...sidebarSlots.keys()].sort(), ["recent-pages", "recent-section", "sidebar"]);
 });

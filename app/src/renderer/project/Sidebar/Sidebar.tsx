@@ -1,4 +1,4 @@
-import { CalendarDays, Files } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronRight, Files } from "lucide-react";
 import Icon from "../../Icon/Icon";
 import { isShowing } from "./recent/recent";
 import type { Keys } from "../opening/opening";
@@ -18,6 +18,11 @@ import type { Keys } from "../opening/opening";
  * Floating, it is the same column laid over the page while it is collapsed
  * (pointing at the toggle shows it, `peek.ts`): without `data-sidebar`, so
  * `App` makes no room for it, a layer up and with a shadow off its edge.
+ *
+ * Recent collapses to its heading (#299). Whether it is is handed in, since
+ * the docked sidebar and the floating one are not the same element and must
+ * agree; collapsed, the list is still in the DOM, hidden, so the heading's
+ * `aria-controls` always names something.
  */
 type Props = {
   /** Titles, newest first. */
@@ -33,6 +38,10 @@ type Props = {
    * opens: here, beside (#287) or in a new tab (#309, `opening/`).
    */
   onOpen: (page: string, keys: Keys) => void;
+  /** Whether Recent shows only its heading. */
+  recentCollapsed: boolean;
+  /** The Recent heading was clicked. */
+  onToggleRecent: () => void;
   /** Laid over the page rather than beside it. */
   floating?: boolean;
   onPointerEnter?: () => void;
@@ -53,6 +62,8 @@ export default function Sidebar({
   onJournal,
   onAllPages,
   onOpen,
+  recentCollapsed,
+  onToggleRecent,
   floating = false,
   onPointerEnter,
   onPointerLeave,
@@ -101,34 +112,45 @@ export default function Sidebar({
           <span className="truncate">All pages</span>
         </button>
 
-        <h2 className="mt-4 mb-1 px-2 text-xs font-semibold tracking-wide text-muted uppercase">
-          Recent
+        <h2 className="mt-4 mb-1">
+          <button
+            type="button"
+            className="flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-left text-xs font-semibold tracking-wide text-muted uppercase hover:bg-line"
+            aria-expanded={!recentCollapsed}
+            aria-controls="sidebar-recent"
+            onClick={onToggleRecent}
+          >
+            Recent
+            <Icon of={recentCollapsed ? ChevronRight : ChevronDown} />
+          </button>
         </h2>
-        {recent.length === 0 ? (
-          <p className="px-2 text-sm text-muted">
-            Pages you open show up here.
-          </p>
-        ) : (
-          <ul>
-            {recent.map((page) => {
-              const here = isShowing(page, showing);
-              return (
-                <li key={page}>
-                  <button
-                    type="button"
-                    className={`${entry} ${here ? current : ""}`}
-                    aria-current={here ? "page" : undefined}
-                    // Truncated to one line; the whole title on hover.
-                    title={page}
-                    onClick={(event) => onOpen(page, event)}
-                  >
-                    {page}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <div id="sidebar-recent" hidden={recentCollapsed}>
+          {recent.length === 0 ? (
+            <p className="px-2 text-sm text-muted">
+              Pages you open show up here.
+            </p>
+          ) : (
+            <ul>
+              {recent.map((page) => {
+                const here = isShowing(page, showing);
+                return (
+                  <li key={page}>
+                    <button
+                      type="button"
+                      className={`${entry} ${here ? current : ""}`}
+                      aria-current={here ? "page" : undefined}
+                      // Truncated to one line; the whole title on hover.
+                      title={page}
+                      onClick={(event) => onOpen(page, event)}
+                    >
+                      {page}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </nav>
     </>
   );

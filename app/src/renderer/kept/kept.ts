@@ -59,7 +59,7 @@ export function keptOnBench<T>(
 export const titles: Check<string[]> = (raw) =>
   Array.isArray(raw) && raw.every((item) => typeof item === 'string') ? raw : undefined;
 
-/** Whether the sidebar is collapsed. */
+/** Whether the sidebar, or its Recent section, is collapsed. */
 export const sidebarState: Check<SidebarState> = (raw) => {
   const collapsed = (raw as { collapsed?: unknown } | null)?.collapsed;
   return typeof collapsed === 'boolean' ? { collapsed } : undefined;
@@ -69,12 +69,15 @@ export const sidebarState: Check<SidebarState> = (raw) => {
 export function sidebarKept(bench: Bench, report: (error: unknown) => void) {
   const recent = keptOnBench(bench, SIDEBAR_SLOTS.recentPages, titles, report);
   const sidebar = keptOnBench(bench, SIDEBAR_SLOTS.sidebar, sidebarState, report);
+  const section = keptOnBench(bench, SIDEBAR_SLOTS.recentSection, sidebarState, report);
   return {
     recentPages: recent.kept,
     sidebar: sidebar.kept,
+    recentSection: section.kept,
     off: () => {
       recent.off();
       sidebar.off();
+      section.off();
     },
   };
 }
