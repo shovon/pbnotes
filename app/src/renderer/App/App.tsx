@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { BenchApi } from '../../shared/bench';
+import type { TabItem } from '../../shared/window';
 import type { Project, ProjectsApi } from '../../shared/projects';
 import { sidebarKept } from '../kept/kept';
 import ProjectPicker from '../ProjectPicker/ProjectPicker';
@@ -25,13 +26,18 @@ type Props = {
   bench: Pick<BenchApi, 'get' | 'set'>;
   /** Closes this window, passed on to the project that is open: its last tab closing (#303). */
   closeWindow: () => Promise<void>;
+  /**
+   * Hears the menu's tab items (#304), passed on to the project that is
+   * open. With none, there are no tabs: Close Tab closes the window.
+   */
+  onTab: (listener: (item: TabItem) => void) => () => void;
   /** The clock, passed on to the project that is open. */
   now: () => Date;
   /** Whether this is macOS, passed on to the project that is open. */
   mac: boolean;
 };
 
-export default function App({ projects: api, graph, bench, closeWindow, now, mac }: Props) {
+export default function App({ projects: api, graph, bench, closeWindow, onTab, now, mac }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
@@ -42,6 +48,21 @@ export default function App({ projects: api, graph, bench, closeWindow, now, mac
    * to honour, main is where it lands.
    */
   const [project, setProject] = useState<Project | null>(null);
+
+  /**
+   * With no project open there are no tabs (#304): Close Tab closes the
+   * window, as Close Window does, and the other tab items do nothing. With
+   * one open, its view hears them instead.
+   */
+  useEffect(() => {
+    if (project) return;
+    const off = onTab((item) => {
+      if (item === 'close') void closeWindow();
+    });
+    return () => {
+      if (typeof off === 'function') off();
+    };
+  }, [project, onTab, closeWindow]);
 
   /**
    * The view renders from the database alone: nothing here waits on the disk,
@@ -247,6 +268,7 @@ export default function App({ projects: api, graph, bench, closeWindow, now, mac
                 now={now}
                 mac={mac}
                 closeWindow={closeWindow}
+                onTab={onTab}
                 recentPages={kept.recentPages}
                 sidebar={kept.sidebar}
               />

@@ -41,6 +41,7 @@ createRoot(container).render(
       graph={graph}
       bench={bench}
       closeWindow={own.close}
+      onTab={own.onTab}
       now={() => new Date()}
       mac={mac}
     />

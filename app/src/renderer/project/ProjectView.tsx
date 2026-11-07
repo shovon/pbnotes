@@ -22,9 +22,10 @@ import Tab from './Tab/Tab';
 import { held, left, renamedIn as renamedInTab, withField } from './Tab/state/state';
 import type { TabState } from './Tab/state/state';
 import type { Held } from './held/held';
-import { activated, activeOf, closed, each, opened, single, updated } from './tabs/tabs';
+import { activated, activeOf, closed, each, next, opened, previous, single, updated } from './tabs/tabs';
 import type { Tabs } from './tabs/tabs';
 import TabStrip from './TabStrip/TabStrip';
+import type { TabItem } from '../../shared/window';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -72,6 +73,8 @@ type Props = {
   mac: boolean;
   /** Closes this window: what closing its last tab does (#303). */
   closeWindow: () => Promise<void>;
+  /** Hears the menu's tab items (#304). Returns an unsubscribe. */
+  onTab: (listener: (item: TabItem) => void) => () => void;
   /** The pages opened lately in this project, newest first. */
   recentPages: Kept<string[]>;
   /** Whether this project's sidebar is collapsed. */
@@ -99,6 +102,7 @@ export default function ProjectView({
   now,
   mac,
   closeWindow,
+  onTab,
   recentPages,
   sidebar,
 }: Props) {
@@ -123,8 +127,17 @@ export default function ProjectView({
   const behind = useRef(new Map<string, { held: Held | null; scroll: number }>());
   const remember = (id: string, held: Held) =>
     behind.current.set(id, { held, scroll: behind.current.get(id)?.scroll ?? 0 });
-  /** How far the window was scrolled on the tab being left, kept for when it is back. */
-  const leave = () =>
+  /**
+   * How far the window was scrolled on the tab being left, kept for when it
+   * is back, and what is being typed in it written first. A box takes blur
+   * as its commit, and one React takes away never blurs: switched away from
+   * by a key, with nothing clicked to take the focus, its text would go.
+   */
+  const leave = () => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    leaveScroll();
+  };
+  const leaveScroll = () =>
     behind.current.set(activeId, { held: behind.current.get(activeId)?.held ?? null, scroll: window.scrollY });
   const showTab = (id: string) => {
     if (id === activeId) return;
@@ -138,6 +151,7 @@ export default function ProjectView({
   };
   /** Closing the only tab closes the window, through main (`window:close`). */
   const closeTab = (id: string) => {
+    if (id === activeId) leave();
     const next = closed(tabs, id);
     if (!next) {
       void closeWindow();
@@ -179,6 +193,28 @@ export default function ProjectView({
         }),
       );
     });
+
+  /**
+   * The menu's tab items (#304), by click or key: New Tab, Close Tab on the
+   * active one, and the tab to either side, wrapping round. Rebound each
+   * render, for the tabs as they are now.
+   */
+  const tabItem = useRef<(item: TabItem) => void>(() => undefined);
+  tabItem.current = (item) => {
+    if (item === 'new') openTab();
+    else if (item === 'close') closeTab(activeId);
+    else {
+      const to = (item === 'next' ? next : previous)(tabs).active;
+      showTab(to);
+    }
+  };
+  useEffect(() => {
+    const off = onTab((item) => tabItem.current(item));
+    // A stubbed bridge answers with something that is not an unsubscribe.
+    return () => {
+      if (typeof off === 'function') off();
+    };
+  }, [onTab]);
 
   /**
    * The page `from` is now called `to` (#109): the tab and Recent read `to`
