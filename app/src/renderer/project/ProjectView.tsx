@@ -419,7 +419,10 @@ export default function ProjectView({
           portal for both, so the two stay in that order. */}
       {titlebar !== null &&
         createPortal(
-          <div className="flex min-w-0 flex-1 items-center">
+          // The full height of the bar and one pixel over its bottom rule, so
+          // the tabs fill it and the active one, in the page's colour, covers
+          // the rule as if the page came up into it. The rest leave it showing.
+          <div className="flex h-[calc(100%+1px)] min-w-0 flex-1 items-center self-start">
             {/* Always there and always as wide, so switching tabs never moves
                 the tabs beside it: off when there is nowhere to go back to,
                 and the page it goes back to in its tooltip. */}

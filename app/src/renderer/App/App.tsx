@@ -190,7 +190,7 @@ export default function App({ projects: api, graph, bench, closeWindow, now, mac
           the toggle and picker. */}
       <div
         aria-hidden
-        className="app-region-drag fixed inset-x-0 top-0 z-20 box-content h-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] border-b border-line bg-bg"
+        className="app-region-drag fixed inset-x-0 top-0 z-20 box-content h-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] border-b border-line bg-bar"
       />
       <header
         id="titlebar"
@@ -203,7 +203,10 @@ export default function App({ projects: api, graph, bench, closeWindow, now, mac
             the sidebar's width, so what the page adds after them (the way
             back) starts past its edge rather than over it. A long project
             name pushes it further, never under. */}
-        <div className="flex shrink-0 items-center [:root:has([data-sidebar])_&]:min-w-[calc(var(--spacing-sidebar)-env(titlebar-area-x,5rem))]">
+        {/* Never wider than that either (#303), sidebar showing or not: a
+            long project name is cut short rather than pushed into the tabs,
+            and the picker shows it whole when pointed at. */}
+        <div className="flex max-w-[calc(var(--spacing-sidebar)-env(titlebar-area-x,5rem))] min-w-0 shrink-0 items-center [:root:has([data-sidebar])_&]:min-w-[calc(var(--spacing-sidebar)-env(titlebar-area-x,5rem))]">
           <div id="titlebar-start" className="contents" />
           {project && (
             <ProjectPicker

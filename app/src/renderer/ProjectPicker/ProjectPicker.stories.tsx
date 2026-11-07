@@ -33,3 +33,23 @@ export const Default: Story = {};
 export const Single: Story = {
   args: { projects: [project('a', 'pbnotes', '/Users/sal/projects/pbnotes')] },
 };
+
+/**
+ * A name longer than the room the title bar leaves it: cut short, and shown
+ * whole when pointed at. The frame stands in for the cap `App` puts on it.
+ */
+export const LongName: Story = {
+  args: {
+    projects: [
+      project('a', 'A project with a name that goes on well past the sidebar', '/Users/sal/long'),
+      project('b', 'Field notes', '/Volumes/archive/field-notes'),
+    ],
+  },
+  decorators: [
+    (Story) => (
+      <div style={{ display: 'flex', maxWidth: '10rem' }}>
+        <Story />
+      </div>
+    ),
+  ],
+};

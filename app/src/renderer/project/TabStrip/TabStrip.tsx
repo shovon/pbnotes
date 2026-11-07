@@ -5,6 +5,11 @@
  * journal. It shows with one tab too, so there is always somewhere to see
  * that tabs are there.
  *
+ * Tabs, not buttons: each fills the title bar's height, edge to edge with
+ * the next, the active one in the page's own colour, as if the page came
+ * up into it, the rest the bar's own colour (`bar`, a shade off the page).
+ * The colours are placeholders until the strip is designed.
+ *
  * Only the entries and the + take the pointer: the room around them stays
  * the title bar, which drags the window. Long names are cut short. Many
  * tabs shrink first, then scroll sideways, with the active one kept in
@@ -39,12 +44,12 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [active, tabs.length]);
   return (
-    <div className="ml-2 flex min-w-0 items-center gap-0.5">
+    <div className="flex h-full min-w-0 items-stretch">
       <div
         ref={list}
         role="tablist"
         aria-label="Tabs"
-        className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
+        className="flex h-full min-w-0 items-stretch overflow-x-auto [scrollbar-width:none]"
       >
         {tabs.map(({ id, label }) => {
           const on = id === active;
@@ -52,10 +57,8 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
             <div
               key={id}
               data-tab
-              className={`app-region-no-drag group flex max-w-44 min-w-16 items-center rounded-md border text-sm ${
-                on
-                  ? 'border-line bg-line/50 text-fg'
-                  : 'border-transparent text-muted hover:border-line hover:text-fg'
+              className={`app-region-no-drag group flex max-w-44 min-w-16 items-center border-r border-line text-sm ${
+                on ? 'bg-bg text-fg' : 'text-muted hover:bg-line hover:text-fg'
               }`}
             >
               <button
@@ -63,7 +66,7 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
                 role="tab"
                 aria-selected={on}
                 title={label}
-                className="min-w-0 flex-1 cursor-pointer truncate py-0.5 pr-0.5 pl-2 text-left"
+                className="h-full min-w-0 flex-1 cursor-pointer truncate pr-0.5 pl-2.5 text-left"
                 onClick={() => onSelect(id)}
                 // A middle click closes, as in a browser.
                 onAuxClick={(event) => {
@@ -76,7 +79,7 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
                 type="button"
                 aria-label={`Close ${label}`}
                 title="Close tab"
-                className={`mr-0.5 cursor-pointer rounded-sm px-1 leading-none hover:text-accent ${
+                className={`h-full cursor-pointer px-1.5 leading-none hover:text-accent ${
                   on ? '' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                 }`}
                 onClick={() => onClose(id)}
@@ -91,7 +94,7 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
         type="button"
         aria-label="New tab"
         title="New tab"
-        className="app-region-no-drag shrink-0 cursor-pointer rounded-md border border-transparent px-1.5 py-0.5 text-sm text-muted hover:border-accent hover:text-accent"
+        className="app-region-no-drag shrink-0 cursor-pointer px-2.5 text-sm text-muted hover:bg-line hover:text-fg"
         onClick={onNew}
       >
         +

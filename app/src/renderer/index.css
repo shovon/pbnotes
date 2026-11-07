@@ -15,6 +15,10 @@
   --color-fg: #1c1c1e;
   --color-muted: #6b6b70;
   --color-line: #e3e3e6;
+  /* The title bar (#303): a shade off the page, so the active tab, in the
+     page's colour, reads as the page come up into it. A placeholder until
+     the bar is designed. */
+  --color-bar: #eeeef0;
   --color-accent: #2f6feb;
   --color-on-accent: #ffffff;
   --color-danger: #c0392b;
@@ -49,6 +53,7 @@
     --color-fg: #ececee;
     --color-muted: #9a9aa0;
     --color-line: #313135;
+    --color-bar: #28282b;
     --color-accent: #6ea0ff;
     --color-danger: #ff6b5c;
     --color-warn-bg: #3a2e14;
@@ -76,6 +81,17 @@
 
 @utility app-region-no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* Something coming into view, as `animate-[fade-in_…]` with its own
+   duration and delay: the project picker's whole name (#303). */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* The dot Logseq marks a block with, drawn rather than marked up. A

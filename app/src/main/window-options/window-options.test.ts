@@ -35,7 +35,7 @@ for (const [scheme, block, isDark] of [
     const bg = token(block, "bg");
     assert.deepEqual(windowColors(isDark), {
       backgroundColor: bg,
-      titleBarOverlay: { color: bg, symbolColor: token(block, "fg") },
+      titleBarOverlay: { color: token(block, "bar"), symbolColor: token(block, "fg") },
     });
   });
 }
