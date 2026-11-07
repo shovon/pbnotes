@@ -31,9 +31,11 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
   const list = useRef<HTMLDivElement>(null);
   // The active tab in sight, however it became active: opened past the
   // end of what shows, or reached by a click on a tab half out of view.
+  // The whole of it, its × and border too, not only the label it is named by.
   useEffect(() => {
     list.current
       ?.querySelector('[aria-selected="true"]')
+      ?.closest('[data-tab]')
       ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [active, tabs.length]);
   return (
@@ -49,6 +51,7 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
           return (
             <div
               key={id}
+              data-tab
               className={`app-region-no-drag group flex max-w-44 min-w-16 items-center rounded-md border text-sm ${
                 on
                   ? 'border-line bg-line/50 text-fg'
