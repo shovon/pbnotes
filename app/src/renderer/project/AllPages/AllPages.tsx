@@ -3,6 +3,7 @@ import type { PageListing } from '@pbnotes/graph';
 import type { GraphApi } from '../../../shared/graph';
 import { sorted, toggle } from './sort/sort';
 import type { Column, Sort } from './sort/sort';
+import type { Keys } from '../opening/opening';
 
 /**
  * Every page in the project, as a table (#200): its title, how many blocks are
@@ -19,8 +20,11 @@ type Props = {
   /** Held by `ProjectView`, so back to the list finds it sorted as it was left. */
   sort: Sort;
   onSort: (sort: Sort) => void;
-  /** A page was clicked; `beside` is Shift held, for the right sidebar (#287). */
-  onOpen: (page: string, beside: boolean) => void;
+  /**
+   * A page was clicked, with the keys held, which say where it opens: here,
+   * beside (#287) or in a new tab (#309, `opening/`).
+   */
+  onOpen: (page: string, keys: Keys) => void;
   /** A list that could not be read. */
   onError: (error: unknown) => void;
 };
@@ -121,7 +125,7 @@ export default function AllPages({ graph, sort, onSort, onOpen, onError }: Props
                     className={`block max-w-full cursor-pointer truncate text-left hover:underline ${
                       page.blocks === 0 ? 'text-muted' : 'text-accent'
                     }`}
-                    onClick={(event) => onOpen(page.title, event.shiftKey)}
+                    onClick={(event) => onOpen(page.title, event)}
                   >
                     {page.title}
                   </button>

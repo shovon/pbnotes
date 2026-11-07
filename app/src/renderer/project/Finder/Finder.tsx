@@ -1,15 +1,17 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { hitOf, marked, nothing, rows, step } from './results/results';
 import type { Found, Hit, Row } from './results/results';
+import type { Keys } from '../opening/opening';
 
 export type FinderProps = {
   /** Pages and blocks matching `query`. A rejection shows as no results. */
   find: (query: string) => Promise<Found>;
   /**
-   * A row was picked with Enter or a click. `beside` is whether Shift was
-   * held: a page then opens in the right sidebar (#287).
+   * A row was picked with Enter or a click, with the keys held, which say
+   * where it opens: here, beside with Shift (#287), or in a new tab with
+   * Cmd/Ctrl (#309, `opening/`).
    */
-  onOpen: (hit: Hit, beside: boolean) => void;
+  onOpen: (hit: Hit, keys: Keys) => void;
   /** Escape, or a click outside the box. */
   onClose: () => void;
 };
@@ -55,7 +57,7 @@ export default function Finder({ find, onOpen, onClose }: FinderProps) {
     document.getElementById(optionId(active))?.scrollIntoView({ block: 'nearest' });
   }, [active, found]);
 
-  const pick = (row: Row | undefined, beside = false) => row && onOpen(hitOf(row), beside);
+  const pick = (row: Row | undefined, keys: Keys) => row && onOpen(hitOf(row), keys);
 
   const option = (row: Row, index: number) => (
     <div
@@ -65,7 +67,7 @@ export default function Finder({ find, onOpen, onClose }: FinderProps) {
       aria-selected={index === active}
       className={`cursor-pointer px-3 py-1.5 ${index === active ? 'bg-accent text-on-accent' : ''}`}
       onMouseMove={() => setActive(index)}
-      onClick={(event) => pick(row, event.shiftKey)}
+      onClick={(event) => pick(row, event)}
     >
       {row.kind === 'page' ? (
         <div className="truncate">
@@ -139,7 +141,7 @@ export default function Finder({ find, onOpen, onClose }: FinderProps) {
             setActive(step(active, by, list.length));
           } else if (event.key === 'Enter') {
             event.preventDefault();
-            pick(list[active], event.shiftKey);
+            pick(list[active], event);
           }
         }}
       />

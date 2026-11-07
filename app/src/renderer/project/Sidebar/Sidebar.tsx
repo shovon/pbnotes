@@ -1,4 +1,5 @@
 import { isShowing } from "./recent/recent";
+import type { Keys } from "../opening/opening";
 
 /**
  * The left column of a project (#184): the ways to get somewhere that don't
@@ -25,8 +26,11 @@ type Props = {
   browsing: boolean;
   onJournal: () => void;
   onAllPages: () => void;
-  /** A recent page was clicked; `beside` is Shift held, for the right sidebar (#287). */
-  onOpen: (page: string, beside: boolean) => void;
+  /**
+   * A recent page was clicked, with the keys held, which say where it
+   * opens: here, beside (#287) or in a new tab (#309, `opening/`).
+   */
+  onOpen: (page: string, keys: Keys) => void;
   /** Laid over the page rather than beside it. */
   floating?: boolean;
   onPointerEnter?: () => void;
@@ -109,7 +113,7 @@ export default function Sidebar({
                     aria-current={here ? "page" : undefined}
                     // Truncated to one line; the whole title on hover.
                     title={page}
-                    onClick={(event) => onOpen(page, event.shiftKey)}
+                    onClick={(event) => onOpen(page, event)}
                   >
                     {page}
                   </button>

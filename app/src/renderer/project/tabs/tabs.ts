@@ -18,6 +18,12 @@ export type Tabs = {
   readonly list: readonly Entry[];
   /** The id of the tab drawn. Always one in `list`. */
   readonly active: string;
+  /**
+   * The last tab opened behind the active one (#309), while it stays the
+   * active one: the next opened behind it goes after this one, so a run of
+   * them keeps the order they were opened in, as a browser's do.
+   */
+  readonly behind?: string;
 };
 
 /** A window as it opens: one tab, on the journal. */
@@ -30,12 +36,28 @@ export function activeOf(tabs: Tabs): Entry {
   return tabs.list.find((it) => it.id === tabs.active) ?? tabs.list[0];
 }
 
-/** A new tab on the journal, named `id`, right after the active one, and active. */
-export function opened(tabs: Tabs, id: string): Tabs {
+/**
+ * A new tab named `id`, right after the active one, and active: on the
+ * journal, or wherever `tab` says, as a link opened in a new tab is (#309).
+ */
+export function opened(tabs: Tabs, id: string, tab: TabState = NEW_TAB): Tabs {
   const at = tabs.list.findIndex((it) => it.id === tabs.active);
   const list = [...tabs.list];
-  list.splice(at + 1, 0, { id, tab: NEW_TAB });
+  list.splice(at + 1, 0, { id, tab });
   return { list, active: id };
+}
+
+/**
+ * A new tab named `id`, where `tab` says, left behind the active one, which
+ * stays active (#309): right after it, or after the last one opened behind
+ * it, so a run of them is in the order they were opened.
+ */
+export function openedBehind(tabs: Tabs, id: string, tab: TabState): Tabs {
+  const after = tabs.list.some((it) => it.id === tabs.behind) ? tabs.behind : tabs.active;
+  const at = tabs.list.findIndex((it) => it.id === after);
+  const list = [...tabs.list];
+  list.splice(at + 1, 0, { id, tab });
+  return { list, active: tabs.active, behind: id };
 }
 
 /**
@@ -55,7 +77,7 @@ export function closed(tabs: Tabs, id: string): Tabs | undefined {
 /** The tab `id` active. */
 export function activated(tabs: Tabs, id: string): Tabs {
   if (tabs.active === id || !tabs.list.some((it) => it.id === id)) return tabs;
-  return { ...tabs, active: id };
+  return { list: tabs.list, active: id };
 }
 
 /** The tab `by` places along from the active one, wrapping round either end. */
