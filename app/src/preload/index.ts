@@ -8,6 +8,8 @@ import { GRAPH_CHANNELS } from '../shared/graph';
 import type { GraphApi } from '../shared/graph';
 import { BENCH_CHANNELS } from '../shared/bench';
 import type { BenchApi } from '../shared/bench';
+import { WINDOW_CHANNELS } from '../shared/window';
+import type { WindowApi } from '../shared/window';
 
 const projects: ProjectsApi = {
   list: () => ipcRenderer.invoke(PROJECT_CHANNELS.list),
@@ -69,6 +71,10 @@ const bench: BenchApi = {
   set: (slot, value) => ipcRenderer.invoke(BENCH_CHANNELS.set, slot, value),
 };
 
+const window: WindowApi = {
+  close: () => ipcRenderer.invoke(WINDOW_CHANNELS.close),
+};
+
 // Only this explicit surface crosses the context bridge; the renderer never
 // sees `ipcRenderer` itself.
-contextBridge.exposeInMainWorld('pbnotes', { projects, graph, bench });
+contextBridge.exposeInMainWorld('pbnotes', { projects, graph, bench, window });

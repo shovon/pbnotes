@@ -82,6 +82,14 @@ type Props = {
   onRenamed: (from: string, to: string) => void;
   /** The page `gone` was deleted: off it, wherever the window holds it. */
   onDeleted: (gone: string) => void;
+  /**
+   * What the tab left behind when it was last drawn (#303), or null when
+   * it never was: the view it drew, to draw again at once and to tell the
+   * next answer against, and how far the window was scrolled.
+   */
+  resume: { held: Held | null; scroll: number } | null;
+  /** Each view the tab draws, for the window to keep while it is not drawn. */
+  onHeld: (held: Held) => void;
 };
 
 /**
@@ -111,6 +119,8 @@ export default function Tab({
   onBlock,
   onRenamed,
   onDeleted,
+  resume,
+  onHeld,
 }: Props) {
   const { trail, sort, aside, asideWidth, target } = tab;
   const setTrail = (take: (trail: Stop[]) => Stop[]) =>
@@ -133,7 +143,7 @@ export default function Tab({
    * answers. It can be a step behind the trail while the next place is being
    * asked for, which is why everything drawn reads its place from here.
    */
-  const [held, setHeld] = useState<Held | null>(null);
+  const [held, setHeld] = useState<Held | null>(resume?.held ?? null);
   /** The name the view was asked for: what the trail holds, as the link spelt it. */
   const asked = held?.place?.page ?? null;
   /**
@@ -157,7 +167,10 @@ export default function Tab({
    * effect, so the step off the page is taken in the same render as the
    * answer, before anything else reacts to what is now missing from it.
    */
-  const shown = useRef<Held | null>(null);
+  const shown = useRef<Held | null>(resume?.held ?? null);
+  /** `onHeld` as of this render, for the fetcher made once. */
+  const heldUp = useRef(onHeld);
+  heldUp.current = onHeld;
   /** Pages this tab is deleting itself: it has left them already. */
   const deleting = useRef(new Set<string>());
   /** What to do about a page deleted elsewhere; rebound each render. */
@@ -195,6 +208,7 @@ export default function Tab({
         const moved = renamedSince(shown.current, next);
         shown.current = next;
         setHeld(next);
+        heldUp.current(next);
         if (gone !== undefined) deletedElsewhere.current(gone);
         if (moved !== undefined) {
           // The trail holds the name the tab asked by, which may be an
@@ -204,14 +218,24 @@ export default function Tab({
         }
       },
       onError: (error) => act(() => Promise.reject(error)),
+      start: resume?.held,
     }),
   );
 
   /** A step the user took: through `act`, like every other gesture. */
   const step = (take: (trail: Stop[]) => Stop[]) => act(async () => setTrail(take));
 
-  // On mount, and every time the tab moves.
-  useEffect(fetcher.moved, [place?.page, place?.block]);
+  // On mount, and every time the tab moves. On mount it picks up its list
+  // where it left it (#303), so the journal does not shrink under where it
+  // was scrolled. By the place last asked for, not a first-run flag: in
+  // development React runs a mount's effects twice, for the same place.
+  const askedFor = useRef<{ at: typeof place } | null>(null);
+  useEffect(() => {
+    const moved = askedFor.current !== null && !samePlace(askedFor.current.at, place);
+    askedFor.current = { at: place };
+    if (moved) fetcher.moved();
+    else fetcher.resumed();
+  }, [place?.page, place?.block]);
 
   /**
    * Below the view while its list has more to load: the journal's older
@@ -289,9 +313,20 @@ export default function Tab({
    *
    * Above the scroll to a block, and it has to stay there: when the two land
    * in one render, effects run in this order and the block has the last word.
+   *
+   * Drawn again (#303), the tab goes back to where the window was scrolled
+   * on it instead, until it first moves: the view it left is drawn already,
+   * so the page is as tall. By what it first drew, not a first-run flag, as
+   * the fetch above is.
    */
+  const firstDrawn = useRef<string | null>(null);
+  const navigated = useRef(false);
   useEffect(() => {
-    window.scrollTo(0, 0);
+    const key = JSON.stringify([asked, zoom ?? null, browsing]);
+    firstDrawn.current ??= key;
+    if (key !== firstDrawn.current) navigated.current = true;
+    const back = !navigated.current && resume?.held && samePlace(resume.held.place, place);
+    window.scrollTo(0, back ? resume.scroll : 0);
   }, [asked, zoom, browsing]);
 
   /**

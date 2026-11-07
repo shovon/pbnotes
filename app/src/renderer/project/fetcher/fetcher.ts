@@ -26,6 +26,11 @@ export type FetcherPorts = {
   onAnswer: (held: Held) => void;
   /** A fetch failed. */
   onError: (error: unknown) => void;
+  /**
+   * The view a tab drew last time it was shown (#303), to pick up from: the
+   * answer to compare the next against, and how far its list was loaded.
+   */
+  start?: Held | null;
 };
 
 export type Fetcher = {
@@ -39,10 +44,17 @@ export type Fetcher = {
    * when all of it is loaded, or the chunk is asked for already.
    */
   more: () => void;
+  /**
+   * Shown again (#303): ask for where it is, with its list loaded as far as
+   * the view it started from, so coming back to a tab does not shrink the
+   * journal under where it was scrolled to. The same as `moved` when it
+   * started from nothing, or from a view for another place.
+   */
+  resumed: () => void;
 };
 
-export function createFetcher({ view, where, onAnswer, onError }: FetcherPorts): Fetcher {
-  let held: Held | null = null;
+export function createFetcher({ view, where, onAnswer, onError, start = null }: FetcherPorts): Fetcher {
+  let held: Held | null = start;
   /** The highest fold version heard of. */
   let known = 0;
   /** The highest version a fetch already asked for is sure to reach. */
@@ -94,6 +106,11 @@ export function createFetcher({ view, where, onAnswer, onError }: FetcherPorts):
       known = Math.max(known, v);
       if (held && samePlace(held.place, where()) && held.view.version >= v) return;
       if (covered >= v) return;
+      ask();
+    },
+    resumed: () => {
+      const from = start && samePlace(start.place, where()) ? start.view.list?.through : undefined;
+      through = from ?? undefined;
       ask();
     },
     more: () => {

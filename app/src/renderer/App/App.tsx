@@ -23,13 +23,15 @@ type Props = {
    * each mounted project gets its own `Kept` values over it (`kept/`).
    */
   bench: Pick<BenchApi, 'get' | 'set'>;
+  /** Closes this window, passed on to the project that is open: its last tab closing (#303). */
+  closeWindow: () => Promise<void>;
   /** The clock, passed on to the project that is open. */
   now: () => Date;
   /** Whether this is macOS, passed on to the project that is open. */
   mac: boolean;
 };
 
-export default function App({ projects: api, graph, bench, now, mac }: Props) {
+export default function App({ projects: api, graph, bench, closeWindow, now, mac }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
@@ -241,6 +243,7 @@ export default function App({ projects: api, graph, bench, now, mac }: Props) {
                 graph={graph}
                 now={now}
                 mac={mac}
+                closeWindow={closeWindow}
                 recentPages={kept.recentPages}
                 sidebar={kept.sidebar}
               />

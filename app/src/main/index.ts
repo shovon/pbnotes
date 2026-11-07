@@ -17,6 +17,7 @@ import { openDatabase } from "./db";
 import { appMenu } from "./features/menu/menu";
 import { createOpenBench } from "./features/bench/bench";
 import { registerBenchIpc } from "./features/bench/bench-ipc";
+import { registerWindowIpc } from "./features/window/window-ipc";
 import { benchFiles } from "./features/bench/bench-store";
 import { sidebarSlots } from "./features/sidebar/sidebar-slots";
 import { rendererSource } from "./renderer-source/renderer-source";
@@ -212,6 +213,8 @@ app.on("ready", () => {
     () => projects.currentProject()?.id,
   );
   registerBenchIpc(bench);
+  // A window closing itself, as its last tab closes (#303).
+  registerWindowIpc();
 
   // The graph is handed its view of what is open, and the images beside it,
   // and never ask what that is. This is the one place that says it is the

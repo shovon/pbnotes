@@ -1,0 +1,82 @@
+import { useState } from 'react';
+import type { Meta, StoryObj } from '@storybook/react-vite';
+// eslint-disable-next-line import/no-unresolved -- a package export, which the import plugin cannot follow
+import { fn } from 'storybook/test';
+import TabStrip from './TabStrip';
+import type { StripTab } from './TabStrip';
+
+const meta = {
+  component: TabStrip,
+  args: {
+    tabs: [{ id: 'a', label: 'Journal' }],
+    active: 'a',
+    onSelect: fn(),
+    onClose: fn(),
+    onNew: fn(),
+  },
+} satisfies Meta<typeof TabStrip>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+/** One tab: what every window opens with, and still shown. */
+export const One: Story = {};
+
+/** A few tabs, the second drawn. The others show their × when pointed at. */
+export const Several: Story = {
+  args: {
+    tabs: [
+      { id: 'a', label: 'Journal' },
+      { id: 'b', label: 'Reading list' },
+      { id: 'c', label: 'All pages' },
+    ],
+    active: 'b',
+  },
+};
+
+/** A name too long for its tab is cut short; the full name is its tooltip. */
+export const LongName: Story = {
+  args: {
+    tabs: [
+      { id: 'a', label: 'Journal' },
+      { id: 'b', label: 'A page whose name goes on far longer than any tab is wide' },
+    ],
+    active: 'b',
+  },
+};
+
+/** More tabs than fit: the strip scrolls sideways. */
+export const Many: Story = {
+  args: {
+    tabs: Array.from({ length: 14 }, (_, i) => ({ id: `t${i}`, label: `Page ${i + 1}` })),
+    active: 't3',
+  },
+};
+
+/** Opening, closing and switching, held here as `ProjectView` holds them. */
+export const Working: Story = {
+  render: function Render() {
+    const [tabs, setTabs] = useState<StripTab[]>([{ id: '0', label: 'Journal' }]);
+    const [active, setActive] = useState('0');
+    const [count, setCount] = useState(1);
+    return (
+      <TabStrip
+        tabs={tabs}
+        active={active}
+        onSelect={setActive}
+        onNew={() => {
+          const id = String(count);
+          setCount(count + 1);
+          setTabs([...tabs, { id, label: 'Journal' }]);
+          setActive(id);
+        }}
+        onClose={(id) => {
+          const left = tabs.filter((it) => it.id !== id);
+          if (left.length === 0) return;
+          setTabs(left);
+          if (id === active) setActive(left[0].id);
+        }}
+      />
+    );
+  },
+};
