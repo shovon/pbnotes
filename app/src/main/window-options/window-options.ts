@@ -21,10 +21,10 @@ export type WindowColors = Readonly<{
 
 // Pure: the colours the window paints itself, outside the page: what shows
 // before the page has, and the Windows and Linux window controls, which sit
-// over the top strip and so must match it. These are the renderer's `bg` and
-// `fg` tokens (`renderer/index.css`), repeated because the main process
-// cannot read them — change one, change the other.
+// over the top strip and so must match it. These are the renderer's `bg`,
+// `bar` and `fg` tokens (`renderer/index.css`), repeated because the main
+// process cannot read them — change one, change the other.
 export const windowColors = (dark: boolean): WindowColors => {
-  const [bg, fg] = dark ? ['#1b1b1d', '#ececee'] : ['#ffffff', '#1c1c1e']
-  return { backgroundColor: bg, titleBarOverlay: { color: bg, symbolColor: fg } }
+  const [bg, bar, fg] = dark ? ['#1b1b1d', '#28282b', '#ececee'] : ['#ffffff', '#eeeef0', '#1c1c1e']
+  return { backgroundColor: bg, titleBarOverlay: { color: bar, symbolColor: fg } }
 }

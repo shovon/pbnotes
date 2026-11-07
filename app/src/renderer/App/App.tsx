@@ -23,13 +23,15 @@ type Props = {
    * each mounted project gets its own `Kept` values over it (`kept/`).
    */
   bench: Pick<BenchApi, 'get' | 'set'>;
+  /** Closes this window, passed on to the project that is open: its last tab closing (#303). */
+  closeWindow: () => Promise<void>;
   /** The clock, passed on to the project that is open. */
   now: () => Date;
   /** Whether this is macOS, passed on to the project that is open. */
   mac: boolean;
 };
 
-export default function App({ projects: api, graph, bench, now, mac }: Props) {
+export default function App({ projects: api, graph, bench, closeWindow, now, mac }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
@@ -188,7 +190,7 @@ export default function App({ projects: api, graph, bench, now, mac }: Props) {
           the toggle and picker. */}
       <div
         aria-hidden
-        className="app-region-drag fixed inset-x-0 top-0 z-20 box-content h-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] border-b border-line bg-bg"
+        className="app-region-drag fixed inset-x-0 top-0 z-20 box-content h-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] border-b border-line bg-bar"
       />
       <header
         id="titlebar"
@@ -201,7 +203,10 @@ export default function App({ projects: api, graph, bench, now, mac }: Props) {
             the sidebar's width, so what the page adds after them (the way
             back) starts past its edge rather than over it. A long project
             name pushes it further, never under. */}
-        <div className="flex shrink-0 items-center [:root:has([data-sidebar])_&]:min-w-[calc(var(--spacing-sidebar)-env(titlebar-area-x,5rem))]">
+        {/* Never wider than that either (#303), sidebar showing or not: a
+            long project name is cut short rather than pushed into the tabs,
+            and the picker shows it whole when pointed at. */}
+        <div className="flex max-w-[calc(var(--spacing-sidebar)-env(titlebar-area-x,5rem))] min-w-0 shrink-0 items-center [:root:has([data-sidebar])_&]:min-w-[calc(var(--spacing-sidebar)-env(titlebar-area-x,5rem))]">
           <div id="titlebar-start" className="contents" />
           {project && (
             <ProjectPicker
@@ -241,6 +246,7 @@ export default function App({ projects: api, graph, bench, now, mac }: Props) {
                 graph={graph}
                 now={now}
                 mac={mac}
+                closeWindow={closeWindow}
                 recentPages={kept.recentPages}
                 sidebar={kept.sidebar}
               />

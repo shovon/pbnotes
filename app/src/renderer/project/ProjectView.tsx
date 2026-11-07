@@ -19,8 +19,12 @@ import type { Fields } from './undo/fields';
 import { OwnEdit } from './undo/own-edit';
 import { shelve } from './Aside/stack/stack';
 import Tab from './Tab/Tab';
-import { NEW_TAB, held, left, renamedIn as renamedInTab, withField } from './Tab/state/state';
+import { held, left, renamedIn as renamedInTab, withField } from './Tab/state/state';
 import type { TabState } from './Tab/state/state';
+import type { Held } from './held/held';
+import { activated, activeOf, closed, each, opened, single, updated } from './tabs/tabs';
+import type { Tabs } from './tabs/tabs';
+import TabStrip from './TabStrip/TabStrip';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -66,6 +70,8 @@ type Props = {
    * the sidebar, Ctrl elsewhere.
    */
   mac: boolean;
+  /** Closes this window: what closing its last tab does (#303). */
+  closeWindow: () => Promise<void>;
   /** The pages opened lately in this project, newest first. */
   recentPages: Kept<string[]>;
   /** Whether this project's sidebar is collapsed. */
@@ -73,21 +79,73 @@ type Props = {
 };
 
 /**
- * A project in one window: the window's own controls, and the tab that
- * shows a place in it (`Tab/`).
+ * A project in one window: the window's own controls, and its tabs (#298,
+ * #303), each a place in the project (`Tab/`).
  *
- * The window holds what is the same whatever the tab is on: the sidebar on
- * the left (whether it is collapsed, and Recent), the finder, undo, and the
- * way back in the titlebar. It also holds what the tab keeps (`TabState`:
- * where it is, how it got there, and what it has open beside it), so the
- * sidebar, the finder and undo can step it, and the tab draws it and steps
- * it too. A project change remounts this view (`App` keys it by project),
- * so the tab starts over at the journal without anyone being told.
+ * The window holds what is the same whatever tab is showing: the sidebar
+ * on the left (whether it is collapsed, and Recent), the finder, undo, the
+ * way back and the tab strip in the titlebar. It also holds what every tab
+ * keeps (`tabs/`, each a `TabState`: where it is, how it got there, and
+ * what it has open beside it), so the sidebar, the finder and undo can
+ * step the active one, and a rename or a delete reaches them all. Only the
+ * active tab is drawn: one drawn and hidden would ask main again on every
+ * change, and hear the keys meant for the one showing. A project change
+ * remounts this view (`App` keys it by project), so every tab closes and
+ * the project opens with one, on the journal, without anyone being told.
  */
-export default function ProjectView({ act, graph, now, mac, recentPages, sidebar }: Props) {
-  /** The tab, as it keeps while it is not drawn: one, for now. */
-  const [tab, setTab] = useState<TabState>(NEW_TAB);
+export default function ProjectView({
+  act,
+  graph,
+  now,
+  mac,
+  closeWindow,
+  recentPages,
+  sidebar,
+}: Props) {
+  /** Names a tab as it opens: only told apart, never read. */
+  const count = useRef(1);
+  const newId = () => `tab-${count.current++}`;
+  /** Every tab, and which is drawn. */
+  const [tabs, setTabs] = useState<Tabs>(() => single('tab-0'));
+  const { id: activeId, tab } = activeOf(tabs);
+  /** Steps the tab that is active when the step lands: what the window's own controls step. */
+  const setTab = (step: (tab: TabState) => TabState) =>
+    setTabs((all) => updated(all, all.active, step));
   const { trail } = tab;
+
+  /**
+   * What a tab leaves behind when another is drawn, by its id: the view it
+   * drew last, so coming back draws it at once and still notices a page
+   * deleted meanwhile (`deleted/` compares two answers), and how far the
+   * window was scrolled, which is the window's and not the tab's. Not
+   * state: nothing is drawn from it until the tab mounts again.
+   */
+  const behind = useRef(new Map<string, { held: Held | null; scroll: number }>());
+  const remember = (id: string, held: Held) =>
+    behind.current.set(id, { held, scroll: behind.current.get(id)?.scroll ?? 0 });
+  /** How far the window was scrolled on the tab being left, kept for when it is back. */
+  const leave = () =>
+    behind.current.set(activeId, { held: behind.current.get(activeId)?.held ?? null, scroll: window.scrollY });
+  const showTab = (id: string) => {
+    if (id === activeId) return;
+    leave();
+    setTabs((all) => activated(all, id));
+  };
+  const openTab = () => {
+    leave();
+    const id = newId();
+    setTabs((all) => opened(all, id));
+  };
+  /** Closing the only tab closes the window, through main (`window:close`). */
+  const closeTab = (id: string) => {
+    const next = closed(tabs, id);
+    if (!next) {
+      void closeWindow();
+      return;
+    }
+    behind.current.delete(id);
+    setTabs(next);
+  };
   /** Where the tab is: undefined on the journal and on the list of every page. */
   const place = placeOf(trail.at(-1));
   const browsing = trail.at(-1) === ALL_PAGES;
@@ -127,7 +185,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    * wherever they held `from`, so the window moves with the page.
    */
   const followRename = (from: string, to: string) => {
-    setTab((tab) => renamedInTab(tab, from, to));
+    setTabs((all) => each(all, (tab) => renamedInTab(tab, from, to)));
     setRecent((recent) => ({ ...recent, list: renamedInRecent(recent.list, from, to) }));
   };
   /**
@@ -142,7 +200,7 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
    */
   const followRenames = useRef(() => undefined as void);
   followRenames.current = () => {
-    const names = [...held(tab), ...recent.list];
+    const names = [...tabs.list.flatMap((it) => held(it.tab)), ...recent.list];
     if (names.length === 0) return;
     void graph.renamed(names).then(
       (found) => {
@@ -152,9 +210,9 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
     );
   };
 
-  /** The page `gone` was deleted: the tab steps off it, and Recent forgets it. */
+  /** The page `gone` was deleted: every tab steps off it, and Recent forgets it. */
   const forgetPage = (gone: string) => {
-    setTab((tab) => left(tab, gone));
+    setTabs((all) => each(all, (tab) => left(tab, gone)));
     setRecent((recent) => ({ ...recent, list: forget(recent.list, gone) }));
   };
 
@@ -353,32 +411,53 @@ export default function ProjectView({ act, graph, now, mac, recentPages, sidebar
           onClose={() => setFinding(false)}
         />
       )}
-      {/* The way back belongs with the window's own controls, beside the
-          project picker, not on the page it is a way back from — it is about
-          where you are, like the picker is. `App` owns that strip, and this
-          view owns the trail the button steps, so the button goes up there
-          through a portal: still this view's, rendered in App's corner. */}
+      {/* The way back and the tabs belong with the window's own controls,
+          beside the project picker, not on the page: they are about where
+          you are, like the picker is. `App` owns that strip, and this view
+          owns the tabs and the trail the button steps, so they go up there
+          through a portal: still this view's, rendered in App's corner. One
+          portal for both, so the two stay in that order. */}
       {titlebar !== null &&
-        trail.length > 0 &&
         createPortal(
-          // Borderless until pointed at, like the picker beside it. Capped,
-          // because it names the page it goes back to, and a page is named
-          // whatever a link said — long enough to shove the picker out.
-          <button
-            className="app-region-no-drag ml-1 max-w-56 cursor-pointer truncate rounded-md border border-transparent px-1.5 py-0.5 text-sm hover:border-accent hover:text-accent"
-            onClick={() => step(back)}
-          >
-            ← {label(trail.at(-2))}
-          </button>,
+          // The full height of the bar and one pixel over its bottom rule, so
+          // the tabs fill it and the active one, in the page's colour, covers
+          // the rule as if the page came up into it. The rest leave it showing.
+          <div className="flex h-[calc(100%+1px)] min-w-0 flex-1 items-center self-start">
+            {/* Always there and always as wide, so switching tabs never moves
+                the tabs beside it: off when there is nowhere to go back to,
+                and the page it goes back to in its tooltip. */}
+            <button
+              type="button"
+              disabled={trail.length === 0}
+              aria-label={trail.length > 0 ? `Back to ${label(trail.at(-2))}` : 'Back'}
+              title={trail.length > 0 ? `Back to ${label(trail.at(-2))}` : undefined}
+              className="app-region-no-drag ml-1 shrink-0 cursor-pointer rounded-md border border-transparent px-1.5 py-0.5 text-sm enabled:hover:border-accent enabled:hover:text-accent disabled:cursor-default disabled:text-muted disabled:opacity-50"
+              onClick={() => step(back)}
+            >
+              ←
+            </button>
+            <TabStrip
+              tabs={tabs.list.map((it) => ({ id: it.id, label: label(it.tab.trail.at(-1)) }))}
+              active={activeId}
+              onSelect={showTab}
+              onClose={closeTab}
+              onNew={openTab}
+            />
+          </div>,
           titlebar,
         )}
       <Tab
+        // A tab of its own each: nothing drawn in one (an open box, a
+        // selection, main's answer) is handed to another.
+        key={activeId}
         act={act}
         graph={graph}
         now={now}
         mac={mac}
         tab={tab}
-        update={setTab}
+        update={(step) => setTabs((all) => updated(all, activeId, step))}
+        resume={behind.current.get(activeId) ?? null}
+        onHeld={(held) => remember(activeId, held)}
         onOpen={open}
         onBlock={goToBlock}
         onRenamed={followRename}

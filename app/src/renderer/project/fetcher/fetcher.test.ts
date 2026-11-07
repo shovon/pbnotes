@@ -18,7 +18,7 @@ type Asked = {
 /** Lets the fetcher's `then` run. */
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-const setup = (start?: Place) => {
+const setup = (start?: Place, from?: Held) => {
   let on = start;
   const asked: Asked[] = [];
   const answers: Held[] = [];
@@ -42,6 +42,7 @@ const setup = (start?: Place) => {
     where: () => on,
     onAnswer: (held) => answers.push(held),
     onError: (error) => errors.push(error),
+    start: from,
   });
   const go = (place: Place | undefined) => {
     on = place;
@@ -243,4 +244,41 @@ test('a zoom has no list, so more asks for nothing (#285)', async () => {
   await asked[0].answer(5);
   fetcher.more();
   assert.equal(asked.length, 1);
+});
+
+/** A view held for `place` at `version`, its list loaded `through`. */
+const drawn = (place: Place | undefined, version: number, through?: string): Held => ({
+  place,
+  view: {
+    version,
+    showing: [],
+    previews: [],
+    ...(through ? { list: { through, next: 'older' } } : {}),
+  },
+});
+
+test('shown again, it asks with its list loaded as far as the view it left (#303)', async () => {
+  const { fetcher, asked } = setup(undefined, drawn(undefined, 4, '2026-10-01'));
+  fetcher.resumed();
+  assert.equal(asked[0].through, '2026-10-01');
+});
+
+test('shown again, an answer behind the view it left is not held (#303)', async () => {
+  const { fetcher, asked, answers } = setup(undefined, drawn(undefined, 4, '2026-10-01'));
+  fetcher.resumed();
+  await asked[0].answer(3, { through: '2026-10-01', next: null });
+  assert.deepEqual(answers, []);
+});
+
+test('shown again with nothing to pick up from, it asks as on opening (#303)', async () => {
+  const { fetcher, asked } = setup();
+  fetcher.resumed();
+  assert.equal(asked[0].through, undefined);
+});
+
+test('shown again on another place than the view it left, it starts that place over (#303)', async () => {
+  const { fetcher, asked } = setup(mira, drawn(undefined, 4, '2026-10-01'));
+  fetcher.resumed();
+  assert.equal(asked[0].through, undefined);
+  await asked[0].answer(5);
 });
