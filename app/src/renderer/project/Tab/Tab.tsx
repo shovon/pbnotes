@@ -54,6 +54,8 @@ import { asHtml } from '../selection/copy/html/html';
 import { beneath, endOf, landed, withIds } from '../selection/paste/paste';
 import type { Spot } from '../selection/paste/paste';
 import { withField } from './state/state';
+import { whereFrom } from '../opening/opening';
+import type { Where } from '../opening/opening';
 import type { TabState, Target } from './state/state';
 
 /** The image files in a paste or a drop. */
@@ -79,9 +81,9 @@ type Props = {
   /** Steps `tab`: what it is now in, what it is to be out. */
   update: (step: (tab: TabState) => TabState) => void;
   /** A click on a page: Shift held (`beside`) keeps it in the aside. */
-  onOpen: (page: string, beside: boolean) => void;
+  onOpen: (page: string, where: Where) => void;
   /** Opens the page a block is on and brings the block into view. */
-  onBlock: (id: string) => void;
+  onBlock: (id: string, where?: Where) => void;
   /** The page `from` is now called `to`: wherever else the window holds it. */
   onRenamed: (from: string, to: string) => void;
   /** The page `gone` was deleted: off it, wherever the window holds it. */
@@ -435,6 +437,24 @@ export default function Tab({
    * comes back absolute and percent-encoded.
    */
   const follow = (event: React.MouseEvent) => {
+    // Cmd/Ctrl+click on a link opens it in a new tab (#309), left behind
+    // this one, and shown at once with Shift too: a wikilink (a tag and a
+    // property's link are wikilinks too), or a rendered `((id))`, whose page
+    // opens with the block in view. Before the selection below, which takes
+    // every other Cmd/Ctrl+click on a block. A dot is a block ref too, but
+    // not a link: Cmd/Ctrl+click on it still selects.
+    const target = event.target as Element;
+    const rendered = target.closest('.block-ref[data-block-ref]')?.getAttribute('data-block-ref');
+    const linked = target.closest('a.wikilink[href]')?.getAttribute('href')?.slice(1);
+    const where = whereFrom(event, mac);
+    if ((rendered || linked) && (where === 'tab' || where === 'background')) {
+      event.preventDefault();
+      event.stopPropagation();
+      boxAtDown.current = null;
+      if (rendered) onBlock(rendered, where);
+      else if (linked) onOpen(linked, where);
+      return;
+    }
     // Cmd/Ctrl+click on a block selects it, or takes it out (#253), before
     // anything in it is followed or opened. With a box open, that block is
     // selected too, having written what was typed, as blur does.
@@ -472,7 +492,7 @@ export default function Tab({
     // link is, a card's own blocks included.
     if (event.shiftKey) {
       event.stopPropagation();
-      onOpen(page, true);
+      onOpen(page, 'beside');
       return;
     }
     // A link to the page already open goes nowhere, so there is no
@@ -1148,6 +1168,16 @@ export default function Tab({
           if (event.shiftKey && (event.target as Element).closest('a.wikilink[href]')) {
             event.preventDefault();
           }
+          // Cmd/Ctrl on a link opens a tab and leaves this one as it is
+          // (#309): the press does not take the focus, so a box being
+          // written stays open, and it starts no drag of the link either.
+          const where = whereFrom(event, mac);
+          if (
+            (where === 'tab' || where === 'background') &&
+            (event.target as Element).closest('a.wikilink[href], .block-ref[data-block-ref]')
+          ) {
+            event.preventDefault();
+          }
         }}
         onContextMenu={blockMenu}
         // A drop is only offered where `dragover` was refused its default.
@@ -1163,7 +1193,7 @@ export default function Tab({
             graph={graph}
             sort={sort}
             onSort={setSort}
-            onOpen={onOpen}
+            onOpen={(page, keys) => onOpen(page, whereFrom(keys, mac))}
             onError={(error) => act(() => Promise.reject(error))}
           />
         )}

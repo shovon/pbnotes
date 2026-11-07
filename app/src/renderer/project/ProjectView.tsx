@@ -19,12 +19,15 @@ import type { Fields } from './undo/fields';
 import { OwnEdit } from './undo/own-edit';
 import { shelve } from './Aside/stack/stack';
 import Tab from './Tab/Tab';
-import { held, left, renamedIn as renamedInTab, withField } from './Tab/state/state';
+import { NEW_TAB, held, left, renamedIn as renamedInTab, withField } from './Tab/state/state';
 import type { TabState } from './Tab/state/state';
 import type { Held } from './held/held';
-import { activated, activeOf, closed, each, next, opened, previous, single, updated } from './tabs/tabs';
+import { today } from '@pbnotes/graph';
+import { activated, activeOf, closed, each, next, opened, openedBehind, previous, single, updated } from './tabs/tabs';
 import type { Tabs } from './tabs/tabs';
 import TabStrip from './TabStrip/TabStrip';
+import { shown, whereFrom } from './opening/opening';
+import type { Keys, Where } from './opening/opening';
 import type { TabItem } from '../../shared/window';
 
 /**
@@ -144,11 +147,36 @@ export default function ProjectView({
     leave();
     setTabs((all) => activated(all, id));
   };
-  const openTab = () => {
+  /** A new tab after the active one: on the journal, or where `start` says (#309). */
+  const openTab = (start?: TabState) => {
     leave();
     const id = newId();
-    setTabs((all) => opened(all, id));
+    setTabs((all) => opened(all, id, start));
   };
+  /**
+   * A new tab on `start`, left behind the active one, which stays as it is
+   * (#309): nothing is left, so nothing is blurred and nothing scrolls.
+   *
+   * What it shows is asked for at once and kept as what it left behind, as
+   * if it had been drawn: shown later, it draws at once, and a page deleted
+   * meanwhile is told against it (`deleted/`), which a tab with no answer
+   * yet could not do. Not over one drawn since, which keeps its own.
+   */
+  const openBehind = (start: TabState) => {
+    const id = newId();
+    setTabs((all) => openedBehind(all, id, start));
+    const at = placeOf(start.trail.at(-1));
+    graph.view(at, today(now())).then(
+      (view) => {
+        if (!behind.current.has(id)) behind.current.set(id, { held: { place: at, view }, scroll: 0 });
+      },
+      // Not reached now, it is asked for again once shown.
+      (): void => undefined,
+    );
+  };
+  /** A new tab on `start`, shown at once (`tab`) or left behind (`background`). */
+  const newTabOn = (start: TabState, where: 'tab' | 'background') =>
+    where === 'tab' ? openTab(start) : openBehind(start);
   /** Closing the only tab closes the window, through main (`window:close`). */
   const closeTab = (id: string) => {
     if (id === activeId) leave();
@@ -173,25 +201,38 @@ export default function ProjectView({
   /** Shift+click on a page, wherever it is: on top of the right sidebar. */
   const putAside = (page: string) =>
     act(async () => setTab((tab) => withField(tab, 'aside', shelve(tab.aside, page))));
-  /** A click on a page, Shift held or not. */
-  const open = (page: string, beside: boolean) =>
-    beside ? putAside(page) : step((trail) => go(trail, { page }));
+  /**
+   * A page opened: here, beside in the right sidebar (#287), or in a new
+   * tab of its own (#309), shown or left behind, as the keys held said
+   * (`opening/`).
+   */
+  const open = (page: string, where: Where) => {
+    if (where === 'beside') return putAside(page);
+    if (where === 'tab' || where === 'background') {
+      return act(async () => newTabOn(withField(NEW_TAB, 'trail', go([], { page })), where));
+    }
+    return step((trail) => go(trail, { page }));
+  };
+  /** A page opened with `keys` held, by something that knows only the keys. */
+  const openWith = (page: string, keys: Keys) => open(page, whereFrom(keys, mac));
 
   /**
    * Opens the page a block is on, the way a wikilink does, and brings the
-   * block into view. A block that is gone lands in the app's notice rather
-   * than a click that did nothing.
+   * block into view: here, or in a new tab, shown or left behind (#309),
+   * where it is brought into view once it is shown. A block that is gone
+   * lands in the app's notice rather than a click that did nothing.
    */
-  const goToBlock = (id: string) =>
+  const goToBlock = (id: string, where: Where = 'here') =>
     act(async () => {
       const found = await graph.locate(id);
       if (!found) throw new Error('That block no longer exists.');
-      setTab((tab) =>
+      const onIt = (tab: TabState) =>
         withField(withField(tab, 'trail', go(tab.trail, { page: found.page })), 'target', {
           id,
           version: 0,
-        }),
-      );
+        });
+      if (where === 'tab' || where === 'background') newTabOn(onIt(NEW_TAB), where);
+      else setTab(onIt);
     });
 
   /**
@@ -419,7 +460,7 @@ export default function ProjectView({
           browsing={browsing}
           onJournal={() => step(home)}
           onAllPages={() => step(browse)}
-          onOpen={open}
+          onOpen={openWith}
           floating={collapsed}
           onPointerEnter={peek.stay}
           onPointerLeave={peek.leave}
@@ -439,10 +480,13 @@ export default function ProjectView({
       {finding && (
         <Finder
           find={graph.find}
-          onOpen={(hit, beside) => {
+          onOpen={(hit, keys) => {
             setFinding(false);
-            if ('block' in hit) goToBlock(hit.block);
-            else open(hit.page, beside);
+            // Picked to go there: a new tab is shown, never left behind.
+            const where = shown(whereFrom(keys, mac));
+            // A block has no page beside it to open: it opens here or in a tab.
+            if ('block' in hit) goToBlock(hit.block, where === 'tab' ? 'tab' : 'here');
+            else open(hit.page, where);
           }}
           onClose={() => setFinding(false)}
         />
@@ -477,7 +521,7 @@ export default function ProjectView({
               active={activeId}
               onSelect={showTab}
               onClose={closeTab}
-              onNew={openTab}
+              onNew={() => openTab()}
             />
           </div>,
           titlebar,

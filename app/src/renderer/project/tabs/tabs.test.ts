@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { activated, activeOf, closed, each, next, opened, previous, single, updated } from './tabs.ts';
+import { activated, activeOf, closed, each, next, opened, openedBehind, previous, single, updated } from './tabs.ts';
 import type { Tabs } from './tabs.ts';
 import { NEW_TAB, left, renamedIn } from '../Tab/state/state.ts';
 
@@ -92,4 +92,38 @@ test('a rename and a delete reach every tab', () => {
 test('a rename no tab holds leaves the very same tabs', () => {
   const tabs = three('a');
   assert.equal(each(tabs, (tab) => renamedIn(tab, 'Mira', 'Vera')), tabs);
+});
+
+test('a new tab can open somewhere already, after the active one, and active (#309)', () => {
+  const start = { ...NEW_TAB, trail: [{ page: 'Mira' }] };
+  const tabs = opened(three('b'), 'd', start);
+  assert.deepEqual(ids(tabs), ['a', 'b', 'd', 'c']);
+  assert.equal(tabs.active, 'd');
+  assert.equal(activeOf(tabs).tab, start);
+});
+
+test('a tab opened behind goes right after the active one, which stays active (#309)', () => {
+  const start = { ...NEW_TAB, trail: [{ page: 'Mira' }] };
+  const tabs = openedBehind(three('a'), 'd', start);
+  assert.deepEqual(ids(tabs), ['a', 'd', 'b', 'c']);
+  assert.equal(tabs.active, 'a');
+  assert.equal(tabs.list[1].tab, start);
+});
+
+test('a run of tabs opened behind keeps the order they were opened in (#309)', () => {
+  const tabs = openedBehind(openedBehind(openedBehind(three('a'), 'd', NEW_TAB), 'e', NEW_TAB), 'f', NEW_TAB);
+  assert.deepEqual(ids(tabs), ['a', 'd', 'e', 'f', 'b', 'c']);
+  assert.equal(tabs.active, 'a');
+});
+
+test('showing another tab starts a new run, after that one (#309)', () => {
+  const run = openedBehind(three('a'), 'd', NEW_TAB);
+  const tabs = openedBehind(activated(run, 'c'), 'e', NEW_TAB);
+  assert.deepEqual(ids(tabs), ['a', 'd', 'b', 'c', 'e']);
+});
+
+test('the last tab of a run closed, the next goes after the active one again (#309)', () => {
+  const run = openedBehind(three('a'), 'd', NEW_TAB);
+  const tabs = openedBehind(closed(run, 'd') as Tabs, 'e', NEW_TAB);
+  assert.deepEqual(ids(tabs), ['a', 'e', 'b', 'c']);
 });
