@@ -22,7 +22,10 @@ type Story = StoryObj<typeof meta>;
 /** One tab: what every window opens with, and still shown. */
 export const One: Story = {};
 
-/** A few tabs, the second drawn. The others show their × when pointed at. */
+/**
+ * A few tabs, the second drawn, each the same width whatever it is called.
+ * The others show their × when pointed at.
+ */
 export const Several: Story = {
   args: {
     tabs: [
@@ -34,7 +37,10 @@ export const Several: Story = {
   },
 };
 
-/** A name too long for its tab is cut short; the full name is its tooltip. */
+/**
+ * A name too long for its tab is cut short; the full name is its tooltip.
+ * The tab is no wider for it than the short one beside it.
+ */
 export const LongName: Story = {
   args: {
     tabs: [
@@ -45,7 +51,10 @@ export const LongName: Story = {
   },
 };
 
-/** More tabs than fit: the strip scrolls sideways. */
+/**
+ * More tabs than fit: they shrink alike to the narrowest a short name
+ * reads in, then the strip scrolls sideways.
+ */
 export const Many: Story = {
   args: {
     tabs: Array.from({ length: 14 }, (_, i) => ({ id: `t${i}`, label: `Page ${i + 1}` })),
@@ -53,7 +62,11 @@ export const Many: Story = {
   },
 };
 
-/** Opening, closing and switching, held here as `ProjectView` holds them. */
+/**
+ * Opening, closing and switching, held here as `ProjectView` holds them.
+ * Open a few, then close them with their ×: the widths hold until the
+ * pointer leaves the strip.
+ */
 export const Working: Story = {
   render: function Render() {
     const [tabs, setTabs] = useState<StripTab[]>([{ id: '0', label: 'Journal' }]);
