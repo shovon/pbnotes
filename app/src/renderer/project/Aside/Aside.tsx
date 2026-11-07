@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { fit, widthAt } from './width/width';
+import { column } from '../column/column';
+
+/** The right sidebar's column name (`column/`). */
+const ASIDE = 'aside';
 
 type Props = {
   /**
@@ -78,7 +82,11 @@ export default function Aside({ width: chosen, onResize, children }: Props) {
       />
       {/* The cards edge to edge, the full width of the column and flush with
           its top; each card rules itself off below. */}
-      <div className="flex h-full flex-col overflow-y-auto">{children}</div>
+      {/* A column of its own (#305): it scrolls on its own, and a drag in
+          it measures its rows, never the page's beside it. */}
+      <div {...column(ASIDE)} className="flex h-full flex-col overflow-y-auto">
+        {children}
+      </div>
     </aside>
   );
 }

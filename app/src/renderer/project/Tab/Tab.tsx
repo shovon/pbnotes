@@ -27,6 +27,9 @@ import {
   emptyPages as readEmptyPages,
   rows as readRows,
   shown as readShown,
+  columnAt,
+  columnOf,
+  scrollerOf,
   beside as besideScope,
 } from '../selection/shown';
 import { watchDrag } from '../selection/sweep/watch';
@@ -40,6 +43,7 @@ import type { Entry } from '../selection/shown';
 import { covered, roots } from '../selection/roots/roots';
 import { command, picks } from '../selection/shortcut/shortcut';
 import { decode } from '../selection/clip/clip';
+import { inColumn } from '../column/column';
 import Aside from '../Aside/Aside';
 import Card from '../Aside/Card/Card';
 import type { Shown as CardShown } from '../Aside/Card/Card';
@@ -626,8 +630,11 @@ export default function Tab({
   useEffect(() => {
     const root = wrapper.current;
     if (!root) return;
-    return watchDrag({
-      rows: () => readRows(root),
+    return watchDrag<{ start: string | undefined; add: boolean; column: string }>({
+      // The column it went down in (#305): the page and a card beside it
+      // share heights, and a sweep down one never touches the other.
+      rows: ({ column }) => inColumn(readRows(root), column),
+      scroller: ({ column }) => scrollerOf(root, column),
       press: (event) => {
         // Ctrl+click on macOS is a right-click.
         if (mac && event.ctrlKey) return undefined;
@@ -641,7 +648,7 @@ export default function Tab({
         );
         if (own) return undefined;
         if (target.closest('textarea') && row === undefined) return undefined;
-        return { start: row, add: picks(event, mac) };
+        return { start: row, add: picks(event, mac), column: columnOf(target) };
       },
       start: (add) => {
         const before = latestChosen.current;
@@ -765,7 +772,17 @@ export default function Tab({
         setDragging({ keys, text, more: ids.length - 1, at: to });
         const x = to.x + window.scrollX;
         const y = to.y + window.scrollY;
-        latest = dropAt(readDropRows(root), readEmptyPages(root), new Set(ids), x, y, indent);
+        // Into the column under the pointer (#305), so a block dragged over a
+        // card lands in it, and one over the page beside it in the page.
+        const column = columnAt(to.x, to.y);
+        latest = dropAt(
+          inColumn(readDropRows(root), column),
+          inColumn(readEmptyPages(root), column),
+          new Set(ids),
+          x,
+          y,
+          indent,
+        );
         setDrop(latest ?? null);
       },
       cancel: stop,
@@ -774,6 +791,9 @@ export default function Tab({
         stop();
         if (dropped && it) movingTo.current(ids, selection, scopes, it);
       },
+      // The column under the pointer scrolls near its edges, not always the
+      // window: the right sidebar scrolls on its own (#305).
+      scroller: (_, at) => scrollerOf(root, columnAt(at.x, at.y)),
     });
   }, [mac]);
 

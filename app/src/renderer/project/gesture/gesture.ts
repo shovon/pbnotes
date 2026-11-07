@@ -5,8 +5,9 @@
  * are each a thin layer over this.
  *
  * While a drag is on: text is not selected, a box it started from is
- * blurred (keeping what was typed), the page scrolls when the pointer nears
- * its top or bottom edge, and the click a drag ends with is swallowed, so it
+ * blurred (keeping what was typed), what the drag is over scrolls when the
+ * pointer nears its top or bottom edge (the window, or a column that scrolls
+ * on its own, #305), and the click a drag ends with is swallowed, so it
  * neither opens nor follows anything.
  */
 
@@ -26,10 +27,25 @@ export type Gesture<P> = {
   cancel(press: P): void;
   /** The drag is over: let go of (`dropped`), or the window lost the pointer. */
   end(press: P, dropped: boolean): void;
+  /**
+   * What scrolls near its edges while the pointer is at `at`: an element
+   * that scrolls on its own, or null (or left out) for the window.
+   */
+  scroller?(press: P, at: Point): Element | null;
 };
 
-/** How close to the window's top or bottom edge the page starts to scroll. */
+/** How close to the top or bottom edge of what scrolls it starts to scroll. */
 const EDGE = 40;
+
+/**
+ * How far past an edge zone `y` is, in a box from `top` to `bottom`: below
+ * zero near the top, above zero near the bottom, and zero away from both.
+ */
+export function nearEdge(y: number, top: number, bottom: number, edge = EDGE): number {
+  if (y < top + edge) return y - (top + edge);
+  if (y > bottom - edge) return y - (bottom - edge);
+  return 0;
+}
 
 type Held<P> = { press: P; from: Point; active: boolean; cancelled: boolean };
 
@@ -45,13 +61,10 @@ export function watchGesture<P>(on: Gesture<P>): () => void {
   const tick = () => {
     frame = 0;
     if (!held?.active) return;
-    const near =
-      pointer.y < EDGE
-        ? pointer.y - EDGE
-        : pointer.y > window.innerHeight - EDGE
-          ? pointer.y - (window.innerHeight - EDGE)
-          : 0;
-    if (near !== 0) window.scrollBy(0, Math.round(near / 2));
+    const scroller = on.scroller?.(held.press, pointer) ?? null;
+    const { top, bottom } = scroller?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+    const near = nearEdge(pointer.y, top, bottom);
+    if (near !== 0) (scroller ?? window).scrollBy(0, Math.round(near / 2));
     on.move(held.press, pointer);
     // Near an edge the page keeps scrolling while the pointer holds still.
     if (near !== 0) frame = requestAnimationFrame(tick);
