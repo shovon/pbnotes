@@ -8,7 +8,9 @@ import type { Written } from "../../../over/over.ts";
 import { read } from "../../../reading/reading.ts";
 import { spell } from "../../../titles/titles.ts";
 import { same } from "../../../undo/undo.ts";
-import { BLOCK, onBlock, retext, stringField, textOf, withId } from "../../../blocks/blocks.ts";
+import * as forest from "../../../forest/forest.ts";
+import * as map from "../../../immutable/immutable.ts";
+import { BLOCK, stringField, textOf, withId } from "../../../blocks/blocks.ts";
 import type { BlockEdited } from "../../../blocks/blocks.ts";
 
 export const BLOCK_EDITED = BLOCK.define({
@@ -23,10 +25,12 @@ export const BLOCK_EDITED = BLOCK.define({
     return it && text !== undefined ? { id: it.id, text } : undefined;
   },
   apply: (state, { id, text }) => {
-    const next = onBlock(state, id, ({ blocks }) => retext(blocks, id, text));
-    // An edit to a block the ledger lacks names nothing either.
-    if (next === state) return state;
-    return { ...next, titles: spell(next.titles, read(text).links) };
+    // An edit to a block the ledger lacks names nothing either, and one to
+    // the text a block already has is a repeat, and changes nothing.
+    if (!forest.has(state.forest, id)) return state;
+    const texts = map.put(state.texts, id, text);
+    const titles = spell(state.titles, read(text).links);
+    return texts === state.texts && titles === state.titles ? state : { ...state, texts, titles };
   },
   undo: {
     inverse: (state, { id, text }) => {

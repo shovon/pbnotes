@@ -35,6 +35,12 @@ const input = 'bg-transparent outline-none placeholder:text-muted';
  * What is written is drawn by the caller, through the rows it hands back. The
  * open row is keyed by the key it was opened on, so it stays mounted, caret
  * and all, while new rows arrive around it, even one without it.
+ *
+ * "+ Add property" is a button under the table, drawn like "+ Add tag", and
+ * marked `data-reveal` the same way. With
+ * no rows and none open there is no table, and the section is marked
+ * `data-bare` for a holder that sets it beside something else while there is
+ * nothing in it.
  */
 export default function Properties({ rows, findKeys, onCommit, onRemove }: Props) {
   const [open, setOpenState] = useState<Open | null>(null);
@@ -197,6 +203,7 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
           placeholder="Key"
           autoFocus={focus === 'key'}
           value={it.key}
+          data-undo="document"
           role="combobox"
           aria-expanded={offered.length > 0}
           aria-controls={listId}
@@ -245,6 +252,7 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
             placeholder="Empty"
             autoFocus={focus === 'value'}
             value={it.value}
+            data-undo="document"
             className={`${input} w-full`}
             // A draft takes its key first: a value with nowhere to go is
             // only dropped.
@@ -300,13 +308,20 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
   const at = open?.from && canonicalize(open.from.key);
   const drawn = shown(rows, open);
 
+  /** Nothing in the table: the button alone, drawn like "+ Add tag". */
+  const bare = drawn.length === 0 && !open;
+
   return (
-    <section aria-label="Properties" className="mb-4 border-y border-line text-sm">
-      {(drawn.length > 0 || open) && (
+    <section
+      aria-label="Properties"
+      data-bare={bare ? '' : undefined}
+      className="mb-4 text-sm"
+    >
+      {!bare && (
         <div
           role="table"
           aria-label="Properties"
-          className="grid grid-cols-[minmax(6rem,max-content)_1fr_auto] divide-y divide-line border-b border-line"
+          className="grid grid-cols-[minmax(6rem,max-content)_1fr_auto] mb-1 divide-y divide-line border-y border-line"
         >
           {drawn.map((property) => {
             const key = canonicalize(property.key);
@@ -315,11 +330,12 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
           {open && !open.from && editing(open, `draft-${drafts.current}`)}
         </div>
       )}
-      {/* Marked so whoever holds the table may hide it until wanted. */}
+      {/* A button under the table, not a row of it. Marked always, so
+          whoever holds the table may hide it until wanted. */}
       <button
         type="button"
         data-reveal
-        className="w-full px-3 py-2 text-left text-muted hover:bg-line/40 hover:text-fg focus-visible:bg-line/40 focus-visible:text-fg focus-visible:outline-none"
+        className="rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
         onClick={() => start(draft(), 'key')}
       >
         + Add property

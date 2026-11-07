@@ -6,11 +6,12 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { graphFold, holds, invert } from "../../../graph.ts";
+import { graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph } from "../../../graph.ts";
 import { getTags } from "../../../tags/tags.ts";
 import { tagAdded } from "../added/added.ts";
 import { TAG_REMOVED, tagRemoved } from "./removed.ts";
+import { get, has } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -24,7 +25,7 @@ const removed = (page: string, tag: string): Event => tagRemoved(page, tag);
 test("removing a page's last tag deletes its entry; removing one of two keeps the other", () => {
   const two = fold([added("Foo", "A"), added("Foo", "B")]);
   assert.deepEqual(getTags(fold([removed("Foo", "A")], two), "Foo"), ["B"]);
-  assert.equal(fold([removed("Foo", "A"), removed("Foo", "B")], two).tags.has("foo"), false);
+  assert.equal(has(fold([removed("Foo", "A"), removed("Foo", "B")], two).tags, "foo"), false);
 });
 
 test("removing a tag the page lacks changes nothing but the spellings", () => {
@@ -32,7 +33,7 @@ test("removing a tag the page lacks changes nothing but the spellings", () => {
   assert.equal(graphFold.reduce(state, removed("foo", "b")), state);
   const named = graphFold.reduce(state, removed("Foo", "Nothing"));
   assert.equal(named.tags, state.tags);
-  assert.equal(named.titles.get("nothing"), "Nothing");
+  assert.equal(get(named.titles, "nothing"), "Nothing");
 });
 
 test("tagRemoved writes the event's own type and v", () => {
@@ -54,7 +55,7 @@ test("a removed is undone by an added, and not at all when the page lacked it", 
 test("a removed holds until someone else gives the tag back", () => {
   const before = fold([added("Foo", "Work")]);
   const after = fold([removed("Foo", "Work")], before);
-  const step = { before, events: [removed("Foo", "Work")], after };
+  const step = remember(before, [removed("Foo", "Work")]);
   assert.equal(holds(after, step), true);
   assert.equal(holds(fold([added("Foo", "Work")], after), step), false);
 });

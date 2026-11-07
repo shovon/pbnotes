@@ -9,7 +9,7 @@ events/
   properties/       set/  removed/  slice.ts
   tags/             added/  removed/  slice.ts
   aliases/          added/  removed/  slice.ts
-  pages/            deleted/  slice.ts
+  pages/            deleted/  renamed/  slice.ts
   batch/            the batch event, which holds others (#225)
 ```
 
@@ -48,7 +48,7 @@ export function aliasAdded(page: string, alias: string): Written<Named<"alias.ad
 | `parse(payload)` | The payload as this build reads it, or `undefined` when it is malformed. A malformed payload is skipped whole, never folded in part. Fields it does not read are ignored. |
 | `apply(state, it)` | The fold. Hands back `state` itself for a change that changes nothing, and never changes what it is handed. |
 | `landed(state, it)` | Optional. Whether a prediction already shows the event, for one that is not safe to fold twice (`block.created`, the moves). Left off, a prediction always folds it. |
-| `undo` | `{ inverse, touched }`: the events that undo it, from the state just before it, and what a step must find as it left it (#233). Or `"cannot"`, for an event no existing event can reverse. Never left off. |
+| `undo` | `{ inverse, touched }`: the events that undo it, from the state just before it (#233), and the readings a step must find as it left it, each made with `same(…)`. A reading gives a plain value and keeps ids or names, never the state (#242). Or `"cannot"`, for an event no existing event can reverse. Never left off. |
 | The builder | A function beside it, such as `aliasAdded`, that calls `build`. It states its return type (`Written<…>`). |
 
 ## Adding an event

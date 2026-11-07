@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useContext, useEffect, useRef, useState } from 'react';
 import { locate, predict, predictProperties, predictTags } from '@pbnotes/graph';
 import type { Block as BlockType, Page, Property } from '@pbnotes/graph';
 import type { GraphApi } from '../../../shared/graph';
@@ -9,6 +9,7 @@ import TaggedBy from './TaggedBy/TaggedBy';
 import Properties from './Properties/Properties';
 import type { Write } from './Properties/rows';
 import Tags from './Tags/Tags';
+import Title from './Title/Title';
 import {
   add,
   addTag,
@@ -32,6 +33,12 @@ import {
 import type { Caret, Then } from './editing/editing';
 import { drawn, recorded, refused, unseen } from './pending/pending';
 import type { Pending } from './pending/pending';
+import { Selecting } from '../selection/Selecting';
+import { emptyPage, slot, slotKey } from '../selection/shown';
+import { Dragging } from '../drag/Dragging';
+import { decode } from '../selection/clip/clip';
+import { beneath, endOf, landed, withIds } from '../selection/paste/paste';
+import type { Spot } from '../selection/paste/paste';
 
 /**
  * Where an unwritten block is waiting to be typed. `after` is the block it
@@ -46,7 +53,7 @@ type Writing = { after?: string } | null;
  * steps it writes through call. A cut under the page is another `PageView`,
  * so `LinkedReferences` needs no more than this.
  */
-export type PageViewGraph = StepsGraph & Pick<GraphApi, 'search' | 'blockMenu'>;
+export type PageViewGraph = StepsGraph & Pick<GraphApi, 'search' | 'blockMenu' | 'carryImages'>;
 
 type Props = {
   graph: PageViewGraph;
@@ -57,8 +64,16 @@ type Props = {
    * dropped by, once it is at or past the version that write's reply named.
    */
   version: number;
-  /** What links here. Left off for a page that is itself shown as one. */
+  /**
+   * What links here: on a page's own view, only the chunks loaded so far
+   * (#285). Left off for a page that is itself shown as one.
+   */
   references?: Page[];
+  /**
+   * How many blocks link here in all, loaded or not (#285): what the
+   * heading counts. The blocks in `references` when left off.
+   */
+  links?: number;
   /**
    * The page's properties, as main last showed them. Left off where none
    * are drawn: a cut, which is another page's blocks under its heading.
@@ -72,9 +87,10 @@ type Props = {
    * Shown under another page as what links to it: a cut of this page — the
    * blocks that link, not all of them — decided in main and read again
    * after every change. The title is a link to the whole page. Nothing can be
-   * added here, and a block cannot be moved: the siblings that would decide
-   * where it goes are not in the cut. Editing and deleting are what they are
-   * anywhere, a write to the page the block is on.
+   * added here, and Tab does not move a block: the siblings that would decide
+   * where it goes are not in the cut. Dragging one does (#251), since a drop
+   * names the block it lands beside or under. Editing and deleting are what
+   * they are anywhere, a write to the page the block is on.
    */
   reference?: boolean;
   /**
@@ -91,6 +107,19 @@ type Props = {
    * the link would go nowhere.
    */
   linked?: boolean;
+  /**
+   * Renames the page (#109): its title is edited in place. Resolves once
+   * main has written it, and rejects with main's reason when it refuses.
+   * Left off where the title is not the page's to rename here: the journal,
+   * a cut, a card.
+   */
+  onRename?: (to: string) => Promise<unknown>;
+  /**
+   * Which view this is, for selecting blocks (#253): the same block shows in
+   * more than one, and is selected in one at a time. The page's title when
+   * left off; a cut is `under` the view it is shown in.
+   */
+  scope?: string;
   act: Act;
 };
 
@@ -115,6 +144,7 @@ export default function PageView({
   page: sent,
   version,
   references,
+  links = references?.reduce((n, cut) => n + cut.blocks.length, 0) ?? 0,
   properties: sentProperties,
   tags: sentTags,
   taggedBy,
@@ -122,8 +152,15 @@ export default function PageView({
   zoom,
   onZoom,
   linked = false,
+  onRename,
+  scope: scoped,
   act,
 }: Props) {
+  /** The selection, which `ProjectView` holds (#253). */
+  const selecting = useContext(Selecting);
+  /** The blocks being dragged by a dot, which `ProjectView` runs (#251, #269). */
+  const dragging = useContext(Dragging);
+  const scope = scoped ?? sent.title;
   /**
    * The writes made here that main has not answered yet, as the events they
    * will be recorded as. The page is drawn with them folded over what main
@@ -300,7 +337,21 @@ export default function PageView({
    */
   const openMenu = (block: BlockType) =>
     act(async () => {
+      // A dot among several selected deletes them all (#258). One selected
+      // alone is the block alone, as is a dot outside the selection, which
+      // leaves the selection as it is.
+      const count = selecting.deleting(slotKey(scope, block.id));
+      if (count !== undefined && count > 1) {
+        // Copy Block Reference would copy one of them: not offered (#261).
+        const offer = { delete: true, count, reference: false };
+        const pick = await graph.blockMenu(block.id, offer);
+        if (pick === 'delete') selecting.removeChosen();
+        if (pick === 'cut') selecting.cut(slotKey(scope, block.id), block.id);
+        return;
+      }
       const pick = await graph.blockMenu(block.id, { delete: true });
+      // Cut is the project view's, which puts it on the clipboard first (#246).
+      if (pick === 'cut') return selecting.cut(slotKey(scope, block.id), block.id);
       if (pick !== 'delete') return;
       const now = latest.current;
       const next = afterRemove(now.blocks, block.id, {
@@ -372,11 +423,13 @@ export default function PageView({
    * events, because nothing can be filed under a block that was never
    * written. The user pressed one key, so the box reopens on what they were
    * typing in rather than closing.
+   *
+   * Hands back the block it wrote, if it wrote one.
    */
   const commitNew = (
     text: string,
     { then, caret }: { then: Then; caret?: number },
-  ) => {
+  ): string | undefined => {
     // Zoomed, the end of the view is the end of the root's children, not of
     // the page. A root with none yet takes two events, like Tab in a new box:
     // the block is written beside the root and then filed under it.
@@ -403,9 +456,9 @@ export default function PageView({
     setWriting(null);
     if (plan.kind === 'pop') {
       setWriting({ after: plan.after });
-      return;
+      return undefined;
     }
-    if (plan.kind === 'nothing') return;
+    if (plan.kind === 'nothing') return undefined;
 
     // Named here, so the block is drawn — and the next box opened beneath
     // it, or this one reopened on it — before main has heard of it.
@@ -432,6 +485,7 @@ export default function PageView({
       setEditingId(id);
     }
     act(() => write(...steps));
+    return id;
   };
 
   /**
@@ -455,6 +509,40 @@ export default function PageView({
     if (!above) return;
     setWriting(null);
     reopen(above);
+  };
+
+  /**
+   * Blocks from a pbnotes copy, pasted into a box (#261). Into an empty one,
+   * the first block takes its place: the block the box is open on keeps its
+   * id and takes the first block's text, and a new box's place is where the
+   * paste starts. With something typed, that is written first, as blur
+   * writes it, and the paste goes beneath it at its depth. The box closes.
+   * Written once the images it links are in this project, and not drawn
+   * ahead of main. Anything else on the clipboard is the box's.
+   */
+  const pasteIn = (data: DataTransfer, text: string, block?: BlockType): boolean => {
+    const html = data.getData('text/html');
+    const clipped = decode(html);
+    if (!clipped) return false;
+    let spot: Spot;
+    if (block) {
+      setEditingId(null);
+      if (text === '') {
+        spot = { into: block.id };
+      } else {
+        if (text !== block.text) act(() => write(edit(graph, block.id, text)));
+        spot = beneath(block.id, root);
+      }
+    } else {
+      const written = text === '' ? undefined : commitNew(text, { then: 'stop' });
+      setWriting(null);
+      spot = written ? { after: written } : writing?.after ? { after: writing.after } : endOf(root);
+    }
+    act(async () => {
+      const pasting = withIds(await landed(graph, clipped, html), () => crypto.randomUUID());
+      await graph.run({ type: 'pasteBlocks', title, blocks: pasting, ...spot });
+    });
+    return true;
   };
 
   /**
@@ -491,11 +579,33 @@ export default function PageView({
       onBackspace={cancelNew}
       onCommit={(text) => commitNew(text, { then: 'stop' })}
       onContinue={(text) => commitNew(text, { then: 'again' })}
+      onPaste={(data, text) => pasteIn(data, text)}
       onIndent={(text, at, by) =>
         commitNew(text, { then: by === 1 ? 'indent' : 'outdent', caret: at })
       }
+      // Written as blur would write it, and then what was written is
+      // selected. Before it is drawn it is not in the order on screen yet,
+      // so it is selected alone, whichever key it was.
+      onSelect={(text) => {
+        const id = commitNew(text, { then: 'stop' });
+        if (id) selecting.fromBox(slotKey(scope, id), 'here');
+      }}
+      mac={selecting.mac}
     />
   );
+
+  /**
+   * Enter on a selection opens the box of the first block in it, caret at
+   * the end, when that block is in this view.
+   */
+  const opening = selecting.opening;
+  useEffect(() => {
+    if (opening?.scope !== scope) return;
+    setWriting(null);
+    setCaret(Number.MAX_SAFE_INTEGER);
+    setEditingId(opening.id);
+    selecting.onOpened();
+  }, [opening]);
 
   /**
    * The page, depth first. Children render in their own indented column
@@ -507,15 +617,28 @@ export default function PageView({
    * the focus key it is everywhere else: there is nowhere to add, and
    * nothing here to move a block under.
    */
-  const renderBlock = (block: BlockType) =>
-    editingId === block.id ? (
+  const renderBlock = (
+    block: BlockType,
+    parent: string | undefined,
+    lit: boolean,
+    moving = false,
+  ) => {
+    const data = slot(scope, title, block.id, { parent, whole: !reference && !root });
+    return editingId === block.id ? (
       <BlockEditor
         initial={block.text}
         caret={caret}
         findPages={graph.search}
+        data={data}
+        mac={selecting.mac}
         onCancel={() => setEditingId(null)}
+        onSelect={(text, how) => {
+          commitEdit(block, text);
+          selecting.fromBox(data['data-slot'], how);
+        }}
         onCommit={(text) => commitEdit(block, text)}
         onBackspace={() => commitDelete(block)}
+        onPaste={(data, text) => pasteIn(data, text, block)}
         onIndent={
           reference
             ? undefined
@@ -534,6 +657,9 @@ export default function PageView({
       <Block
         id={block.id}
         text={block.text}
+        data={data}
+        selected={lit}
+        moving={moving}
         onActivate={(at) => {
           setCaret(at);
           setEditingId(block.id);
@@ -541,18 +667,32 @@ export default function PageView({
         onMenu={() => openMenu(block)}
       />
     );
+  };
 
-  const renderBlocks = (blocks: BlockType[]) =>
-    blocks.map((block) => (
-      <Fragment key={block.id}>
-        {renderBlock(block)}
-        {block.children.length > 0 && (
-          // Its own column, since the gap between blocks does not inherit.
-          <div className="ml-indent flex flex-col gap-1">{renderBlocks(block.children)}</div>
-        )}
-        {writing?.after === block.id && newBlockEditor}
-      </Fragment>
-    ));
+  /**
+   * `parent` is the block they show under, if any. `lit` is whether that is
+   * selected: a block brings its subtree, so everything under a selected one
+   * is drawn selected too. `moving` is the same for the block being dragged
+   * (#251): it moves with its subtree, so all of it is drawn moving.
+   */
+  const renderBlocks = (blocks: BlockType[], parent?: string, lit = false, moving = false) =>
+    blocks.map((block) => {
+      const key = slotKey(scope, block.id);
+      const on = lit || selecting.selected.has(key);
+      const going = moving || dragging.has(key);
+      return (
+        <Fragment key={block.id}>
+          {renderBlock(block, parent, on, going)}
+          {block.children.length > 0 && (
+            // Its own column, since the gap between blocks does not inherit.
+            <div className="ml-indent flex flex-col gap-1">
+              {renderBlocks(block.children, block.id, on, going)}
+            </div>
+          )}
+          {writing?.after === block.id && newBlockEditor}
+        </Fragment>
+      );
+    });
 
   /**
    * The tail of a day is click-to-write, so it needs somewhere to click and a
@@ -561,92 +701,117 @@ export default function PageView({
    * under its heading like children under a parent, and its blank space is
    * not click-to-write, so no caret and no room kept.
    */
+  /** Whether the zoomed block is selected, and with it everything shown. */
+  const rootLit = root !== undefined && selecting.selected.has(slotKey(scope, root.id));
+  /** Whether the zoomed block is being dragged, and with it everything shown. */
+  const rootMoving = root !== undefined && dragging.has(slotKey(scope, root.id));
+
   const pageSpace = reference
     ? 'ml-indent cursor-default'
-    : references?.length || taggedBy?.length
+    : links || taggedBy?.length
       ? 'cursor-text pb-5'
       : 'cursor-text pb-12';
 
   return (
     <>
       {/* The header: the title, and on a page's own view its tags and
-          properties. What is marked `data-reveal` in it ("+ Add tag", "+ Add
-          property") shows only while it is hovered or holds focus, so a new
-          page is not two empty placeholders under its title. Hidden is
-          opacity, not removal: they keep their room, and nothing below moves
-          as the pointer crosses the title. */}
-      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity focus-within:[&_[data-reveal]]:opacity-100 hover:[&_[data-reveal]]:opacity-100">
-        {/* A cut is headed by the page it is cut from, as a link there — the
-            project view follows it like the ones in the blocks. */}
-        {reference ? (
-          <h4 className="mt-3 mb-1 text-sm font-semibold">
-            <a className="wikilink text-accent" href={`#${title}`}>
-              {title}
-            </a>
-          </h4>
-        ) : root ? (
-          /* Zoomed: the title steps back to a link out to the whole page, and
-             what the block hangs under follows it, each a way out to that
-             level. The project view follows both — the title as the wikilink
-             it is, a crumb by its `data-block-ref`, like a dot.
-             ponytail: a crumb is the first line of its block as written,
-             Markdown and all. Render it once a `**` in one looks wrong. */
-          <nav className="mt-6 mb-4 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
-            <a className="wikilink text-accent" href={`#${title}`}>
-              {title}
-            </a>
-            {ancestors.map((ancestor) => (
-              <Fragment key={ancestor.id}>
-                <span aria-hidden>›</span>
-                <a
-                  href="#"
-                  data-block-ref={ancestor.id}
-                  className="max-w-48 truncate hover:text-accent"
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    openMenu(ancestor);
-                  }}
-                >
-                  {ancestor.text.split('\n')[0] || '…'}
-                </a>
-              </Fragment>
-            ))}
-          </nav>
-        ) : (
-          <h2 className="mt-6 mb-4 text-2xl font-semibold">
-            {/* A heading still, not a link in the text: no accent, and only
-                the underline on hover says it goes somewhere. The project
-                view follows it like any wikilink. */}
-            {linked ? (
-              <a className="wikilink hover:underline" href={`#${title}`}>
+          properties. While the page has no tags, "+ Add tag" sits beside
+          the title; once it has one, the tags take the line under it.
+          "+ Add property" follows "+ Add tag" on whichever line that is,
+          while the page has no properties; once it has some, or a draft is
+          open, the table takes a line of its own with the button under
+          it. The break after the title is an `::after` ordered between the
+          title and the rest. Only the layout changes, never the tree, so
+          a draft or an open input is not remounted.
+
+          What is marked `data-reveal` ("+ Add tag" and "+ Add property") is
+          hidden, so a new page is not two empty placeholders beside its
+          title. Both show while the title's or the tags' line is hovered or
+          holds focus, "+ Add property" only while it is on that line (no
+          properties yet); pointing at the table under it lights neither
+          that line nor "+ Add tag". The table and its button show "+ Add
+          property" too. While a tag is being typed, "+ Add property" stays
+          hidden: the line is the tag's.
+          Hidden is opacity, not removal: they keep their room, and nothing
+          moves as the pointer crosses the title. */}
+      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity [&_[data-line]:hover:not(:has(>section:not([data-bare]):hover)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare])>[data-reveal]]:opacity-100 [&_[data-line]:focus-within:not(:has(>section:not([data-bare]):focus-within)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare])>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:hover>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:focus-within>[data-reveal]]:opacity-100">
+        <div
+          data-line
+          className="flex flex-wrap items-baseline gap-x-3 [&>*]:min-w-0 [&>*:not(:first-child)]:order-2 [&>section:not([data-bare])]:basis-full has-[>[aria-label=Tags]:not([data-bare])]:after:order-1 has-[>[aria-label=Tags]:not([data-bare])]:after:basis-full"
+        >
+          {reference ? (
+            <h4 className="mt-3 mb-1 text-sm font-semibold">
+              <a className="wikilink text-accent" href={`#${title}`}>
                 {title}
               </a>
-            ) : (
-              title
-            )}
-          </h2>
-        )}
+            </h4>
+          ) : root ? (
+            /* Zoomed: the title steps back to a link out to the whole page, and
+               what the block hangs under follows it, each a way out to that
+               level. The project view follows both — the title as the wikilink
+               it is, a crumb by its `data-block-ref`, like a dot.
+               ponytail: a crumb is the first line of its block as written,
+               Markdown and all. Render it once a `**` in one looks wrong. */
+            <nav className="mt-6 mb-4 flex flex-wrap items-center gap-x-1.5 text-sm text-muted">
+              <a className="wikilink text-accent" href={`#${title}`}>
+                {title}
+              </a>
+              {ancestors.map((ancestor) => (
+                <Fragment key={ancestor.id}>
+                  <span aria-hidden>›</span>
+                  <a
+                    href="#"
+                    data-block-ref={ancestor.id}
+                    className="max-w-48 truncate hover:text-accent"
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      openMenu(ancestor);
+                    }}
+                  >
+                    {ancestor.text.split('\n')[0] || '…'}
+                  </a>
+                </Fragment>
+              ))}
+            </nav>
+          ) : onRename && !linked ? (
+            <Title title={title} onRename={onRename} />
+          ) : (
+            <h2 className="mt-6 mb-4 text-2xl font-semibold">
+              {/* A heading still, not a link in the text: no accent, and only
+                  the underline on hover says it goes somewhere. The project
+                  view follows it like any wikilink. */}
+              {linked ? (
+                <a className="wikilink hover:underline" href={`#${title}`}>
+                  {title}
+                </a>
+              ) : (
+                title
+              )}
+            </h2>
+          )}
 
-        {/* Under the title, above the properties, on the same terms: a journal
-            day shows its tags only when it has some, and neither a zoom nor a
-            cut shows them. */}
-        {tags && !reference && !root && (!linked || tags.length > 0) && (
-          <Tags tags={tags} findTags={findTitles} onAdd={tagPage} onRemove={untagPage} />
-        )}
+          {/* Beside the title, or under it once there are some, above the
+              properties. A journal day shows its tags only when it has some,
+              and neither a zoom nor a cut shows them. */}
+          {tags && !reference && !root && (!linked || tags.length > 0) && (
+            <Tags tags={tags} findTags={findTitles} onAdd={tagPage} onRemove={untagPage} />
+          )}
 
-        {/* Under the title, on the page's own view. A journal day shows its
-            table only when it has something in it: an empty one on every day
-            is noise, and the first property on a day is added from its page.
-            Not under a zoom, where what shows is a block and the page's
-            properties would read as its own. */}
-        {properties && !reference && !root && (!linked || properties.length > 0) && (
-          <Properties
-            rows={properties}
-            findKeys={findTitles}
-            onCommit={commitProperties}
-            onRemove={removeRow}
-          />
-        )}
+          {/* Under the title, or beside it while empty, on the page's own
+              view. A journal day shows its
+              table only when it has something in it: an empty one on every day
+              is noise, and the first property on a day is added from its page.
+              Not under a zoom, where what shows is a block and the page's
+              properties would read as its own. */}
+          {properties && !reference && !root && (!linked || properties.length > 0) && (
+            <Properties
+              rows={properties}
+              findKeys={findTitles}
+              onCommit={commitProperties}
+              onRemove={removeRow}
+            />
+          )}
+        </div>
       </div>
 
       {/* The blank space under the page is part of the page: clicking it opens
@@ -666,8 +831,8 @@ export default function PageView({
           // Keyed, or zooming out with a box open hands the new root the old
           // root's box — and its text, which blur would then commit over it.
           <Fragment key={root.id}>
-            {renderBlock(root)}
-            {renderBlocks(root.children)}
+            {renderBlock(root, undefined, rootLit, rootMoving)}
+            {renderBlocks(root.children, root.id, rootLit, rootMoving)}
           </Fragment>
         ) : (
           renderBlocks(page.blocks)
@@ -684,6 +849,7 @@ export default function PageView({
           page.blocks.length === 0 && (
             <button
               className={`${blockBox} ${blockFocus} cursor-text text-muted`}
+              {...emptyPage(title)}
               onClick={() => setWriting({})}>
               Click to write the first block
             </button>
@@ -700,7 +866,7 @@ export default function PageView({
           the page's own when nothing links here, and less when something
           does. */}
       {taggedBy && taggedBy.length > 0 && !reference && !root && (
-        <div className={references?.length ? 'pb-5' : 'pb-12'}>
+        <div className={links ? 'pb-5' : 'pb-12'}>
           <TaggedBy tag={title} pages={taggedBy} />
         </div>
       )}
@@ -709,7 +875,9 @@ export default function PageView({
         <LinkedReferences
           graph={graph}
           references={references}
+          count={links}
           version={version}
+          scope={scope}
           act={act}
         />
       )}

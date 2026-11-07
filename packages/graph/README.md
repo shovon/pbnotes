@@ -12,9 +12,9 @@ for await (const graph of ledger.onEvent(graphFold.initial, graphFold.reduce)) {
 }
 ```
 
-To write, hand `addBlock`, `editBlock`, `deleteBlock`, `indentBlock` or `outdentBlock` a `GraphView`: the state you hold, and a `dispatch(v, type, payload)` wired to your own log. They run the same checks the app runs before they write anything.
+To write, hand `addBlock`, `editBlock`, `deleteBlock`, `deleteBlocks`, `indentBlock`, `indentBlocks`, `outdentBlock`, `outdentBlocks`, `pasteBlocks`, `moveBlock` or `moveBlocks` a `GraphView`: the state you hold, and a `dispatch(v, type, payload)` wired to your own log. They run the same checks the app runs before they write anything.
 
-Each of those writes one event, and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented` and `blockOutdented`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
+Each of those writes one event (`deleteBlocks`, `indentBlocks`, `outdentBlocks` and `moveBlocks` write a `batch` when there is more than one block, so they are one undo step; `moveBlocks` lands the top-most blocks together, the first at the place and each next one directly beneath the one before; the last two move each block in turn, on the graph as the one before left it, and write nothing when any of them cannot move; `pasteBlocks` writes copied blocks as new ones, with the caller's ids, as one `batch`, except that a block carrying the id it was cut with (`was`, #246) keeps that id when the graph does not hold it, and a cut pasted `into` an empty block goes after it, takes its children and deletes it, since the first block keeps its own id; and `pasted` builds those events for whoever draws them ahead), and each event has a pure builder: `blockCreated`, `blockEdited`, `blockDeleted`, `blockIndented`, `blockOutdented` and `blockMoved`. A builder returns `{ v, type, payload }` with `v` from `HANDLES`, so a writer that holds no fold can still write a valid event, but it skips the checks.
 
 Page properties have commands too, `setProperty`, `removeProperty` and `renameProperty`, and builders, `propertySet` and `propertyRemoved`.
 
@@ -24,16 +24,25 @@ A page is deleted with `deletePage`, whose builder is `pageDeleted`.
 
 Several events that must land together go in one `batch` (below), built from the other builders' results.
 
-Undo is `invert` and `holds` (below): the events that take a step back, and whether a step can still be taken back.
+Undo is `remember`, `holds` and `invert` (below): a step remembered as what takes it back, whether it can still be taken back, and the events alone.
 
 A view that draws its writes before they are recorded folds them with `predict` for blocks, `predictProperties` for a page's properties and `predictTags` for its tags. Each passes over events that are not its own, and reads a batch as the events it holds, so a view can hand all three everything it has in flight.
 
-The queries (`getPage`, `getPages`, `getReferences`, `getPreviews`, `getProperties`, `getTags`, `getTaggedBy`, `getAliases`, `getAliasOf`, `resolve`, `getDeletions`, `getRefsTo`, `hasContent`, `searchPages`, `searchNames`, `listPages` and `locateBlock`) take the folded graph alone, since they never write. The ones that take a page's title resolve it first (see "What a name opens"), so `getPage(graph, "JS")` is the page `JS` opens.
+The queries (`getPage`, `getPages`, `getDays`, `getReferences`, `getPreviews`, `getProperties`, `getTags`, `getTaggedBy`, `getAliases`, `getAliasOf`, `resolve`, `getDeletions`, `getRefsTo`, `hasContent`, `searchPages`, `searchNames`, `listPages` and `locateBlock`) take the folded graph alone, since they never write. The ones that take a page's title resolve it first (see "What a name opens"), so `getPage(graph, "JS")` is the page `JS` opens.
 
 ## What it does not depend on
 
 - **The log.** The fold takes `{ type, v, payload }` and the commands write through `dispatch`. This package does not import `@pbnotes/ledger`, so events can come from anywhere.
 - **Node.** There are no `node:` imports. The app's renderer bundles this package, and it runs under plain `node --test`.
+
+## What the fold holds
+
+The graph `graphFold` folds is plain data: it survives a structured clone, and a title or id of `__proto__` is an ordinary key (#62). It is never changed once handed back, so the ledger can keep earlier graphs to fold a late event from, and undo can read the graph before a step.
+
+- **Blocks are flat** (#276). A forest of block ids grouped by page, each block a row (its page and its parent) and each block's children a list, with every block's text beside it by id. A page is read as a tree (`getPage`, `blocksOn`) when something asks for it, and the tree is built from those rows each time.
+- **Every map in it is immutable** (`immutable/`): a write hands back a new map that shares all but one path of the old one. So an event costs the rows it touches, not a copy of the page or the graph it is in, and folding a log costs time in step with its length.
+- **The tree shape stays the one the app reads.** `Block` and `Page`, and the walks over a page as a tree (`locate`, `beside`, `without`, `indented`, `outdented`, `lastLeaf`), are what the renderer draws and a paste is built from. The fold doesn't use them.
+- **A write that changes nothing hands back the same graph,** and so is not an edit to the page (`getEdited`) or a step for undo. That includes an edit to the text a block already has, which is a repeat.
 
 ## The event names are a contract
 
@@ -46,7 +55,7 @@ Every event type is `NAMESPACE` followed by a name, for example `github.com/shov
 
 ## Where the events are
 
-Every event is one module under [`src/events/`](src/events/README.md), grouped by subject: its name, its `v`, how its payload is read, its fold, its builder and its undo, together. Each subject's `slice.ts` there lists its events, and `HANDLES`, `UNDO`, the fold and the predictions are built from those lists. What a subject's events share (its state, the helpers that change it, its queries and its commands) is in the subject's own folder: `blocks/`, `properties/`, `tags/`, `aliases/` and `deletes/`.
+Every event is one module under [`src/events/`](src/events/README.md), grouped by subject: its name, its `v`, how its payload is read, its fold, its builder and its undo, together. Each subject's `slice.ts` there lists its events, and `HANDLES`, `UNDO`, the fold and the predictions are built from those lists. What a subject's events share (its state, the helpers that change it, its queries and its commands) is in the subject's own folder: `blocks/`, `properties/`, `tags/`, `aliases/`, `deletes/` and `renames/`.
 
 That folder's README says what an event module holds, and how to add, change or remove an event.
 
@@ -137,7 +146,7 @@ A journal day answers to its date in words, with nothing written. A name, once `
 
 - **The reads resolve first.** `getPage`, `getProperties` and `getTags` read the page a name opens. `getReferences` and `getTaggedBy` match every name that opens it: its title, its date names if it is a day, and its aliases in effect. A link keeps the spelling it was written with.
 - **`getAliases(graph, page)`** lists the aliases in effect, not the built-in names, and **`getAliasOf(graph, alias)`** the page an alias in effect opens.
-- **`searchNames(graph, query)`** offers each name with the page it `opens`; `searchPages` is the titles alone. Beside the titles it always offered, it offers aliases, and for each day any offered name opens, the day's title and its date names. A day nothing names isn't offered, since the days can't be listed without end.
+- **`searchNames(graph, query)`** offers each name with the page it `opens`; `searchPages` is the titles alone. Beside the titles it always offered, it offers aliases, and for each day any offered name opens, the day's title and its date names. A day nothing names isn't offered, since the days can't be listed without end. A name a rename left behind isn't offered either (below).
 - **`listPages`** lists each page once, under its title. A name that opens another page isn't a row, and its links and tags count for the page it opens, a block or a tagging page once however many of the page's names it uses.
 
 ## Deleting a page is a contract
@@ -153,6 +162,50 @@ A journal day answers to its date in words, with nothing written. A name, once `
 - **Each delete is counted per page** (`getDeletions`), so a reader can tell that a page was deleted from a page that merely went empty.
 - **Malformed is skipped whole:** a payload that is not an object, or a `page` that is not a string or is blank once trimmed.
 - **`deletePage(view, page)`** writes nothing for a page with nothing on it (`hasContent`): the delete would change nothing. **`getRefsTo(graph, page)`** counts the blocks on other pages that hold a `((id))` to a block on it: what a delete would leave showing as missing. What links to it by title is `getReferences`.
+
+## Renaming a page is a contract
+
+| Type | `v` | Payload | Meaning |
+|---|---|---|---|
+| `page.renamed` | 1 | `{ from, to }` | The page `from` is now called `to`. |
+
+A reader that folds this event has to do all of what follows to show the same graph. One that understands aliases but not the rewrite still opens the right page, with the old text.
+
+- **One event, and the fold does all of it.** No `block.edited` per linking block: an edit replaces a block's whole text, and one that sorted after a concurrent edit on another device would wipe that edit out. The rewrite applies to whatever text is there at its place in fold order, so a block written offline that sorts before the rename is rewritten when it arrives.
+- **Titles are filed by `keyFor`:** the day a date name means, or the title's `canonicalize`d key. Renaming to `Nov 6th, 2026` makes the page that day.
+- **When the keys differ, the page moves:** its blocks (in their order and nesting, `regroup`), properties, tags, aliases and last-edited time go to `to`'s key, and `to` becomes its spelling.
+- **The old title becomes an alias,** along with the aliases the page had; a page never answers to its own title, so renaming onto one of its aliases drops it. **A day leaves no alias,** since nothing takes a `YYYY-MM-DD` over (`resolve` rule 3): a write on the day afterwards stays on the day.
+- **What pointed at the old title points at `to`:** every link in every block (below), every tag on any page, and every property key on any page, unless that page already has the key `to`, when both are left as they are. For a day, every link, tag or key by any of its date names.
+- **Links are rewritten where they are written,** read with the parser the renderer reads with (`relink`): one in code, math, a URL or an alias's label is left alone, as is everything else in the text. `[[x]]`, `#[[x]]` and `[label]([[x]])` keep their form and label. A bare `#x` stays bare unless `to` can't be a bare tag, when it becomes `#[[to]]`.
+- **A write on the old title goes to the page it became** while that page still answers to it (`redirect`): any event with a `page` field (blocks, properties, tags, aliases, a page delete) that sorts after the rename. A device that wrote offline before seeing the rename lands where it meant to, rather than giving the old title content of its own, which would take the name back (rule 1). Removing the alias ends it.
+- **A page with nothing on it is renamed like any other.** Every page already exists, and its links, tags and keys are what there is to rename: they follow, and the old title becomes an alias.
+- **A rename that can't move the page does nothing:** `to` has content of its own (`hasContent`), `to` is a name a rename sends to another page, or `from` has nothing on it and either another page claims it as an alias or nothing names it at all. The alias case is what holds two renames of one page: the first leaves `from` empty and claimed by the page it became, so the first in fold order wins. A page nothing is on or names has nothing to rename. Nothing is ever merged without being asked.
+- **When the keys are the same, only the spelling changes** (#89): the page shows as `to` from then on, even though `titles` otherwise keeps the first spelling seen. Nothing moves and no text changes. A day's spelling never changes.
+- **The names a rename left behind aren't offered by `searchNames`.** They still open the page; they are a safety net, and a renamed typo shouldn't keep being offered. `getAliases` still lists them.
+- **Malformed is skipped whole:** a payload that is not an object, or a `from` or `to` that is not a string or is blank once trimmed.
+- **`renamePage(view, from, to)`** renames the page `from` opens, and refuses, writing nothing, a `to` with content of its own, a `to` that opens another page, and a `to` holding `[[`, `]]` or a line break. A rename to the spelling the page has, or of a page nothing is on or names, writes nothing.
+- **Undone by renaming back,** with the alias that leaves on the old page removed, as one batch. Each rewritten link comes back naming the page as it is spelled, so `[[bridal falls]]` comes back `[[Bridal Falls]]`, and a bare tag that took brackets keeps them. It stops once anything on the page has changed since, or anything has been written under the old title.
+
+## A block id is written once
+
+A block id names one block in the whole graph. Two `block.created` events for one id can still reach a folder: two writers each pasting the same cut, or each undoing the same delete, before they sync (#273).
+
+- **The first create in fold order stands.** A later one for an id the graph holds now changes nothing: not the text, not the place. Fold order is the same on every machine, so every machine shows the same block in the same place.
+- **"Holds now" means in the graph at that point,** not ever: an id that was deleted can be created again, which is what undoing a delete and pasting a cut rely on.
+- **A create under a parent on another page follows the parent there.** The parent moved after the writer last saw it, or a skipped create of it put it elsewhere, and the block was written under it either way. Before #273 such a block went to the end of the page its event named.
+- **Undo of a create that lost stops,** as for any step someone else changed, unless the winning create put the block in the same place with the same text and children: then the two can't be told apart, and undo removes it.
+
+## Moving a block is a contract
+
+| Type | `v` | Payload | Meaning |
+|---|---|---|---|
+| `block.moved` | 1 | `{ id, page, after?, parent?, first? }` | The block, with its subtree, now sits at this place on `page` (#252). |
+
+- **The place means what it means on `block.created`:** after the sibling `after` (which, with `parent`, has to be one of `parent`'s children), first under `parent`, or first on the page with `first`. With none of them, the block goes at the end of the page. `after` and `parent` win over `first`.
+- **`page` is always written,** even for a move on the same page, so the payload says where the block ends up without reading the graph. A page with no blocks yet gets this one, spelled as written.
+- **A move that cannot be followed is ignored, never guessed at.** The block stays where it was when the graph lacks it, when it is already there, when the place is inside its own subtree (two writers each moving one block under the other before they sync, #62), or when the target page lacks the `after` or `parent`, or `after` is not `parent`'s child. Unlike `block.created`, which falls back so a block is never lost, a move can't lose a block, so it leaves it where its owner last saw it.
+- **`moveBlock(view, id, title, place)`** refuses what the fold would ignore, and writes nothing for a block already there. `moveBlocks(view, ids, title, place)` (#269) is several blocks moved as one: a `batch` of moves, each placed after the one before, at its depth, refusing a place inside any of their subtrees.
+- **An older build** does not know the type, so the block stays where it was for it, and every later edit to it still lands, since an edit finds a block by id.
 
 ## Batches are a contract
 
@@ -171,23 +224,26 @@ Some things a user does take more than one event. Each event is its own record, 
 
 ## Undoing
 
-A step is what one command wrote: the graph before it (`before`), its events, and the graph after it (`after`). Nothing here keeps a history; that is the caller's (#224).
+A step is what one command wrote: its events, on the graph before it. Nothing here keeps a history; that is the caller's (#224).
+
+**`remember(before, events)`** is how a caller keeps a step (#242). It is called once, when the step is written, and gives the step's `inverse` (what `invert` gives) and, for each thing the step touched, a reading and the value it gave on the graph right after. It keeps no graph, so `before` and the graph after can be let go once it returns, and what a step costs does not grow with the project.
 
 - **`invert(before, events)`** gives the events that undo `events`, to be written as one `batch`. They are plain events that any build reads, never an "undo" event: the log only grows, and what was undone stays on disk.
 - **The last event is undone first,** each against the graph as it stood just before it. A batch is the events it holds.
 - **What changed nothing has no inverse:** an edit to a block that isn't there, a tag a page already has. `[]` means there is nothing to undo.
-- **`undefined` means the step cannot be undone.** One event in it that cannot be undone makes the whole step `undefined`, never half undone. Today that is only an indent under anything but the sibling above, which no command writes: no event moves a block to an arbitrary place.
+- **`undefined` means the step cannot be undone.** One event in it that cannot be undone makes the whole step `undefined`, never half undone. No event says so today, since `block.moved` (#252) can put any block back where it was. The rule stays for an event that cannot be undone.
 - **A deleted block comes back with its subtree,** with the same ids and text, so a `((id))` to any of them resolves again: a page's first block with `first`, a first child with `parent`, the rest with `after`. A deleted page comes back the same way, then its properties, tags and aliases, spelled as they were.
-- **An indent under the sibling above is undone by an outdent after it,** and an outdent by an indent under the old parent, then an outdent for each sibling it took along, last first.
+- **An indent under the sibling above is undone by an outdent after it,** and an outdent by an indent under the old parent, then an outdent for each sibling it took along, last first. An indent anywhere else, which only another writer's log holds, is undone by a `block.moved` back.
+- **A move is undone by a move back:** to its page, under its parent, after the sibling that was above it (or first).
 - **Titles and delete counts are not undone.** A spelling, once seen, stays, and `getDeletions` still counts a delete that was undone.
 
-**`holds(now, step)`** is whether a step can still be undone: everything it touched is in `now` as the step left it in `after`. False means someone else changed it since, and undoing it would undo their work too. Only what the step touched is compared:
+**`holds(now, remembered)`** is whether a step can still be undone: every reading gives in `now` what it gave right after the step. False means someone else changed it since, and undoing it would undo their work too. Only what the step touched is read:
 
 | The step | Compared |
 |---|---|
 | Created a block | The block's text, its whole subtree, and where it sits |
 | Edited a block | Its text, so a block moved since still holds |
-| Indented or outdented a block | Where it sits (page, parent, the siblings either side), and where each sibling an outdent took along sits |
+| Indented, outdented or moved a block | Where it sits (page, parent, the siblings either side), and where each sibling an outdent took along sits. A move still holds with a new text or new children |
 | Deleted a block | That none of the deleted ids exist again |
 | Deleted a page | That none of its blocks' ids exist again. A page that gained new blocks since still holds |
 | Set or removed a property | The page's value for that key |
@@ -195,6 +251,8 @@ A step is what one command wrote: the graph before it (`before`), its events, an
 
 ### Where an event's undo lives
 
-In the event's own module, under `src/events/`: `inverse`, the events that undo it from the graph just before it, and `touched`, what `holds` compares for it. An event that cannot be undone says `undo: "cannot"`, never nothing.
+In the event's own module, under `src/events/`: `inverse`, the events that undo it from the graph just before it, and `touched`, the readings `holds` compares for it. An event that cannot be undone says `undo: "cannot"`, never nothing.
+
+**A reading** is a function from a graph to a plain value (a string, a number, a boolean or `undefined`), compared with `===`. A remembered step holds on to its readings, so a reading keeps ids, a title or a key, never the graph it was made from: one that kept the graph would keep it alive for as long as the step is remembered. Each event makes its readings with `same(…)`.
 
 `UNDO` in `graph.ts` is every subject's undo table put together, keyed on every type in `HANDLES` but `batch`, so an event type with no entry stops the build. `undo/` holds only the walk, which knows no event: it is handed the fold and the table.

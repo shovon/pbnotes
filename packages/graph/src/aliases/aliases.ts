@@ -17,6 +17,8 @@
  * reads this.
  */
 
+import * as map from "../immutable/immutable.ts";
+import type { ImmutableMap } from "../immutable/immutable.ts";
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { field } from "../events/events.ts";
 import { over } from "../over/over.ts";
@@ -32,7 +34,7 @@ import type { Titles } from "../titles/titles.ts";
  * state survives the structured clone to the renderer (#146).
  */
 export type AliasState = {
-  readonly aliases: Map<string, Set<string>>;
+  readonly aliases: ImmutableMap<Set<string>>;
   readonly titles: Titles;
 };
 
@@ -70,7 +72,7 @@ export function readAlias(payload: unknown): AliasAdded | undefined {
 
 /** Whether `page` answers to `alias`. */
 export function answersTo(state: AliasState, page: string, alias: string): boolean {
-  return state.aliases.get(canonicalize(page))?.has(canonicalize(alias)) ?? false;
+  return map.get(state.aliases, canonicalize(page))?.has(canonicalize(alias)) ?? false;
 }
 
 /**
@@ -86,12 +88,10 @@ export function setAlias<S extends AliasState>(state: S, it: AliasAdded, on: boo
     return titles === state.titles ? state : { ...state, titles };
   }
   const at = canonicalize(page);
-  const next = new Set(state.aliases.get(at));
+  const next = new Set(map.get(state.aliases, at));
   if (on) next.add(canonicalize(alias));
   else next.delete(canonicalize(alias));
-  const aliases = new Map(state.aliases);
-  if (next.size === 0) aliases.delete(at);
-  else aliases.set(at, next);
+  const aliases = next.size === 0 ? map.remove(state.aliases, at) : map.put(state.aliases, at, next);
   return { ...state, titles, aliases };
 }
 
@@ -103,7 +103,7 @@ export function setAlias<S extends AliasState>(state: S, it: AliasAdded, on: boo
  */
 export function claims(state: AliasState): Map<string, string[]> {
   const by = new Map<string, string[]>();
-  for (const [page, held] of state.aliases) {
+  for (const [page, held] of map.entries(state.aliases)) {
     for (const alias of held) by.set(alias, [...(by.get(alias) ?? []), page]);
   }
   for (const pages of by.values()) pages.sort();
@@ -112,7 +112,7 @@ export function claims(state: AliasState): Map<string, string[]> {
 
 /** Every title the aliases name: each page that has one, and each alias. */
 export function* named(state: AliasState): Generator<string> {
-  for (const [page, held] of state.aliases) {
+  for (const [page, held] of map.entries(state.aliases)) {
     yield page;
     yield* held;
   }

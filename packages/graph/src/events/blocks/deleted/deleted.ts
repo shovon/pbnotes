@@ -5,7 +5,8 @@
 import { namespaced } from "../../events.ts";
 import type { Named } from "../../events.ts";
 import type { Written } from "../../../over/over.ts";
-import { BLOCK, find, ids, onBlock, placeOf, stillGone, withId, without } from "../../../blocks/blocks.ts";
+import * as forest from "../../../forest/forest.ts";
+import { BLOCK, find, placeOf, stillGone, subtreeOf, treeOf, withId, withoutTree } from "../../../blocks/blocks.ts";
 import type { BlockDeleted } from "../../../blocks/blocks.ts";
 import { recreate } from "../created/created.ts";
 
@@ -19,18 +20,16 @@ export const BLOCK_DELETED = BLOCK.define({
   },
   // A plain filter, no tombstone, and the subtree goes with it. Every event
   // that built them is still on disk.
-  apply: (state, { id }) => onBlock(state, id, ({ blocks }) => without(blocks, id)),
+  apply: (state, { id }) => (forest.has(state.forest, id) ? withoutTree(state, id) : state),
   undo: {
     // The block and its subtree written back where it was, with the same ids.
     inverse: (state, { id }) => {
       const found = find(state, id);
       const place = placeOf(state, id);
-      return found && place ? recreate(found.page, found.siblings[found.at], place) : [];
+      const block = treeOf(state, id);
+      return found && place && block ? recreate(found.page, block, place) : [];
     },
-    touched: (state, { id }) => {
-      const found = find(state, id);
-      return found ? [stillGone(ids([found.siblings[found.at]]))] : [];
-    },
+    touched: (state, { id }) => (forest.has(state.forest, id) ? [stillGone(subtreeOf(state, id))] : []),
   },
 });
 

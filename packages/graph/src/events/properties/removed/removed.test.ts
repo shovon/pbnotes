@@ -6,10 +6,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getProperties, graphFold, holds, invert } from "../../../graph.ts";
+import { getProperties, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph } from "../../../graph.ts";
 import { propertySet } from "../set/set.ts";
 import { PROPERTY_REMOVED, propertyRemoved } from "./removed.ts";
+import { get, has } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; payload: unknown };
 
@@ -23,7 +24,7 @@ const removed = (page: string, key: string): Event => propertyRemoved(page, key)
 test("removing a page's last property deletes its entry; removing one of two keeps the other", () => {
   const two = fold([set("Bar", "A", "1"), set("Bar", "B", "2")]);
   assert.deepEqual(getProperties(fold([removed("Bar", "A")], two), "Bar"), [{ key: "B", value: "2" }]);
-  assert.equal(fold([removed("Bar", "A"), removed("Bar", "B")], two).properties.has("bar"), false);
+  assert.equal(has(fold([removed("Bar", "A"), removed("Bar", "B")], two).properties, "bar"), false);
 });
 
 test("removing a key the page lacks changes nothing but the spellings", () => {
@@ -31,7 +32,7 @@ test("removing a key the page lacks changes nothing but the spellings", () => {
   assert.equal(graphFold.reduce(state, removed("bar", "b")), state);
   const named = graphFold.reduce(state, removed("Bar", "Nothing"));
   assert.equal(named.properties, state.properties);
-  assert.equal(named.titles.get("nothing"), "Nothing");
+  assert.equal(get(named.titles, "nothing"), "Nothing");
 });
 
 test("propertyRemoved writes the event's own type and v", () => {
@@ -51,7 +52,7 @@ test("a removed is undone by setting the old value back, and not at all when the
 test("a removed holds until someone else sets the key again", () => {
   const before = fold([set("Bar", "K", "1")]);
   const after = fold([removed("Bar", "K")], before);
-  const step = { before, events: [removed("Bar", "K")], after };
+  const step = remember(before, [removed("Bar", "K")]);
   assert.equal(holds(after, step), true);
   assert.equal(holds(fold([set("Bar", "K", "2")], after), step), false);
 });

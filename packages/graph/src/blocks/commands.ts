@@ -3,15 +3,26 @@
  * builds and dispatches. Each event's builder is its own module.
  */
 import type { Written } from "../over/over.ts";
-import { blocksOn, find, indented, locate, outdented } from "./blocks.ts";
-import type { BlockState, Found, Page } from "./blocks.ts";
+import { canonicalize } from "../canonicalize/canonicalize.ts";
+import * as forest from "../forest/forest.ts";
+import { blocksOn, find, isOn, placedAt, sitsAt } from "./blocks.ts";
+import type { BlockState, Found, Page, Place } from "./blocks.ts";
+import { ids, locate } from "./tree.ts";
+import type { Block } from "./tree.ts";
 import { getPage } from "./queries.ts";
+import { reduce } from "../events/blocks/slice.ts";
 import type { PageEvent } from "../events/blocks/slice.ts";
 import { blockCreated } from "../events/blocks/created/created.ts";
 import { blockEdited } from "../events/blocks/edited/edited.ts";
 import { blockDeleted } from "../events/blocks/deleted/deleted.ts";
 import { blockIndented } from "../events/blocks/indented/indented.ts";
 import { blockOutdented } from "../events/blocks/outdented/outdented.ts";
+import { blockMoved } from "../events/blocks/moved/moved.ts";
+import { batch } from "../events/batch/batch.ts";
+import type { Batched } from "../events/batch/batch.ts";
+import type { BatchEvent } from "../events/batch/batch.ts";
+import { pasted } from "./paste/paste.ts";
+import type { PasteAt } from "./paste/paste.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of
@@ -20,11 +31,11 @@ import { blockOutdented } from "../events/blocks/outdented/outdented.ts";
 export type BlocksView = {
   readonly state: BlockState;
   /** Resolves once the event is durable and folded into `state`. */
-  dispatch(v: number, type: PageEvent["type"], payload: unknown): Promise<unknown>;
+  dispatch(v: number, type: PageEvent["type"] | BatchEvent["type"], payload: unknown): Promise<unknown>;
 };
 
-/** A block event as a builder hands it back. */
-type Built = Written<PageEvent["type"], unknown>;
+/** A block event as a builder hands it back, or a batch of them. */
+type Built = Written<PageEvent["type"] | BatchEvent["type"], unknown>;
 
 function append(view: BlocksView, event: Built): Promise<unknown> {
   return view.dispatch(event.v, event.type, event.payload);
@@ -69,14 +80,8 @@ export async function addBlock(
   if (first && (after || parent)) {
     throw new Error("A first block cannot have an after or a parent");
   }
-  const blocks = blocksOn(view.state, title);
-  const sibling = after ? locate(blocks, after) : undefined;
-  if (after && !sibling) throw new Error("No such block");
-  if (parent && !locate(blocks, parent)) throw new Error("No such block");
-  if (after && parent && sibling?.parent?.id !== parent) {
-    throw new Error("That block is not a child of the parent");
-  }
-  if (find(view.state, id)) throw new Error("That block already exists");
+  checkPlace(view.state, canonicalize(title), { after, parent });
+  if (forest.has(view.state.forest, id)) throw new Error("That block already exists");
   // dispatch appends before it folds, so the page handed back can never show
   // something a crash takes.
   await append(view, blockCreated(title, text, after, id, parent, first));
@@ -94,13 +99,192 @@ export function deleteBlock(view: BlocksView, blockId: string): Promise<Page> {
 }
 
 /**
+ * Removes several blocks, each with its subtree, as one record (#258): a
+ * `batch` of `block.deleted`s, or the one event alone, so one undo brings
+ * them all back. A block under another of `blockIds` goes with it and is not
+ * deleted again, whatever order they came in or wherever the caller saw
+ * them; a block the graph no longer has is passed over. Refuses when none of
+ * them is left, as `deleteBlock` does for one.
+ */
+export async function deleteBlocks(view: BlocksView, blockIds: readonly string[]): Promise<void> {
+  const gone = topMost(view.state, blockIds);
+  if (gone.length === 0) throw new Error("No such block");
+  const events = gone.map((id) => blockDeleted(id));
+  await append(view, events.length === 1 ? events[0] : batch(events));
+}
+
+/**
+ * A block to paste: its id, text and children, and, when it was cut (#246),
+ * the id it had then, which it keeps when the graph does not hold it.
+ */
+export type Pasting = { id: string; text: string; children: readonly Pasting[]; was?: string };
+
+/**
+ * Writes copied blocks on `title` (#261), nested as they were copied, as one
+ * record, so one undo takes the paste back. `at` is a place as `addBlock`
+ * means one, and refuses what it refuses, or `into` an empty block on the
+ * page (`paste.ts`).
+ *
+ * Each block is written under the caller's `id`, refused when the graph has
+ * it or the paste names it twice, unless it carries the id it was cut with
+ * (`was`) and the graph does not hold that one: then it keeps it, so the
+ * first paste of a cut puts its blocks back and every `((id))` to them works
+ * again (#246). A later paste finds those ids held, and is a copy.
+ *
+ * `into` an empty block: a copy's first block takes that block's id, as
+ * ever. One that keeps its cut id can't, so the paste goes after the empty
+ * block instead, its children go under the first pasted block, and it is
+ * deleted, in the same record.
+ */
+export async function pasteBlocks(
+  view: BlocksView,
+  title: string,
+  pasting: readonly Pasting[],
+  at: PasteAt,
+): Promise<void> {
+  if (pasting.length === 0) throw new Error("Nothing to paste");
+  const resolved = kept(view.state, pasting);
+  const named = ids(resolved);
+  if (new Set(named).size !== named.length) throw new Error("A pasted block is named twice");
+  if (named.some((id) => forest.has(view.state.forest, id))) throw new Error("That block already exists");
+  const key = canonicalize(title);
+  if ("into" in at) {
+    if (!isOn(view.state, at.into, key)) throw new Error("No such block");
+  } else {
+    const { after, parent, first } = at;
+    if (first && (after || parent)) {
+      throw new Error("A first block cannot have an after or a parent");
+    }
+    checkPlace(view.state, key, { after, parent });
+  }
+  // A paste is built from the page as a tree, as a view drawing it ahead builds it.
+  const blocks = blocksOn(view.state, title);
+  const events =
+    ("into" in at && resolved[0].id === pasting[0].was
+      ? replacing(blocks, title, resolved, at.into)
+      : pasted(blocks, title, resolved, at)) ?? [];
+  if (events.length === 0) return;
+  await append(view, events.length === 1 ? (events[0] as Built) : batch(events));
+}
+
+/**
+ * `pasting` as blocks, each with the id it is written under: the one it was
+ * cut with when the graph does not hold it and no block before it in the
+ * paste took it, and the caller's otherwise.
+ */
+function kept(state: BlockState, pasting: readonly Pasting[]): Block[] {
+  const taken = new Set<string>();
+  const walk = (blocks: readonly Pasting[]): Block[] =>
+    blocks.map(({ id, text, children, was }) => {
+      const keep = was !== undefined && !taken.has(was) && !forest.has(state.forest, was);
+      if (keep) taken.add(was);
+      return { id: keep ? was : id, text, children: walk(children) };
+    });
+  return walk(pasting);
+}
+
+/**
+ * A paste into the empty block `into` whose first block keeps its own id:
+ * the blocks go after it, its children go under the first of them, after
+ * that block's own, and it is deleted. Undefined when the page lacks it.
+ */
+function replacing(blocks: Block[], title: string, pasting: Block[], into: string): Batched[] | undefined {
+  const found = locate(blocks, into);
+  if (!found) return undefined;
+  const target = found.siblings[found.at];
+  const first = pasting[0];
+  const parent = found.parent ? { parent: found.parent.id } : {};
+  const written = pasted(blocks, title, pasting, { after: into, ...parent }) ?? [];
+  let above = first.children.at(-1)?.id;
+  const moved = target.children.map((child) => {
+    const event = blockMoved({ id: child.id, page: title, parent: first.id, ...(above ? { after: above } : {}) });
+    above = child.id;
+    return event;
+  });
+  return [...written, ...moved, blockDeleted(into)];
+}
+
+/**
+ * Tab on several blocks (#259): each top-most one of `blockIds` filed under
+ * the sibling above it, children and all, in the order given, as one record:
+ * a `batch` of `block.indented`s, or the one event alone. Each is resolved
+ * on the graph as the ones before it left it, so siblings selected together
+ * go under the same block, in their order. All or nothing: when any of them
+ * is first among its siblings, wherever it is, nothing is written, and that
+ * is not an error, as with `indentBlock`. Refuses when none is left.
+ */
+export function indentBlocks(view: BlocksView, blockIds: readonly string[]): Promise<void> {
+  return inTurn(view, blockIds, (state, id) => {
+    const payload = indentOf(state, id);
+    return payload && blockIndented(payload);
+  });
+}
+
+/**
+ * Shift+Tab on several blocks (#260): each top-most one of `blockIds`
+ * brought out a level, in the order given, as one record, taking the
+ * siblings below it along as its children, as `outdentBlock` does. Each is
+ * resolved on the graph as the ones before it left it, so selected siblings
+ * come out in order: `a(b c d)` with `b` and `c` is `a b c(d)`, the same as
+ * Shift+Tab on `b` and then on `c`. All or nothing: when any of them is
+ * already top-level, on whatever page, nothing is written, and that is not
+ * an error. Refuses when none is left.
+ */
+export function outdentBlocks(view: BlocksView, blockIds: readonly string[]): Promise<void> {
+  return inTurn(view, blockIds, (state, id) => {
+    const payload = outdentOf(state, id);
+    return payload && blockOutdented(payload);
+  });
+}
+
+/**
+ * The shape of every command on several blocks that moves each in turn: the
+ * top-most of `blockIds`, each resolved by `eventFor` on the graph as the
+ * ones before it left it, written as one record. Nothing is written when
+ * `eventFor` has none for one of them: the step is all or nothing.
+ */
+async function inTurn(
+  view: BlocksView,
+  blockIds: readonly string[],
+  eventFor: (state: BlockState, id: string) => Written<PageEvent["type"], unknown> | undefined,
+): Promise<void> {
+  const ids = topMost(view.state, blockIds);
+  if (ids.length === 0) throw new Error("No such block");
+  const events: Written<PageEvent["type"], unknown>[] = [];
+  let state = view.state;
+  for (const id of ids) {
+    const event = eventFor(state, id);
+    if (!event) return;
+    events.push(event);
+    state = reduce(state, event);
+  }
+  await append(view, events.length === 1 ? events[0] : batch(events));
+}
+
+/**
+ * Of `blockIds`, the ones the graph has and that no other of them holds,
+ * once each, in the order given. Asked of the graph, not of what a caller
+ * saw: a linked reference shows a block without what it hangs under.
+ */
+function topMost(state: BlockState, blockIds: readonly string[]): string[] {
+  const asked = new Set(blockIds);
+  const held = (id: string): boolean => {
+    for (let up = forest.node(state.forest, id)?.parent; up; up = forest.node(state.forest, up)?.parent) {
+      if (asked.has(up)) return true;
+    }
+    return false;
+  };
+  return [...asked].filter((id) => forest.has(state.forest, id) && !held(id));
+}
+
+/**
  * Moves a block under the sibling above it, children and all. The event
  * records the resolved parent, not "Tab was pressed". A block first among its
  * siblings writes nothing.
  */
 export function indentBlock(view: BlocksView, blockId: string): Promise<Page> {
-  return onExisting(view, blockId, (found) => {
-    const payload = indented(found.blocks, blockId);
+  return onExisting(view, blockId, () => {
+    const payload = indentOf(view.state, blockId);
     return payload && blockIndented(payload);
   });
 }
@@ -110,8 +294,113 @@ export function indentBlock(view: BlocksView, blockId: string): Promise<Page> {
  * siblings below it as its children. A top-level block writes nothing.
  */
 export function outdentBlock(view: BlocksView, blockId: string): Promise<Page> {
-  return onExisting(view, blockId, (found) => {
-    const payload = outdented(found.blocks, blockId);
+  return onExisting(view, blockId, () => {
+    const payload = outdentOf(view.state, blockId);
     return payload && blockOutdented(payload);
   });
+}
+
+/**
+ * Moves a block, with its subtree, to `place` on `title`: on its own page or
+ * another (#252). The place means what it means to `addBlock`, and refuses
+ * the same: an `after` or `parent` not on that page, an `after` that is not
+ * `parent`'s child, and `first` with either. It also refuses a place inside
+ * the block's own subtree, which the fold would ignore, and writes nothing
+ * for a block already there. Hands back the page the block lands on.
+ */
+export async function moveBlock(
+  view: BlocksView,
+  blockId: string,
+  title: string,
+  place: Place = {},
+): Promise<Page> {
+  checkMove(view.state, [blockId], title, place);
+  if (!sitsAt(view.state, blockId, title, place)) {
+    await append(view, blockMoved({ id: blockId, page: title, ...place }));
+  }
+  return getPage(view.state, title);
+}
+
+/**
+ * Moves several blocks, each with its subtree, to `place` on `title` (#269):
+ * the top-most of `blockIds`, in the order given. The first goes to `place`,
+ * and each next one directly beneath the one before it, at its depth, so
+ * blocks that had gaps between them, or came from other pages, land
+ * together. Written as one record: a `batch` of `block.moved`s, or the one
+ * event alone, leaving out any block already where it would go.
+ *
+ * Refuses what `moveBlock` refuses, for any of them: a place inside one of
+ * their subtrees among it. Refuses when none is left.
+ */
+export async function moveBlocks(
+  view: BlocksView,
+  blockIds: readonly string[],
+  title: string,
+  place: Place = {},
+): Promise<void> {
+  const moving = topMost(view.state, blockIds);
+  checkMove(view.state, moving, title, place);
+  const events: Written<PageEvent["type"], unknown>[] = [];
+  let state = view.state;
+  let at: Place = place;
+  for (const id of moving) {
+    if (!sitsAt(state, id, title, at)) {
+      const event = blockMoved({ id, page: title, ...at });
+      events.push(event);
+      state = reduce(state, event);
+    }
+    const parent = find(state, id)?.parent;
+    at = { after: id, ...(parent === undefined ? {} : { parent }) };
+  }
+  if (events.length > 0) await append(view, events.length === 1 ? events[0] : batch(events));
+}
+
+/**
+ * Throws unless every one of `blockIds` can move to `place` on `title`: each
+ * is in the graph, the place is not inside any of their subtrees, and it
+ * means something on that page, as it would to `addBlock`.
+ */
+function checkMove(state: BlockState, blockIds: readonly string[], title: string, place: Place): void {
+  const { after, parent, first } = place;
+  if (first && (after || parent)) {
+    throw new Error("A first block cannot have an after or a parent");
+  }
+  if (blockIds.length === 0) throw new Error("No such block");
+  const inside = new Set<string>();
+  for (const id of blockIds) {
+    if (!forest.has(state.forest, id)) throw new Error("No such block");
+    for (const it of forest.subtree(state.forest, id)) inside.add(it);
+  }
+  if ((after && inside.has(after)) || (parent && inside.has(parent))) {
+    throw new Error("A block cannot move into itself");
+  }
+  const key = canonicalize(title);
+  if (after && !isOn(state, after, key)) throw new Error("No such block");
+  if (parent && !isOn(state, parent, key)) throw new Error("No such block");
+  if (!placedAt(state, key, place)) throw new Error("That block is not a child of the parent");
+}
+
+/**
+ * Throws unless `after` and `parent` mean something on the page `key`, as a
+ * new block's place: each on the page, and `after` one of `parent`'s
+ * children when both are given.
+ */
+function checkPlace(state: BlockState, key: string, { after, parent }: Place): void {
+  if (after && !isOn(state, after, key)) throw new Error("No such block");
+  if (parent && !isOn(state, parent, key)) throw new Error("No such block");
+  if (after && parent && forest.node(state.forest, after)!.parent !== parent) {
+    throw new Error("That block is not a child of the parent");
+  }
+}
+
+/** What indenting the block `id` is: filed under the sibling above it. Undefined for one first among its siblings. */
+function indentOf(state: BlockState, id: string): { id: string; parent: string } | undefined {
+  const found = find(state, id);
+  return found && found.at > 0 ? { id, parent: found.siblings[found.at - 1] } : undefined;
+}
+
+/** What outdenting the block `id` is: directly beneath the block it hangs under. Undefined at the top level. */
+function outdentOf(state: BlockState, id: string): { id: string; after: string } | undefined {
+  const parent = find(state, id)?.parent;
+  return parent ? { id, after: parent } : undefined;
 }

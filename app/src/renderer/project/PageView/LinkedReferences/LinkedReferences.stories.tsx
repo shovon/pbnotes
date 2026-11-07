@@ -12,6 +12,7 @@ const graph: PageViewGraph = {
   run: async () => undefined,
   search: async () => [],
   blockMenu: async () => null,
+  carryImages: async (images) => images.map((): string | undefined => undefined),
 };
 
 const block = (id: string, text: string, children: Block[] = []): Block => ({
@@ -28,7 +29,7 @@ const page = (title: string, blocks: Block[]): Page => ({ title, blocks });
  */
 const meta = {
   component: LinkedReferences,
-  args: { graph, version: 0, act: () => undefined },
+  args: { graph, version: 0, scope: 'Mira', act: () => undefined },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: '36rem' }}>
@@ -60,15 +61,33 @@ export const Default: Story = {
       ]),
       page('Shed', [block('6', 'Second door: measure, then ask #Mira.')]),
     ],
+    count: 4,
   },
 };
+
+/** A page many blocks link to, its first chunk loaded (#285): the heading
+    counts every one, and the rest load as the window scrolls. */
+export const PartlyLoaded: Story = {
+  args: {
+    references: [
+      page('2026-09-24', [block('1', 'Ask [[Mira]] whether the hinge is the right one.')]),
+      page('2026-09-23', [block('2', 'Coffee with #Mira')]),
+    ],
+    count: 340,
+  },
+};
+
+/** Nothing loaded yet, on a page whose own blocks are still in view: the
+    heading alone, saying what is below. */
+export const NoneLoaded: Story = { args: { references: [], count: 340 } };
 
 /** One is singular. */
 export const One: Story = {
   args: {
     references: [page('2026-09-24', [block('1', 'Ask [[Mira]].')])],
+    count: 1,
   },
 };
 
 /** Renders nothing at all — no heading, no empty list. */
-export const None: Story = { args: { references: [] } };
+export const None: Story = { args: { references: [], count: 0 } };

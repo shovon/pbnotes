@@ -6,11 +6,12 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBlock, graphFold, holds, invert } from "../../../graph.ts";
+import { addBlock, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph, GraphView } from "../../../graph.ts";
 import { getTaggedBy, getTags } from "../../../tags/tags.ts";
 import { TAG_ADDED, tagAdded } from "./added.ts";
 import { tagRemoved } from "../removed/removed.ts";
+import { get } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -38,9 +39,9 @@ test("an added gives the page that tag, and names both pages", () => {
   const state = fold([added("Foo", "Work")]);
   assert.deepEqual(getTags(state, "foo"), ["Work"]);
   assert.deepEqual(getTaggedBy(state, "work"), ["Foo"]);
-  assert.equal(state.titles.get("foo"), "Foo");
-  assert.equal(state.titles.get("work"), "Work");
-  assert.equal(state.blocks.size, 0);
+  assert.equal(get(state.titles, "foo"), "Foo");
+  assert.equal(get(state.titles, "work"), "Work");
+  assert.equal(state.forest.nodes.size, 0);
 });
 
 test("an added over a populated state keeps what was there", async () => {
@@ -48,10 +49,11 @@ test("an added over a populated state keeps what was there", async () => {
   await addBlock(view, "Foo", "see [[Baz]]", undefined, "f");
   const before = fold([added("Foo", "Work")], view.state);
   const state = fold([added("Foo", "Home"), added("Bar", "Work")], before);
-  assert.equal(state.blocks, before.blocks);
+  assert.equal(state.forest, before.forest);
+  assert.equal(state.texts, before.texts);
   assert.deepEqual(getTags(state, "Foo"), ["Home", "Work"]);
   assert.deepEqual(getTags(state, "Bar"), ["Work"]);
-  assert.equal(state.titles.get("baz"), "Baz");
+  assert.equal(get(state.titles, "baz"), "Baz");
 });
 
 test("tagAdded writes the event's own type and v", () => {
@@ -72,7 +74,7 @@ test("an added is undone by a removed, and not at all when the page already had 
 
 test("an added holds until someone else takes the tag away", () => {
   const after = fold([added("Foo", "Work")]);
-  const step = { before: graphFold.initial, events: [added("Foo", "Work")], after };
+  const step = remember(graphFold.initial, [added("Foo", "Work")]);
   assert.equal(holds(fold([added("Foo", "Home")], after), step), true, "another tag");
   assert.equal(holds(fold([removed("Foo", "Work")], after), step), false);
 });

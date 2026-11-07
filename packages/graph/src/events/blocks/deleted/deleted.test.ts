@@ -5,7 +5,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getPage, graphFold, holds, invert } from "../../../graph.ts";
+import { getPage, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Batched, Graph } from "../../../graph.ts";
 import { blockCreated } from "../created/created.ts";
 import { BLOCK_DELETED, blockDeleted } from "./deleted.ts";
@@ -44,7 +44,7 @@ test("a delete is undone by writing the subtree back, same ids, in place", () =>
 
 test("a delete holds until one of its ids comes back", () => {
   const after = fold(FOO, blockDeleted("a"));
-  const step = { before: FOO, events: [blockDeleted("a")], after };
+  const step = remember(FOO, [blockDeleted("a")]);
   assert.equal(holds(fold(after, blockCreated("Foo", "new", undefined, "n")), step), true);
   assert.equal(holds(fold(after, blockCreated("Foo", "A2", undefined, "a2")), step), false);
 });

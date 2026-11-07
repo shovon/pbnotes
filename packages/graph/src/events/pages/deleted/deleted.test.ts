@@ -16,10 +16,12 @@ import {
   invert,
   NAMESPACE,
   propertySet,
+  remember,
   tagAdded,
 } from "../../../graph.ts";
 import type { Batched, Graph } from "../../../graph.ts";
 import { PAGE_DELETED, pageDeleted } from "./deleted.ts";
+import { get } from "../../../immutable/immutable.ts";
 
 /** `events` folded onto `state`. */
 const fold = (state: Graph, ...events: Batched[]): Graph => events.reduce(graphFold.reduce, state);
@@ -64,15 +66,15 @@ test("a delete is undone in one batch: blocks in place, then properties, tags an
   const back = fold(fold(FOO, pageDeleted("foo")), ...inverse);
   assert.deepEqual(getPage(back, "Foo").blocks, getPage(FOO, "Foo").blocks);
   assert.deepEqual(
-    [back.properties.get("foo"), back.tags.get("foo"), back.aliases.get("foo")],
-    [FOO.properties.get("foo"), FOO.tags.get("foo"), FOO.aliases.get("foo")],
+    [get(back.properties, "foo"), get(back.tags, "foo"), get(back.aliases, "foo")],
+    [get(FOO.properties, "foo"), get(FOO.tags, "foo"), get(FOO.aliases, "foo")],
   );
   assert.ok(inverse.every((it) => (it.payload as { page: string }).page === "Foo"), "spelled as it was");
 });
 
 test("a delete holds until one of its blocks comes back, and not because the page gained one", () => {
   const after = fold(FOO, pageDeleted("Foo"));
-  const step = { before: FOO, events: [pageDeleted("Foo")], after };
+  const step = remember(FOO, [pageDeleted("Foo")]);
   assert.equal(holds(fold(after, blockCreated("Foo", "new", undefined, "n")), step), true);
   assert.equal(holds(fold(after, blockCreated("Foo", "A", undefined, "a")), step), false);
   assert.equal(holds(fold(after, blockEdited("x", "y")), step), true, "an unrelated change");

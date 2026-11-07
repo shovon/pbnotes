@@ -25,7 +25,7 @@ const projects: ProjectsApi = {
 };
 
 const graph: GraphApi = {
-  view: (place, today) => ipcRenderer.invoke(GRAPH_CHANNELS.view, place, today),
+  view: (place, today, through) => ipcRenderer.invoke(GRAPH_CHANNELS.view, place, today, through),
   // Hands each version on without the event: the first argument of an IPC
   // event carries `sender`, and the whole point of the bridge is that the
   // renderer never gets that.
@@ -37,6 +37,14 @@ const graph: GraphApi = {
       ipcRenderer.off(GRAPH_CHANNELS.changed, heard);
     };
   },
+  // The way alone, as `onChanged` hands on the version alone.
+  onTake: (listener) => {
+    const heard = (_event: IpcRendererEvent, way: 'undo' | 'redo') => listener(way);
+    ipcRenderer.on(GRAPH_CHANNELS.take, heard);
+    return () => {
+      ipcRenderer.off(GRAPH_CHANNELS.take, heard);
+    };
+  },
   locate: (blockId) => ipcRenderer.invoke(GRAPH_CHANNELS.locate, blockId),
   search: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.search, query),
   find: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.find, query),
@@ -45,6 +53,11 @@ const graph: GraphApi = {
   run: (command) => ipcRenderer.invoke(GRAPH_CHANNELS.command, command),
   addImage: (bytes, mime) =>
     ipcRenderer.invoke(GRAPH_CHANNELS.addImage, bytes, mime),
+  image: (name) => ipcRenderer.invoke(GRAPH_CHANNELS.image, name),
+  imageSource: () => ipcRenderer.invoke(GRAPH_CHANNELS.imageSource),
+  carryImages: (images, source) =>
+    ipcRenderer.invoke(GRAPH_CHANNELS.carryImages, images, source),
+  copy: (clip) => ipcRenderer.invoke(GRAPH_CHANNELS.copy, clip),
   blockMenu: (blockId, offer) =>
     ipcRenderer.invoke(GRAPH_CHANNELS.blockMenu, blockId, offer),
   pageMenu: (at, offer) => ipcRenderer.invoke(GRAPH_CHANNELS.pageMenu, at, offer),

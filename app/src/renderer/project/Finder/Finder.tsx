@@ -5,8 +5,11 @@ import type { Found, Hit, Row } from './results/results';
 export type FinderProps = {
   /** Pages and blocks matching `query`. A rejection shows as no results. */
   find: (query: string) => Promise<Found>;
-  /** A row was picked with Enter or a click. */
-  onOpen: (hit: Hit) => void;
+  /**
+   * A row was picked with Enter or a click. `beside` is whether Shift was
+   * held: a page then opens in the right sidebar (#287).
+   */
+  onOpen: (hit: Hit, beside: boolean) => void;
   /** Escape, or a click outside the box. */
   onClose: () => void;
 };
@@ -52,7 +55,7 @@ export default function Finder({ find, onOpen, onClose }: FinderProps) {
     document.getElementById(optionId(active))?.scrollIntoView({ block: 'nearest' });
   }, [active, found]);
 
-  const pick = (row: Row | undefined) => row && onOpen(hitOf(row));
+  const pick = (row: Row | undefined, beside = false) => row && onOpen(hitOf(row), beside);
 
   const option = (row: Row, index: number) => (
     <div
@@ -62,7 +65,7 @@ export default function Finder({ find, onOpen, onClose }: FinderProps) {
       aria-selected={index === active}
       className={`cursor-pointer px-3 py-1.5 ${index === active ? 'bg-accent text-on-accent' : ''}`}
       onMouseMove={() => setActive(index)}
-      onClick={() => pick(row)}
+      onClick={(event) => pick(row, event.shiftKey)}
     >
       {row.kind === 'page' ? (
         <div className="truncate">
@@ -125,6 +128,8 @@ export default function Finder({ find, onOpen, onClose }: FinderProps) {
         placeholder="Search pages and blocks"
         className="w-full border-b border-line bg-transparent px-3 py-2.5 text-base outline-none"
         value={query}
+        /* A history of its own, never the document's: a search writes nothing (#247). */
+        data-undo="field"
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing) return;
@@ -134,7 +139,7 @@ export default function Finder({ find, onOpen, onClose }: FinderProps) {
             setActive(step(active, by, list.length));
           } else if (event.key === 'Enter') {
             event.preventDefault();
-            pick(list[active]);
+            pick(list[active], event.shiftKey);
           }
         }}
       />

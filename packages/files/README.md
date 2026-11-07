@@ -13,7 +13,10 @@ import { find, save } from '@pbnotes/files';
 
 const name = await save(directory, device, 'attachments', bytes, 'pdf');
 const file = await find(directory, 'attachments', name); // a path, or undefined
+nameOf(bytes, 'pdf') === name; // the same name, with nothing written
 ```
+
+`@pbnotes/files/images` holds what pbnotes means by an image in this store: the types it stores (`mimeOf`, `extensionOf`), the folder they go in (`IMAGES`), and what a note links one by (`linkOf`). It is pure, and separate from the store itself, which knows nothing of images.
 
 ## What it guarantees
 

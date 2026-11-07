@@ -15,6 +15,8 @@
  * this.
  */
 
+import * as map from "../immutable/immutable.ts";
+import type { ImmutableMap } from "../immutable/immutable.ts";
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { field } from "../events/events.ts";
 import { over } from "../over/over.ts";
@@ -26,11 +28,11 @@ import type { Titles } from "../titles/titles.ts";
  * `canonicalize`d pages it points to. A page with no tags has no entry, never
  * an empty one. The spelling of every page and tag is in `titles`.
  *
- * `Map` and `Set`, so `__proto__` is an ordinary page or tag (#62), and the
- * state survives the structured clone to the renderer (#146).
+ * An immutable map of `Set`s (#276), so `__proto__` is an ordinary page or tag
+ * (#62), a tag costs one page's row, and the state survives a structured clone (#146).
  */
 export type TagState = {
-  readonly tags: Map<string, Set<string>>;
+  readonly tags: ImmutableMap<Set<string>>;
   readonly titles: Titles;
 };
 
@@ -67,7 +69,7 @@ export function readTag(payload: unknown): TagAdded | undefined {
 
 /** Whether `page` points to `tag`. */
 export function pointsTo(state: TagState, page: string, tag: string): boolean {
-  return state.tags.get(canonicalize(page))?.has(canonicalize(tag)) ?? false;
+  return map.get(state.tags, canonicalize(page))?.has(canonicalize(tag)) ?? false;
 }
 
 /**
@@ -83,12 +85,10 @@ export function setTag<S extends TagState>(state: S, it: TagAdded, on: boolean):
     return titles === state.titles ? state : { ...state, titles };
   }
   const at = canonicalize(page);
-  const next = new Set(state.tags.get(at));
+  const next = new Set(map.get(state.tags, at));
   if (on) next.add(canonicalize(tag));
   else next.delete(canonicalize(tag));
-  const tags = new Map(state.tags);
-  if (next.size === 0) tags.delete(at);
-  else tags.set(at, next);
+  const tags = next.size === 0 ? map.remove(state.tags, at) : map.put(state.tags, at, next);
   return { ...state, titles, tags };
 }
 
@@ -101,7 +101,7 @@ function shown(state: TagState, keys: Iterable<string>): string[] {
 
 /** The pages `page` points to. Empty for a page with no tags. */
 export function getTags(state: TagState, page: string): string[] {
-  return shown(state, state.tags.get(canonicalize(page)) ?? []);
+  return shown(state, map.get(state.tags, canonicalize(page)) ?? []);
 }
 
 /**
@@ -112,7 +112,7 @@ export function getTags(state: TagState, page: string): string[] {
  */
 export function getTaggedBy(state: TagState, tag: string, also: Iterable<string> = []): string[] {
   const to = new Set([canonicalize(tag), ...[...also].map(canonicalize)]);
-  const by = [...state.tags]
+  const by = [...map.entries(state.tags)]
     .filter(([, held]) => [...held].some((it) => to.has(it)))
     .map(([page]) => page);
   return shown(state, by);
@@ -129,7 +129,7 @@ export function countTaggedBy(
   to: (key: string) => string = (key) => key,
 ): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const held of state.tags.values()) {
+  for (const held of map.values(state.tags)) {
     for (const tag of new Set([...held].map(to))) counts.set(tag, (counts.get(tag) ?? 0) + 1);
   }
   return counts;
@@ -137,7 +137,7 @@ export function countTaggedBy(
 
 /** Every title the tags name: each page that has one, and each tag. */
 export function* named(state: TagState): Generator<string> {
-  for (const [page, held] of state.tags) {
+  for (const [page, held] of map.entries(state.tags)) {
     yield page;
     yield* held;
   }

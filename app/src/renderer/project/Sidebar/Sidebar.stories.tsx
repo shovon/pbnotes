@@ -40,3 +40,6 @@ export const LongTitle: Story = {
     showing: 'Mira',
   },
 };
+
+/** Collapsed and pointed at: laid over the page, with a shadow off its edge. */
+export const Floating: Story = { args: { floating: true } };

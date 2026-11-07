@@ -13,6 +13,7 @@ import type { Graph } from "../graph.ts";
 import { aliasAdded } from "../events/aliases/added/added.ts";
 import { aliasRemoved } from "../events/aliases/removed/removed.ts";
 import { reduce } from "../events/aliases/slice.ts";
+import { empty, has, keys } from "../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -26,7 +27,7 @@ const removed = (page: string, alias: string): Event => aliasRemoved(page, alias
 test("a page holds an alias once, and the later event on one alias wins", () => {
   const once = fold([added("JavaScript", "JS")]);
   assert.equal(graphFold.reduce(once, added("javascript", " js ")), once);
-  assert.deepEqual(fold([added("A", "B"), removed("A", "B")]).aliases, new Map());
+  assert.deepEqual(fold([added("A", "B"), removed("A", "B")]).aliases, empty());
   assert.deepEqual(getAliases(fold([removed("A", "B"), added("A", "B")]), "A"), ["B"]);
 });
 
@@ -60,7 +61,7 @@ test("a malformed alias event is skipped whole, and extra fields are ignored", (
 
 test("`__proto__` is an ordinary page and an ordinary alias", () => {
   const state = fold([added("__proto__", "toString"), added("constructor", "__proto__")]);
-  assert.deepEqual([...state.aliases.keys()].sort(), ["__proto__", "constructor"]);
+  assert.deepEqual([...keys(state.aliases)].sort(), ["__proto__", "constructor"]);
 });
 
 test("the alias fold hands back what it was given for another slice's event", () => {
@@ -76,6 +77,6 @@ test("an alias is something on its page: it counts as content, an edit, and a de
   assert.equal(hasContent(state, "b"), false);
   assert.equal(getEdited(state, "A"), Date.parse(at));
   const deleted = fold([pageDeleted("A")], state);
-  assert.equal(deleted.aliases.has("a"), false);
+  assert.equal(has(deleted.aliases, "a"), false);
   assert.equal(hasContent(deleted, "a"), false);
 });

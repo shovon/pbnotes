@@ -22,6 +22,11 @@ type Props = {
  * until wanted, as `PageView` does until its header is hovered or focused.
  * The open input is not marked, so it stays shown until it closes.
  *
+ * With no chips the row is marked `data-bare`, for a holder that lays it
+ * out differently until the first tag is added. An open input does not
+ * count: typing the first tag moves nothing. While the input is open the
+ * row is marked `data-typing`.
+ *
  * Enter adds what is typed and keeps the input open for the next. Escape
  * closes it, and so does focus leaving it, dropping what was typed rather
  * than adding a tag nobody confirmed. Switching windows is not leaving.
@@ -110,7 +115,13 @@ export default function Tags({ tags, findTags, onAdd, onRemove }: Props) {
   };
 
   return (
-    <div aria-label="Tags" role="group" className="mb-3 flex flex-wrap items-start gap-1.5 text-sm">
+    <div
+      aria-label="Tags"
+      role="group"
+      data-bare={tags.length === 0 ? '' : undefined}
+      data-typing={open ? '' : undefined}
+      className="mb-3 flex flex-wrap items-start gap-1.5 text-sm"
+    >
       {tags.map((tag) => (
         <span
           key={canonicalize(tag)}
@@ -147,6 +158,7 @@ export default function Tags({ tags, findTags, onAdd, onRemove }: Props) {
             aria-label="Tag"
             placeholder="Tag"
             value={typed}
+            data-undo="document"
             role="combobox"
             aria-expanded={shown.length > 0}
             aria-controls={listId}

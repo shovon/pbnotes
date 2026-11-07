@@ -5,8 +5,10 @@
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { DATE_PATTERN } from "../journal/journal.ts";
 import { read } from "../reading/reading.ts";
-import { titleOf } from "../titles/titles.ts";
-import { blocksOn, find } from "./blocks.ts";
+import { spelled, titleOf } from "../titles/titles.ts";
+import * as forest from "../forest/forest.ts";
+import * as map from "../immutable/immutable.ts";
+import { blocksOn, find, pageBlocks, textOf, treeOf } from "./blocks.ts";
 import type { Block, BlockState, Page } from "./blocks.ts";
 
 /** A page as it stands, under the spelling it shows, empty if nothing is on it. */
@@ -21,19 +23,31 @@ export function getPage(state: BlockState, title: string): Page {
  * itself.
  */
 export function getPages(state: BlockState): Page[] {
-  return [...state.blocks]
-    .filter(([key, blocks]) => blocks.length > 0 && DATE_PATTERN.test(key))
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([key, blocks]) => ({ title: state.titles.get(key) ?? key, blocks }));
+  return journalKeys(state).map((key) => ({ title: spelled(state.titles, key), blocks: pageBlocks(state, key) }));
 }
 
-/** Every block in a tree, depth first. */
-function* every(blocks: Block[]): Generator<Block> {
-  for (const block of blocks) {
-    yield block;
-    yield* every(block.children);
-  }
+/**
+ * The journal's days, as `getPages` has them, without their blocks: what a
+ * caller reads to pick which days to show before it builds any (#282).
+ */
+export function getDays(state: BlockState): string[] {
+  return journalKeys(state).map((key) => spelled(state.titles, key));
 }
+
+/** Every day with something on it, by key, newest first. */
+function journalKeys(state: BlockState): string[] {
+  return [...forest.groups(state.forest)]
+    .filter((key) => forest.rootsOf(state.forest, key).length > 0 && DATE_PATTERN.test(key))
+    .sort((a, b) => b.localeCompare(a));
+}
+
+/** Every page that has had blocks, by key, with its blocks' ids depth first. */
+function* pagesOf(state: BlockState): Generator<[string, string[]]> {
+  for (const key of forest.groups(state.forest)) yield [key, forest.inGroup(state.forest, key)];
+}
+
+/** A block's text: `""` for one that is gone, which a caller walking the forest never asks for. */
+const textAt = (state: BlockState, id: string) => textOf(state, id) ?? "";
 
 /**
  * The blocks that link to `title`, in whatever case the link was written,
@@ -47,9 +61,21 @@ export function linking(blocks: Block[], title: string): Block[] {
 /** `linking`, for a link to any of `keys` (each `canonicalize`d). */
 function linkingAny(blocks: Block[], keys: ReadonlySet<string>): Block[] {
   return blocks.flatMap((block) =>
-    read(block.text).links.some((link) => keys.has(canonicalize(link)))
-      ? [block]
-      : linkingAny(block.children, keys),
+    links(block.text, keys) ? [block] : linkingAny(block.children, keys),
+  );
+}
+
+/** Whether `text` links to any of `keys` (each `canonicalize`d). */
+function links(text: string, keys: ReadonlySet<string>): boolean {
+  return read(text).links.some((link) => keys.has(canonicalize(link)));
+}
+
+/** `linkingAny` over the blocks `ids` in the state, building a tree only for each that links. */
+function linkingIn(state: BlockState, ids: readonly string[], keys: ReadonlySet<string>): Block[] {
+  return ids.flatMap((id) =>
+    links(textAt(state, id), keys)
+      ? [treeOf(state, id)!]
+      : linkingIn(state, forest.childrenOf(state.forest, id), keys),
   );
 }
 
@@ -70,9 +96,12 @@ export function getReferences(
 ): Page[] {
   const key = canonicalize(title);
   const keys = new Set([key, ...[...also].map(canonicalize)]);
-  return [...state.blocks]
-    .filter(([page]) => page !== key)
-    .map(([page, on]) => ({ title: state.titles.get(page) ?? page, blocks: linkingAny(on, keys) }))
+  return [...forest.groups(state.forest)]
+    .filter((page) => page !== key)
+    .map((page) => ({
+      title: spelled(state.titles, page),
+      blocks: linkingIn(state, forest.rootsOf(state.forest, page), keys),
+    }))
     .filter((page) => page.blocks.length > 0)
     .sort((a, b) => shownOrder(a.title, b.title));
 }
@@ -80,9 +109,10 @@ export function getReferences(
 /**
  * The order pages are listed in: journal days first, newest first, then
  * named pages A to Z. Days are told apart before anything is compared, so a
- * page called `1984` does not land among them.
+ * page called `1984` does not land among them. `getReferences` lists in it,
+ * so a caller that loads them a few at a time compares by it too (#285).
  */
-function shownOrder(a: string, b: string): number {
+export function shownOrder(a: string, b: string): number {
   const days = [a, b].map((title) => DATE_PATTERN.test(title));
   if (days[0] !== days[1]) return days[0] ? -1 : 1;
   return days[0] ? b.localeCompare(a) : a.localeCompare(b);
@@ -104,15 +134,15 @@ export type BlockMatch = { id: string; page: string; text: string };
 export function searchBlocks(state: BlockState, query: string, limit = 20): BlockMatch[] {
   const q = canonicalize(query);
   if (!q) return [];
-  const pages = [...state.blocks]
-    .map(([key, blocks]) => ({ title: state.titles.get(key) ?? key, blocks }))
+  const pages = [...pagesOf(state)]
+    .map(([key, ids]) => ({ title: spelled(state.titles, key), ids }))
     .sort((a, b) => shownOrder(a.title, b.title));
   const found: BlockMatch[] = [];
   for (const page of pages) {
-    for (const block of every(page.blocks)) {
-      const text = read(block.text).plain;
+    for (const id of page.ids) {
+      const text = read(textAt(state, id)).plain;
       if (!canonicalize(text).includes(q)) continue;
-      found.push({ id: block.id, page: page.title, text });
+      found.push({ id, page: page.title, text });
       if (found.length === limit) return found;
     }
   }
@@ -123,18 +153,31 @@ export function searchBlocks(state: BlockState, query: string, limit = 20): Bloc
  * Every block the pages refer to with `((id))`, and what a ref to it shows:
  * the target's first paragraph, or null for an id the ledger lacks.
  *
+ * Given `pages`, only the refs on them (#282), and the refs in what those
+ * show, and so on, so whoever swaps a ref for its preview can swap the refs
+ * inside it too. Without, every ref in the project.
+ *
  * Pairs, not an object: an id is whatever was typed, and `((__proto__))` is a
  * key an object does not hold.
  */
-export function getPreviews(state: BlockState): [string, string | null][] {
-  const ids = new Set<string>();
-  for (const blocks of state.blocks.values()) {
-    for (const block of every(blocks)) read(block.text).refs.forEach((id) => ids.add(id));
+export function getPreviews(state: BlockState, pages?: readonly Page[]): [string, string | null][] {
+  const previews = new Map<string, string | null>();
+  const quote = (text: string) => {
+    for (const id of read(text).refs) {
+      if (previews.has(id)) continue;
+      const target = textOf(state, id);
+      const preview = target === undefined ? null : read(target).preview;
+      previews.set(id, preview);
+      if (pages && preview) quote(preview);
+    }
+  };
+  if (pages) {
+    const walk = (blocks: readonly Block[]) => blocks.forEach((block) => (quote(block.text), walk(block.children)));
+    pages.forEach((page) => walk(page.blocks));
+  } else {
+    for (const text of map.values(state.texts)) quote(text);
   }
-  return [...ids].map((id) => {
-    const found = find(state, id);
-    return [id, found ? read(found.siblings[found.at].text).preview : null];
-  });
+  return [...previews].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 /**
@@ -146,9 +189,9 @@ export function getPreviews(state: BlockState): [string, string | null][] {
  * in the fold if a ledger ever gets big enough for that to show.
  */
 export function* named(state: BlockState): Generator<string> {
-  for (const [key, blocks] of state.blocks) {
-    if (blocks.length > 0) yield key;
-    for (const block of every(blocks)) yield* read(block.text).links;
+  for (const [key, ids] of pagesOf(state)) {
+    if (ids.length > 0) yield key;
+    for (const id of ids) yield* read(textAt(state, id)).links;
   }
 }
 
@@ -166,22 +209,22 @@ export function countLinks(
   to: (key: string) => string = (key) => key,
 ): Map<string, number> {
   const counts = new Map<string, number>();
-  const walk = (blocks: Block[], skip: ReadonlySet<string>) => {
-    for (const block of blocks) {
+  const walk = (ids: readonly string[], skip: ReadonlySet<string>) => {
+    for (const id of ids) {
       const fresh = new Set(
-        read(block.text).links.map((link) => to(canonicalize(link))).filter((key) => !skip.has(key)),
+        read(textAt(state, id)).links.map((link) => to(canonicalize(link))).filter((key) => !skip.has(key)),
       );
       for (const key of fresh) counts.set(key, (counts.get(key) ?? 0) + 1);
-      walk(block.children, fresh.size === 0 ? skip : new Set([...skip, ...fresh]));
+      walk(forest.childrenOf(state.forest, id), fresh.size === 0 ? skip : new Set([...skip, ...fresh]));
     }
   };
-  for (const [key, blocks] of state.blocks) walk(blocks, new Set([to(key)]));
+  for (const key of forest.groups(state.forest)) walk(forest.rootsOf(state.forest, key), new Set([to(key)]));
   return counts;
 }
 
 /** How many blocks are on `page`, at every depth. */
 export function countBlocks(state: BlockState, page: string): number {
-  return [...every(blocksOn(state, page))].length;
+  return forest.inGroup(state.forest, canonicalize(page)).length;
 }
 
 /** The page a block is on, or undefined for a block the ledger lacks. */

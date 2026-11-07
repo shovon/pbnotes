@@ -4,6 +4,7 @@
 import {
   app,
   BrowserWindow,
+  Menu,
   nativeTheme,
   protocol,
   screen,
@@ -13,6 +14,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import started from "electron-squirrel-startup";
 import { openDatabase } from "./db";
+import { appMenu } from "./features/menu/menu";
 import { createOpenBench } from "./features/bench/bench";
 import { registerBenchIpc } from "./features/bench/bench-ipc";
 import { benchFiles } from "./features/bench/bench-store";
@@ -36,8 +38,9 @@ import {
   registerGraphIpc,
 } from "./features/projects/graph/graph-ipc";
 import { createGraphSession } from "./features/projects/graph/graph-session/graph-session";
-import { findImage, saveImage } from "./features/projects/graph/images/images";
-import { IMAGE_SCHEME } from "../shared/graph";
+import { carryImages, findImage, saveImage } from "./features/projects/graph/images/images";
+import { createTokens } from "./tokens";
+import { GRAPH_CHANNELS, IMAGE_SCHEME } from "../shared/graph";
 import {
   MIN_SIZE,
   createWindowState,
@@ -143,6 +146,16 @@ const createWindow = (windowState: WindowState) => {
 // Some APIs can only be used once Electron is ready, so everything is built
 // here, and the handlers that need what was built are attached here too.
 app.on("ready", () => {
+  // The app's own menu (#247): Electron's default, but with Undo and Redo
+  // telling the focused window, which decides whether the open field or
+  // main takes the step. The default's would call the browser's undo.
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      appMenu(process.platform === "darwin", (way) =>
+        BrowserWindow.getFocusedWindow()?.webContents.send(GRAPH_CHANNELS.take, way),
+      ),
+    ),
+  );
   const db = openDatabase(path.join(app.getPath("userData"), "notes.db"));
   // The displays attached now: `screen` is only usable once the app is ready.
   const windowState = createWindowState(
@@ -171,13 +184,16 @@ app.on("ready", () => {
 
   // What main holds per project that a change of project has to clear: the
   // open project's bench file, let go so the next call opens the new one's,
+  // undo's history (#234), so Cmd+Z never reaches back into the project left,
   // and every ledger but the new one's, with the log and the graph each holds
   // (#236), once the calls sent before the change are done. Kept is what is
   // open then, so a quick switch back keeps the project it went back to. The
   // trail is each window's, and `App` remounts the project view when the
-  // project changes. A feature that holds something gets a line here.
+  // project changes. A feature that holds something gets a line here. `graph`
+  // is made below; this only runs once the app is up.
   const projects = createOpenProject(store, disk.probe, () => {
     bench.release();
+    graph.forget();
     void inFlight
       .settled()
       .then(() => ledgers.keepOnly(projects.currentProject()?.id));
@@ -216,6 +232,9 @@ app.on("ready", () => {
     // Every window of the app, over `graph:changed`.
     broadcastGraph,
   );
+  // What the tokens a copy carries for its images stand for (#261): a
+  // project id, kept in main and never sent. The latest few, for this run.
+  const imageSources = createTokens<string>({ newId: randomUUID, keep: 50 });
   registerGraphIpc(
     { ...graph, run: (command) => inFlight.track(graph.run(command)) },
     {
@@ -238,6 +257,24 @@ app.on("ready", () => {
         const project = projects.currentProject();
         return project ? findImage(project.path, name) : undefined;
       },
+      // A copy whose images are too big to carry names where they are by a
+      // token (#261), lent here, for the project's id: a project that moves
+      // keeps it, and one removed since stands for nothing.
+      source: async () => {
+        const project = projects.currentProject();
+        return project ? imageSources.lend(project.id) : undefined;
+      },
+      // Tracked like `save`: `writerOf` opens the ledger, so a carry sent just
+      // before a change of project must be done before that ledger is closed.
+      carry: (wanted, source) =>
+        inFlight.track(
+          (async () => {
+            const project = await projects.requireProject();
+            const id = source === undefined ? undefined : imageSources.find(source);
+            const from = id === undefined ? undefined : store.getProject(id)?.path;
+            return carryImages(project.path, await ledgers.writerOf(project), from, wanted);
+          })(),
+        ),
     },
   );
 

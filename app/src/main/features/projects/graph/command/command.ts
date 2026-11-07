@@ -8,8 +8,8 @@
  *
  * Free of `electron` imports, so it runs under `node --test`.
  */
-import type { Command } from "../../../../../shared/graph.ts";
-import { requireString } from "../../../../ipc.ts";
+import type { Command, Pasted } from "../../../../../shared/graph.ts";
+import { requireString, requireStringArray } from "../../../../ipc.ts";
 
 /**
  * A title is a key in a log that keeps everything forever, so it is checked
@@ -27,11 +27,12 @@ export function requireTitle(value: unknown): string {
 }
 
 /**
- * A day as the window's clock names it, `YYYY-MM-DD`: the journal's today.
- * Only its shape is checked; which day it is belongs to the window.
+ * A day as the window's clock names it, `YYYY-MM-DD`: the journal's today,
+ * or where the journal's list stops (#282), by `name`. Only its shape is checked;
+ * which day it is belongs to the window.
  */
-export function requireDay(value: unknown): string {
-  const day = requireString(value, "today");
+export function requireDay(value: unknown, name = "today"): string {
+  const day = requireString(value, name);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
     throw new TypeError("Expected a day as YYYY-MM-DD");
   }
@@ -58,6 +59,81 @@ function own(raw: Raw, name: string): unknown {
   return Object.hasOwn(raw, name)
     ? (raw as Record<string, unknown>)[name]
     : undefined;
+}
+
+/** The blocks a command on several names. An empty list names nothing, and is refused. */
+function someIds(raw: Raw): string[] {
+  const blockIds = requireStringArray(own(raw, "blockIds"), "blockIds");
+  if (blockIds.length === 0) throw new TypeError("Expected a block");
+  return blockIds;
+}
+
+/**
+ * How many blocks one paste may write, and how deep they may nest. The
+ * blocks come off the clipboard, which any app can write, and every one of
+ * them stays in the log forever: a paste past either is refused whole, not
+ * cut down to what fits.
+ */
+export const PASTE_LIMITS = { blocks: 10_000, depth: 100 };
+
+/**
+ * The blocks a paste writes, each built fresh from the three fields it
+ * reads: a new id, checked as one; its text; and what goes under it.
+ */
+function requirePasted(value: unknown): Pasted[] {
+  let count = 0;
+  const read = (raw: unknown, depth: number): Pasted[] => {
+    if (!Array.isArray(raw)) throw new TypeError("Expected blocks to be an array");
+    if (depth > PASTE_LIMITS.depth) throw new TypeError("Blocks nest too deep to paste");
+    return raw.map((it: unknown) => {
+      if (typeof it !== "object" || it === null) throw new TypeError("Expected a block");
+      count += 1;
+      if (count > PASTE_LIMITS.blocks) throw new TypeError("Too many blocks to paste");
+      return {
+        id: requireBlockId(own(it, "id")),
+        text: requireString(own(it, "text"), "text"),
+        children: read(own(it, "children"), depth + 1),
+        ...cutId(own(it, "was")),
+      };
+    });
+  };
+  const blocks = read(value, 1);
+  if (blocks.length === 0) throw new TypeError("Expected a block");
+  return blocks;
+}
+
+/**
+ * The id a cut block had (#246), when it is one main would let a window
+ * name. Anything else is left off, and the block is pasted as a copy: it
+ * came off a clipboard any app can write, and a paste is not refused for it.
+ */
+function cutId(value: unknown): { was?: string } {
+  try {
+    return value === undefined ? {} : { was: requireBlockId(value) };
+  } catch {
+    return {};
+  }
+}
+
+/** An optional block id field: absent, or a string. */
+function optionalId(raw: Raw, name: string): Record<string, string> {
+  const value = own(raw, name);
+  return value === undefined ? {} : { [name]: requireString(value, name) };
+}
+
+/**
+ * Where a block goes, as a paste or a move names it: `after` and `parent`
+ * as optional block ids, and `first` as absent or `true`. Each is left off
+ * when absent. Which combinations make sense is the graph command's to say.
+ */
+function requirePlace(raw: Raw): { after?: string; parent?: string; first?: true } {
+  const first = own(raw, "first");
+  if (first !== undefined && first !== true) throw new TypeError("Expected first to be true");
+  return {
+    ...optionalId(raw, "after"),
+    ...optionalId(raw, "parent"),
+    ...(first === true ? { first: true as const } : {}),
+  };
 }
 
 /**
@@ -91,6 +167,25 @@ const CHECKERS: {
     type: "deleteBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
   }),
+  deleteBlocks: (raw) => ({ type: "deleteBlocks", blockIds: someIds(raw) }),
+  indentBlocks: (raw) => ({ type: "indentBlocks", blockIds: someIds(raw) }),
+  outdentBlocks: (raw) => ({ type: "outdentBlocks", blockIds: someIds(raw) }),
+  // Where a paste goes is a place or an empty block to fill, never both:
+  // the graph command would take one and the other would mean nothing.
+  pasteBlocks: (raw) => {
+    const place = requirePlace(raw);
+    const into = optionalId(raw, "into");
+    if (into.into !== undefined && Object.keys(place).length > 0) {
+      throw new TypeError("A paste into a block has no other place");
+    }
+    return {
+      type: "pasteBlocks",
+      title: requireTitle(own(raw, "title")),
+      blocks: requirePasted(own(raw, "blocks")),
+      ...place,
+      ...into,
+    };
+  },
   indentBlock: (raw) => ({
     type: "indentBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
@@ -98,6 +193,20 @@ const CHECKERS: {
   outdentBlock: (raw) => ({
     type: "outdentBlock",
     blockId: requireString(own(raw, "blockId"), "blockId"),
+  }),
+  // A move names its place as a paste does, and the page it lands on as a
+  // title, since a move can be the first write to that page.
+  moveBlock: (raw) => ({
+    type: "moveBlock",
+    blockId: requireString(own(raw, "blockId"), "blockId"),
+    title: requireTitle(own(raw, "title")),
+    ...requirePlace(raw),
+  }),
+  moveBlocks: (raw) => ({
+    type: "moveBlocks",
+    blockIds: someIds(raw),
+    title: requireTitle(own(raw, "title")),
+    ...requirePlace(raw),
   }),
   // A key is a page title, and checked as one: it goes into `titles` as the
   // key page's spelling if nothing has named that page yet.
@@ -133,6 +242,15 @@ const CHECKERS: {
     type: "deletePage",
     title: requireTitle(own(raw, "title")),
   }),
+  renamePage: (raw) => ({
+    type: "renamePage",
+    title: requireTitle(own(raw, "title")),
+    to: requireTitle(own(raw, "to")),
+  }),
+  // Nothing to check: what to undo or redo is main's, never the window's to
+  // say (#234). Built fresh, so nothing else the window sent goes on.
+  undo: () => ({ type: "undo" }),
+  redo: () => ({ type: "redo" }),
 };
 
 /**

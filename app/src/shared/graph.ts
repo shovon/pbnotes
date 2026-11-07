@@ -26,6 +26,17 @@ import type { LogStatus } from './log';
 export const IMAGE_SCHEME = 'pbnotes-image';
 
 /**
+ * How big an image a copy carries inside itself (#261): up to this, its
+ * bytes travel on the clipboard and a paste anywhere can store them; past
+ * it, the copy carries a token main resolves to the project it came from,
+ * which only this running app can follow.
+ */
+export const CARRY_LIMIT = 4 * 1024 * 1024;
+
+/** How many images one paste may ask to bring. */
+export const CARRY_COUNT = 1_000;
+
+/**
  * A stop on the trail: a page, or one block of a page as the root of the
  * view. Both are places you go back to, so they share the one history. The
  * trail is the window's own (`ProjectView`); main is only ever asked what
@@ -46,8 +57,9 @@ export type PlaceView = {
    */
   version: number;
   /**
-   * What is showing: the one page at the place, or the journal — every day
-   * with something on it, newest first, and today whether or not it has.
+   * What is showing: the one page at the place, or the journal — the days
+   * in `journal`'s window with something on them, newest first, and today
+   * whether or not it has.
    * Each with what links to it, cut down to the blocks that do; none under a
    * zoom, where what links to one block is not what links to its page. And
    * each with its properties, in every mode: whether to draw them is the
@@ -63,7 +75,14 @@ export type PlaceView = {
    */
   showing: {
     page: Page;
+    /**
+     * What links here, each page cut down to the blocks that do. On a page's
+     * own view only the chunks loaded so far (`list`, #285); on a journal
+     * day, every one.
+     */
     references: Page[];
+    /** How many blocks link here, in every cut, loaded or not (#285). */
+    links: number;
     properties: Property[];
     /** The pages it points to, as `getTags` returns them. */
     tags: string[];
@@ -73,12 +92,26 @@ export type PlaceView = {
     refsTo: number;
   }[];
   /**
-   * What each `((id))` in the project shows: the id and the Markdown of that
-   * block's first paragraph, or null for an id the project does not have.
+   * What each `((id))` on the pages showing shows, and each one inside
+   * those (#282): the id and the Markdown of that block's first paragraph,
+   * or null for an id the project does not have.
    * Pairs, not an object: an id is whatever was typed between the
    * parentheses, and `((__proto__))` is a key an object does not hold.
    */
   previews: [string, string | null][];
+  /**
+   * The list this view loads a chunk at a time, and how far it is loaded:
+   * the journal's days (#282), or a page's linked references (#285). None
+   * under a zoom.
+   *
+   * `through` is the last of it loaded: on the journal a date, every day on
+   * or after it showing; on a page a title, every page linking here up to
+   * and including it, in the order they are listed, or null for none yet.
+   * `next` is the `through` to ask for to load a chunk more, or null when
+   * all of it is loaded. A window that asks again keeps asking for the
+   * `through` it holds, so what is on screen stays on screen.
+   */
+  list?: { through: string | null; next: string | null };
 };
 
 /** What `find` answers with: page titles, each with the page it opens, then blocks. */
@@ -100,12 +133,21 @@ export const GRAPH_CHANNELS = {
   view: 'graph:view',
   /** Main to renderer: the fold's version, and nothing else. */
   changed: 'graph:changed',
+  /**
+   * Main to renderer: the menu's Undo or Redo was chosen, by click or key,
+   * with this window focused (#247). Carries the way, and nothing else.
+   */
+  take: 'graph:take',
   locate: 'graph:locate',
   search: 'graph:search',
   find: 'graph:find',
   pages: 'graph:pages',
   command: 'graph:command',
   addImage: 'graph:add-image',
+  image: 'graph:image',
+  imageSource: 'graph:image-source',
+  carryImages: 'graph:carry-images',
+  copy: 'graph:copy',
   blockMenu: 'graph:block-menu',
   pageMenu: 'graph:page-menu',
   status: 'graph:status',
@@ -126,16 +168,23 @@ export const GRAPH_CHANNELS = {
 export type GraphApi = {
   /**
    * What shows at `place`, or with none the journal, read with `today` as
-   * the day on top of it. `today` is the window's clock, not main's.
-   * Rejects when the project cannot be reached.
+   * the day on top of it, its list loaded `through` the day or title given
+   * (`PlaceView.list`), or just its first chunk without one. `today` is the
+   * window's clock, not main's. Rejects when the project cannot be reached.
    */
-  view(place: Place | undefined, today: string): Promise<PlaceView>;
+  view(place: Place | undefined, today: string, through?: string): Promise<PlaceView>;
   /**
    * Calls `listener` with the fold's version every time it moves: a write
    * from any window, and another device's segment landing in the folder
    * under a sync tool. Returns an unsubscribe.
    */
   onChanged(listener: (version: number) => void): () => void;
+  /**
+   * Calls `listener` with `'undo'` or `'redo'` when the menu's Undo or Redo
+   * is chosen with this window focused (#247). The window decides whether
+   * the open field or main takes the step. Returns an unsubscribe.
+   */
+  onTake(listener: (way: 'undo' | 'redo') => void): () => void;
   /**
    * The page a block is on, found by its id alone — an id is unique across
    * the project. Undefined for an id the project does not have, including
@@ -179,9 +228,10 @@ export type GraphApi = {
    * its own. Main checks the command's shape, then runs the `@pbnotes/graph`
    * command it names, which makes the full checks and builds the event.
    * Resolves once it is recorded, to the fold's version after it: a view at
-   * that version or later holds it.
+   * that version or later holds it. Undo and redo resolve to an `Undone`,
+   * which carries the version too.
    */
-  run(command: Command): Promise<number>;
+  run<C extends Command>(command: C): Promise<Reply<C>>;
   /**
    * Stores an image in the project's folder and returns the link a block
    * holds it by, `images/<sha256>.png`. Appends nothing: the caller puts the
@@ -189,8 +239,37 @@ export type GraphApi = {
    */
   addImage(bytes: Uint8Array, mime: string): Promise<string>;
   /**
+   * The bytes of the image a note links as `images/<name>`, and its type,
+   * out of what is open: for a copy that carries the image with it (#261).
+   * Undefined for one that is not there, not synced yet or never was.
+   */
+  image(name: string): Promise<{ bytes: Uint8Array; mime: string } | undefined>;
+  /**
+   * Puts `text` and `html` on the system clipboard as one copy, each for
+   * whatever pastes it to take the one it reads (#261). Main writes it, as
+   * it writes Copy Block Reference, so the window's focus has no say.
+   */
+  copy(clip: Clip): Promise<void>;
+  /**
+   * A token that stands for the images of what is open (#261), for a copy
+   * whose images are too big to carry (`CARRY_LIMIT`). Only main can turn it
+   * back into where they are, and only while it runs: nothing about the
+   * project crosses the bridge. Undefined with nothing open.
+   */
+  imageSource(): Promise<string | undefined>;
+  /**
+   * Brings the images a paste links into what is open (#261), and answers
+   * each one's link, in order, or undefined for one that could not be had.
+   * One already there is left as it is. Otherwise its bytes, when the copy
+   * carried them, are stored, or the file of that name is brought from the
+   * project `source` stands for. Stored under the hash of what was stored,
+   * so a link can come back other than the name asked for.
+   */
+  carryImages(images: readonly CarriedImage[], source?: string): Promise<(string | undefined)[]>;
+  /**
    * Pops the native menu for a block at the pointer. Copy Block Reference is
-   * always there, and puts `((blockId))` on the clipboard in main. What else
+   * there unless `offer` hides it, and puts `((blockId))` on the clipboard in
+   * main. What else
    * it offers is `offer`'s, and what is picked from that comes back for the
    * window to do: it knows what is open and where it is, and main does not.
    * Resolves once the menu closes, to the pick, or null for anything else —
@@ -218,14 +297,41 @@ export type PageMenuOffer = {
 /** An item of the page menu the user picked. */
 export type PageMenuPick = 'delete';
 
+/** An image a paste wants: its name, and its bytes and type when the copy carried them. */
+export type CarriedImage = { name: string; bytes?: Uint8Array; mime?: string };
+
+/** One copy, in the formats it goes on the clipboard in. */
+export type Clip = { text: string; html: string };
+
 /** What a block's menu offers beyond copying its reference. */
 export type BlockMenuOffer = {
-  /** Delete Block, which takes the block and every block under it. */
+  /**
+   * Copy Block Reference, which is there unless this is `false`: hidden on
+   * a dot among several selected (#261), where it would copy one of them.
+   */
+  reference?: boolean;
+  /**
+   * Delete Block, which takes the block and every block under it, and Cut
+   * Block beside it (#246), which takes the same blocks.
+   */
   delete?: boolean;
+  /**
+   * How many blocks the delete takes, when the dot is one of several
+   * selected (#258): "Delete N Blocks". Left off for the block alone.
+   */
+  count?: number;
 };
 
 /** An item of `BlockMenuOffer` the user picked. */
-export type BlockMenuPick = 'delete';
+export type BlockMenuPick = 'delete' | 'cut';
+
+/**
+ * A block as a paste writes it: a new id, its text, and what goes under it.
+ * A block that was cut (#246) carries the id it had then as `was`, which it
+ * keeps when the project does not hold it, so the first paste of a cut puts
+ * the very blocks back.
+ */
+export type Pasted = { id: string; text: string; children: Pasted[]; was?: string };
 
 /**
  * Every write the window can ask main to record, tagged by `type`. Each runs
@@ -260,6 +366,45 @@ export type Command =
    */
   | { type: 'deleteBlock'; blockId: string }
   /**
+   * Deletes several blocks, each with its subtree, as one record and one undo
+   * step (#258): a selection's top-most blocks. Main works out which of them
+   * another holds, so a caller may name a block and its parent both; one the
+   * project no longer has is passed over, and none left is refused.
+   */
+  | { type: 'deleteBlocks'; blockIds: readonly string[] }
+  /**
+   * Tab on a selection (#259): each top-most block filed under the sibling
+   * above it, in the order given, as one record and one undo step. All or
+   * nothing: when any of them is first among its siblings, on whatever page,
+   * nothing moves, and that resolves rather than throws, like `indentBlock`.
+   */
+  | { type: 'indentBlocks'; blockIds: readonly string[] }
+  /**
+   * Shift+Tab on a selection (#260): each top-most block brought out a
+   * level, in the order given, taking the siblings below it along as its
+   * children, as one record and one undo step. All or nothing: when any of
+   * them is already top-level, on whatever page, nothing moves, and that
+   * resolves rather than throws, like `outdentBlock`.
+   */
+  | { type: 'outdentBlocks'; blockIds: readonly string[] }
+  /**
+   * Copied blocks written on `title` as new ones (#261), nested as they were
+   * copied, as one record and one undo step. Every id is a fresh UUID of the
+   * caller's, as `addBlock`'s is. `after`, `parent` and `first` place the
+   * first block as they place a new one, and each next one goes directly
+   * beneath the one before; or `into` names an empty block on the page,
+   * which the first pasted block replaces, keeping its id.
+   */
+  | {
+      type: 'pasteBlocks';
+      title: string;
+      blocks: readonly Pasted[];
+      after?: string;
+      parent?: string;
+      first?: true;
+      into?: string;
+    }
+  /**
    * Appends a `block.indented` event: the block becomes the last child of the
    * sibling above it, bringing its own children along.
    *
@@ -282,6 +427,41 @@ export type Command =
    * with nothing changed rather than throwing, like `indentBlock`.
    */
   | { type: 'outdentBlock'; blockId: string }
+  /**
+   * Appends a `block.moved` event (#251): the block, with everything under
+   * it, goes to `title`, on its own page or another, keeping its id.
+   * `after`, `parent` and `first` place it as they place a new block. A page
+   * nothing was written on yet takes it like any other: every page is in
+   * the graph, and this is only the first write to it.
+   *
+   * Main refuses a place inside the block's own subtree, and a place the
+   * page lacks. A block already where the move puts it resolves with
+   * nothing written, like `indentBlock` with nowhere to go.
+   */
+  | {
+      type: 'moveBlock';
+      blockId: string;
+      title: string;
+      after?: string;
+      parent?: string;
+      first?: true;
+    }
+  /**
+   * A selection dragged by one of its dots (#269): each top-most block,
+   * with its subtree, goes to `title`, the first to the place `after`,
+   * `parent` and `first` name, and each next one directly beneath the one
+   * before it, at its depth. One record and one undo step. Main refuses a
+   * place inside any of their subtrees; a block the project no longer has
+   * is passed over, and none left is refused.
+   */
+  | {
+      type: 'moveBlocks';
+      blockIds: readonly string[];
+      title: string;
+      after?: string;
+      parent?: string;
+      first?: true;
+    }
   /**
    * Appends a `property.set` event: `title`'s `key` is now `value`. A key is
    * a page title, so it arrives trimmed like one. Setting the value the key
@@ -316,4 +496,55 @@ export type Command =
    * gone from the fold, and stay on disk. A page with nothing on it resolves
    * with nothing written, since the delete would change nothing.
    */
-  | { type: 'deletePage'; title: string };
+  | { type: 'deletePage'; title: string }
+  /**
+   * Appends one `page.renamed` (#108): the page `title` opens is now called
+   * `to`, with everything on it, and every link, tag and property key that
+   * named it names `to`. The old title stays as an alias, so a link the
+   * rewrite can't reach still opens the page. A page with nothing on it is
+   * renamed too, its links following. Main refuses a `to` with content of
+   * its own (a merge, #110) and a `to` that opens another page, with a
+   * reason the window can show. A rename to the spelling the page already
+   * has, or of a page nothing is on or names, resolves with nothing written;
+   * one that only changes case changes how the page is spelled (#89).
+   */
+  | { type: 'renamePage'; title: string; to: string }
+  /**
+   * Takes back the latest step this session wrote in the open project (#234):
+   * the events that undo it, written as one batch. Stops, writing nothing,
+   * when someone else has changed what the step touched since, or when it
+   * cannot be undone; it never skips a step to reach an older one. Resolves
+   * to an `Undone`, not a bare version.
+   */
+  | { type: 'undo' }
+  /** Takes back the latest undo, by the same rules (#234). Resolves to an `Undone`. */
+  | { type: 'redo' };
+
+/** The commands that take a step back, and answer with an `Undone`. */
+export type Taking = Extract<Command, { type: 'undo' | 'redo' }>;
+
+/**
+ * What an undo or a redo did (#234), with the fold's version after it, as
+ * every write's reply carries.
+ *
+ * - `done`: the step was taken back.
+ * - `nothing`: there was nothing to undo, or to redo. Nothing was written.
+ * - `changed`: undo stopped, because someone else changed what the step
+ *   touched since. Nothing was written, and it stops there again until that
+ *   change goes away.
+ * - `cannot`: undo stopped, because the step cannot be undone at all.
+ *   Nothing was written.
+ *
+ * `page` and `block` are where the step happened, for the window to go to,
+ * with every result but `nothing`. `block` is absent for a step that is
+ * about a page as a whole (a property, a tag, a page delete).
+ */
+export type Undone = {
+  version: number;
+  result: 'done' | 'nothing' | 'changed' | 'cannot';
+  page?: string;
+  block?: string;
+};
+
+/** What `run` resolves to for `command`: an `Undone` for undo and redo, else the version. */
+export type Reply<C extends Command> = C extends Taking ? Undone : number;

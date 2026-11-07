@@ -19,7 +19,8 @@ type Props = {
   /** Held by `ProjectView`, so back to the list finds it sorted as it was left. */
   sort: Sort;
   onSort: (sort: Sort) => void;
-  onOpen: (page: string) => void;
+  /** A page was clicked; `beside` is Shift held, for the right sidebar (#287). */
+  onOpen: (page: string, beside: boolean) => void;
   /** A list that could not be read. */
   onError: (error: unknown) => void;
 };
@@ -120,7 +121,7 @@ export default function AllPages({ graph, sort, onSort, onOpen, onError }: Props
                     className={`block max-w-full cursor-pointer truncate text-left hover:underline ${
                       page.blocks === 0 ? 'text-muted' : 'text-accent'
                     }`}
-                    onClick={() => onOpen(page.title)}
+                    onClick={(event) => onOpen(page.title, event.shiftKey)}
                   >
                     {page.title}
                   </button>

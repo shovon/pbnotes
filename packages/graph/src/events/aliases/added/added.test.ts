@@ -6,10 +6,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBlock, getAliases, graphFold, holds, invert } from "../../../graph.ts";
+import { addBlock, getAliases, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph, GraphView } from "../../../graph.ts";
 import { ALIAS_ADDED, aliasAdded } from "./added.ts";
 import { aliasRemoved } from "../removed/removed.ts";
+import { from, get } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -35,11 +36,11 @@ function memory(): GraphView {
 
 test("an added gives the page that alias, and names both", () => {
   const state = fold([added("JavaScript", "JS")]);
-  assert.deepEqual(state.aliases, new Map([["javascript", new Set(["js"])]]));
+  assert.deepEqual(state.aliases, from([["javascript", new Set(["js"])]]));
   assert.deepEqual(getAliases(state, "javascript"), ["JS"]);
-  assert.equal(state.titles.get("javascript"), "JavaScript");
-  assert.equal(state.titles.get("js"), "JS");
-  assert.equal(state.blocks.size, 0);
+  assert.equal(get(state.titles, "javascript"), "JavaScript");
+  assert.equal(get(state.titles, "js"), "JS");
+  assert.equal(state.forest.nodes.size, 0);
 });
 
 test("an added over a populated state keeps what was there", async () => {
@@ -47,9 +48,10 @@ test("an added over a populated state keeps what was there", async () => {
   await addBlock(view, "JavaScript", "see [[Node]]", undefined, "j");
   const before = view.state;
   const state = fold([added("JavaScript", "JS"), added("JavaScript", "ECMAScript")], before);
-  assert.equal(state.blocks, before.blocks);
+  assert.equal(state.forest, before.forest);
+  assert.equal(state.texts, before.texts);
   assert.deepEqual(getAliases(state, "JavaScript"), ["ECMAScript", "JS"]);
-  assert.equal(state.titles.get("node"), "Node");
+  assert.equal(get(state.titles, "node"), "Node");
 });
 
 test("aliasAdded writes the event's own type and v", () => {
@@ -71,7 +73,7 @@ test("an added is undone by a removed, and not at all when the page already had 
 test("an added holds until someone else takes the alias away", () => {
   const before = graphFold.initial;
   const after = fold([added("A", "B")]);
-  const step = { before, events: [added("A", "B")], after };
+  const step = remember(before, [added("A", "B")]);
   assert.equal(holds(fold([added("A", "C")], after), step), true, "another alias");
   assert.equal(holds(fold([removed("A", "B")], after), step), false);
 });

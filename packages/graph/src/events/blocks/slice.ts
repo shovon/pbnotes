@@ -4,15 +4,19 @@
  * every event module, and is imported by none of them.
  */
 import { canonicalize } from "../../canonicalize/canonicalize.ts";
+import * as forest from "../../forest/forest.ts";
+import type { Forest, Spot } from "../../forest/forest.ts";
+import * as map from "../../immutable/immutable.ts";
 import { each } from "../batch/batch.ts";
 import type { EventOf } from "../../over/over.ts";
 import { BLOCK, blocksOn } from "../../blocks/blocks.ts";
-import type { BlockState, Page } from "../../blocks/blocks.ts";
+import type { Block, BlockState, Page } from "../../blocks/blocks.ts";
 import { BLOCK_CREATED } from "./created/created.ts";
 import { BLOCK_EDITED } from "./edited/edited.ts";
 import { BLOCK_DELETED } from "./deleted/deleted.ts";
 import { BLOCK_INDENTED } from "./indented/indented.ts";
 import { BLOCK_OUTDENTED } from "./outdented/outdented.ts";
+import { BLOCK_MOVED } from "./moved/moved.ts";
 
 /** Every block event. A new one is a module, and a line here. */
 const EVENTS = [
@@ -21,6 +25,7 @@ const EVENTS = [
   BLOCK_DELETED,
   BLOCK_INDENTED,
   BLOCK_OUTDENTED,
+  BLOCK_MOVED,
 ] as const;
 
 const BLOCKS = BLOCK.slice(EVENTS);
@@ -64,13 +69,29 @@ export function predict(
   events: readonly { type: string; payload: unknown }[],
 ): Page {
   if (events.length === 0) return page;
-  const key = canonicalize(page.title);
-  let state: BlockState = {
-    blocks: new Map([[key, page.blocks]]),
-    titles: new Map([[key, page.title]]),
-  };
+  let state = asState(page);
   for (const event of each(events)) {
     if (!BLOCKS.landed(state, event)) state = reduce(state, event);
   }
   return { ...page, blocks: blocksOn(state, page.title) };
+}
+
+/**
+ * The one page, as the fold holds blocks. An id the page shows twice is
+ * read once, where it first shows, as the fold would have written it.
+ */
+function asState(page: Page): BlockState {
+  const key = canonicalize(page.title);
+  let held: Forest = forest.empty();
+  let texts = map.empty<string>();
+  const plant = (blocks: readonly Block[], spot: (block: Block) => Spot) => {
+    for (const block of blocks) {
+      if (forest.has(held, block.id)) continue;
+      held = forest.add(held, block.id, spot(block));
+      texts = map.put(texts, block.id, block.text);
+      plant(block.children, () => ({ under: block.id, at: "last" }));
+    }
+  };
+  plant(page.blocks, () => ({ group: key, at: "last" }));
+  return { forest: held, texts, titles: map.from([[key, page.title]]) };
 }

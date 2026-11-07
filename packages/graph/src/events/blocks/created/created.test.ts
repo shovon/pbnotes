@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { NAMESPACE } from "../../events.ts";
-import { getPage, graphFold, holds, invert } from "../../../graph.ts";
+import { getPage, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Batched, Graph } from "../../../graph.ts";
 import type { Block } from "../../../blocks/blocks.ts";
 import { predict, reduce } from "../slice.ts";
@@ -141,9 +141,88 @@ test("a creation is undone by a delete, and holds until someone writes under it"
   const made = blockCreated("Foo", "B", "a", "b");
   const after = fold(before, made);
   assert.deepEqual(invert(before, [made]), [blockDeleted("b")]);
-  const step = { before, events: [made], after };
+  const step = remember(before, [made]);
   assert.equal(holds(after, step), true);
   assert.equal(holds(fold(after, blockCreated("Foo", "C", undefined, "c", "b")), step), false);
   assert.equal(holds(fold(after, blockEdited("b", "theirs")), step), false);
   assert.equal(holds(fold(after, blockEdited("a", "A!")), step), true, "a block it did not write");
+});
+
+// ── An id written twice (#273) ──────────────────────────────────────────────
+
+/** Each page's blocks as `id:text`, nested, so a block shown twice shows. */
+const shape = (graph: Graph, title: string): string => {
+  const walk = (blocks: Block[]): string =>
+    blocks.map((it) => `${it.id}:${it.text}${it.children.length ? `(${walk(it.children)})` : ""}`).join(" ");
+  return walk(getPage(graph, title).blocks);
+};
+
+test("a create for an id the graph holds changes nothing: the first in fold order stands", () => {
+  const before = fold(empty(), blockCreated(TODAY, "A", undefined, "a"));
+  const first = fold(before, blockCreated(TODAY, "mine", "a", "x"));
+  const second = fold(first, blockCreated("Elsewhere", "theirs", undefined, "x"));
+  assert.equal(second, first, "the same state, so nothing reads it as a change");
+  assert.equal(shape(second, TODAY), "a:A x:mine");
+  assert.equal(shape(second, "Elsewhere"), "");
+  // The other way round, the other one stands: order decides, the same on every machine.
+  const other = fold(before, blockCreated("Elsewhere", "theirs", undefined, "x"), blockCreated(TODAY, "mine", "a", "x"));
+  assert.equal(shape(other, TODAY), "a:A");
+  assert.equal(shape(other, "Elsewhere"), "x:theirs");
+});
+
+test("a skipped create's children land under the block that holds the id", () => {
+  const graph = fold(
+    empty(),
+    blockCreated(TODAY, "mine", undefined, "x"),
+    blockCreated("Elsewhere", "theirs", undefined, "x"),
+    blockCreated("Elsewhere", "child", undefined, "c", "x"),
+  );
+  assert.equal(shape(graph, TODAY), "x:mine(c:child)");
+  assert.equal(shape(graph, "Elsewhere"), "");
+});
+
+test("a child follows its parent to the page it moved to before the child arrived", () => {
+  const graph = fold(
+    empty(),
+    blockCreated(TODAY, "P", undefined, "p"),
+    { type: `${NAMESPACE}block.moved`, v: 1, payload: { id: "p", page: "Elsewhere" } },
+    // Written by a writer that still saw `p` on today's page.
+    blockCreated(TODAY, "child", undefined, "c", "p"),
+  );
+  assert.equal(shape(graph, TODAY), "");
+  assert.equal(shape(graph, "Elsewhere"), "p:P(c:child)");
+});
+
+test("a deleted id is not held, so it can be written again, at a new place", () => {
+  const graph = fold(
+    empty(),
+    blockCreated(TODAY, "A", undefined, "a"),
+    blockDeleted("a"),
+    blockCreated("Elsewhere", "A again", undefined, "a"),
+  );
+  assert.equal(shape(graph, TODAY), "");
+  assert.equal(shape(graph, "Elsewhere"), "a:A again");
+});
+
+test("two writers undoing the same delete show its blocks once", () => {
+  const start = fold(
+    empty(),
+    blockCreated(TODAY, "A", undefined, "a"),
+    blockCreated(TODAY, "child", undefined, "c", "a"),
+  );
+  const deleted = fold(start, blockDeleted("a"));
+  const undo = invert(start, [blockDeleted("a")]) ?? [];
+  assert.ok(undo.length > 0);
+  // Each writer's undo, folded one after the other once they sync.
+  const synced = fold(deleted, ...undo, ...undo);
+  assert.equal(shape(synced, TODAY), "a:A(c:child)");
+});
+
+test("undo of a create another writer's earlier create beat stops, and deletes nothing", () => {
+  const before = fold(empty(), blockCreated(TODAY, "A", undefined, "a"));
+  const mine = blockCreated(TODAY, "mine", "a", "x");
+  const step = remember(before, [mine]);
+  // Theirs is earlier in fold order, so once synced, mine is the one skipped.
+  const synced = fold(before, blockCreated("Elsewhere", "theirs", undefined, "x"), mine);
+  assert.equal(holds(synced, step), false);
 });

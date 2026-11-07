@@ -7,16 +7,8 @@ import { namespaced } from "../../events.ts";
 import type { Named } from "../../events.ts";
 import type { Written } from "../../../over/over.ts";
 import { same } from "../../../undo/undo.ts";
-import {
-  BLOCK,
-  beside,
-  find,
-  mapChildren,
-  onBlock,
-  position,
-  stringField,
-  withId,
-} from "../../../blocks/blocks.ts";
+import * as forest from "../../../forest/forest.ts";
+import { BLOCK, find, position, stringField, withId } from "../../../blocks/blocks.ts";
 import type { BlockOutdented } from "../../../blocks/blocks.ts";
 import { blockIndented } from "../indented/indented.ts";
 
@@ -29,23 +21,25 @@ export const BLOCK_OUTDENTED = BLOCK.define({
     const after = it && stringField(it.payload, "after");
     return it && after ? { id: it.id, after } : undefined;
   },
-  apply: (state, { id, after }) =>
-    onBlock(state, id, (found) => {
-      if (!found.parent) return undefined;
-      // The siblings below it come along as its own children, or they would
-      // be stranded above it and the page would read in a different order.
-      const moving = found.siblings[found.at];
-      const trailing = found.siblings.slice(found.at + 1);
-      const outdented = { ...moving, children: [...moving.children, ...trailing] };
-      const trimmed = mapChildren(found.blocks, found.parent.id, (children) =>
-        children.slice(0, found.at),
-      );
-      return beside(trimmed, after, outdented) ?? [...trimmed, outdented];
-    }),
+  apply: (state, { id, after }) => {
+    const found = find(state, id);
+    if (!found?.parent) return state;
+    // The siblings below it come along as its own children, or they would
+    // be stranded above it and the page would read in a different order.
+    let next = state.forest;
+    for (const sibling of found.siblings.slice(found.at + 1)) {
+      next = forest.move(next, sibling, { under: id, at: "last" });
+    }
+    // Directly beneath `after`, at its depth, when it is on the page and not
+    // among what moves: otherwise at the end of the page.
+    const fits = forest.node(next, after)?.group === found.key && !forest.within(next, after, id);
+    next = forest.move(next, id, fits ? { after } : { group: found.key, at: "last" });
+    return { ...state, forest: next };
+  },
   // Not safe to fold twice: a second outdent would move it again.
   landed: (state, { id, after }) => {
     const found = find(state, id);
-    return found?.siblings[found.at - 1]?.id === after;
+    return found?.siblings[found.at - 1] === after;
   },
   undo: {
     // Back under the old parent as its last child, then each sibling the
@@ -56,13 +50,13 @@ export const BLOCK_OUTDENTED = BLOCK.define({
       if (!found?.parent) return [];
       const along = found.siblings.slice(found.at + 1).reverse();
       return [
-        blockIndented({ id, parent: found.parent.id }),
-        ...along.map((sibling) => blockOutdented({ id: sibling.id, after: id })),
+        blockIndented({ id, parent: found.parent }),
+        ...along.map((sibling) => blockOutdented({ id: sibling, after: id })),
       ];
     },
     touched: (state, { id }) => {
       const found = find(state, id);
-      const along = found ? found.siblings.slice(found.at + 1).map((it) => it.id) : [];
+      const along = found ? found.siblings.slice(found.at + 1) : [];
       return [id, ...along].map((moved) => same((now) => position(now, moved)));
     },
   },

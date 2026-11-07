@@ -7,13 +7,27 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { indented, outdented } from "./blocks.ts";
+import { blocksOn } from "./blocks.ts";
+import { indented, outdented } from "./tree.ts";
+import * as forest from "../forest/forest.ts";
 import { BLOCK_HANDLES, predict, reduce } from "../events/blocks/slice.ts";
 import { NAMESPACE } from "../events/events.ts";
-import { getPage, getReferences, graphFold, read, searchBlocks, searchPages } from "../graph.ts";
+import {
+  blockCreated,
+  getDays,
+  getPage,
+  getPages,
+  getPreviews,
+  getReferences,
+  graphFold,
+  read,
+  searchBlocks,
+  searchPages,
+} from "../graph.ts";
 import type { Graph } from "../graph.ts";
-import type { Block } from "./blocks.ts";
+import type { Block } from "./tree.ts";
 import type { PageEvent } from "../events/blocks/slice.ts";
+import { from, get } from "../immutable/immutable.ts";
 
 const TODAY = "2026-09-21";
 
@@ -63,7 +77,7 @@ test("a v1 payload still folds, page and all", async () => {
     nested,
     event(`${NAMESPACE}block.edited`, 1, { page: TODAY, id: "b2", text: "rewritten" }),
   );
-  assert.deepEqual(edited.blocks.get(TODAY), [
+  assert.deepEqual(blocksOn(edited, TODAY), [
     {
       id: "b1",
       text: "first",
@@ -77,8 +91,8 @@ test("a v1 payload still folds, page and all", async () => {
     edited,
     event(`${NAMESPACE}block.edited`, 1, { page: "Mira", id: "b2", text: "again" }),
   );
-  assert.equal(elsewhere.blocks.get(TODAY)?.[0].children[0].text, "again");
-  assert.deepEqual([...elsewhere.blocks.keys()], [TODAY]);
+  assert.equal(blocksOn(elsewhere, TODAY)[0].children[0].text, "again");
+  assert.deepEqual([...forest.groups(elsewhere.forest)], [TODAY]);
 });
 
 /**
@@ -92,8 +106,9 @@ test("an event is folded under its namespaced name and no other", () => {
 
   assert.deepEqual(reduce(none, event(`${NAMESPACE}block.created`, 1, payload)), {
     ...none,
-    blocks: new Map([[TODAY, [{ id: "b1", text: "first", children: [] }]]]),
-    titles: new Map([[TODAY, TODAY]]),
+    forest: forest.add(none.forest, "b1", { group: TODAY, at: "last" }),
+    texts: from([["b1", "first"]]),
+    titles: from([[TODAY, TODAY]]),
   });
   assert.equal(reduce(none, event("block.created", 1, payload)), none);
   // Only the exact prefix. A slash is what #37 first proposed and is not it.
@@ -102,7 +117,7 @@ test("an event is folded under its namespaced name and no other", () => {
     none,
   );
 
-  assert.equal(Object.keys(BLOCK_HANDLES).length, 5);
+  assert.equal(Object.keys(BLOCK_HANDLES).length, 6);
   assert.equal(Object.keys(BLOCK_HANDLES).every((type) => type.startsWith(NAMESPACE)), true);
 });
 
@@ -173,9 +188,9 @@ test("a page named after an Object.prototype property folds like any other", () 
       event(`${NAMESPACE}block.created`, 1, { page: title, id: "b1", text: "hi" }),
     );
     const key = title.toLowerCase();
-    assert.deepEqual(state.blocks.get(key), [{ id: "b1", text: "hi", children: [] }], title);
-    assert.deepEqual([...state.blocks.keys()], [key], title);
-    assert.equal(state.titles.get(key), title, title);
+    assert.deepEqual(blocksOn(state, key), [{ id: "b1", text: "hi", children: [] }], title);
+    assert.deepEqual([...forest.groups(state.forest)], [key], title);
+    assert.equal(get(state.titles, key), title, title);
   }
 });
 
@@ -329,3 +344,44 @@ test("plain text keeps tags, aliases and paragraphs apart, and drops an empty re
   assert.equal(read("see ((abc123))").plain, "see");
 });
 
+
+/** `events` folded from nothing. */
+const folded = (...events: { type: string; v: number; payload: unknown }[]): Graph =>
+  events.reduce(graphFold.reduce, graphFold.initial);
+
+test("the journal's days are getPages' titles, newest first, without building a page (#282)", () => {
+  const state = folded(
+    blockCreated("2026-09-20", "one", undefined, "a"),
+    blockCreated("Mira", "not a day", undefined, "b"),
+    blockCreated("2026-09-22", "three", undefined, "c"),
+    blockCreated("2026-09-21", "two", undefined, "d"),
+  );
+  assert.deepEqual(getDays(state), ["2026-09-22", "2026-09-21", "2026-09-20"]);
+  assert.deepEqual(getDays(state), getPages(state).map((page) => page.title));
+});
+
+test("previews for some pages are the refs on them, and the refs in what those show (#282)", () => {
+  const state = folded(
+    blockCreated("2026-09-21", "see ((b))", undefined, "a"),
+    blockCreated("Mira", "quotes ((c))", undefined, "b"),
+    blockCreated("Mira", "the end", undefined, "c"),
+    blockCreated("Atlas", "elsewhere ((c)) and ((gone))", undefined, "d"),
+    blockCreated("Atlas", "loops ((e))", undefined, "e"),
+  );
+  assert.deepEqual(getPreviews(state, [getPage(state, "2026-09-21")]), [
+    ["b", "quotes ((c))"],
+    ["c", "the end"],
+  ]);
+  // A block that quotes itself is read once, and a ref to a block the project lacks is null.
+  assert.deepEqual(getPreviews(state, [getPage(state, "Atlas")]), [
+    ["c", "the end"],
+    ["e", "loops ((e))"],
+    ["gone", null],
+  ]);
+  assert.deepEqual(getPreviews(state, []), []);
+  // Without pages, every ref in the project, as before.
+  assert.deepEqual(
+    getPreviews(state).map(([id]) => id),
+    ["b", "c", "e", "gone"],
+  );
+});

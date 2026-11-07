@@ -6,10 +6,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addBlock, getProperties, graphFold, holds, invert } from "../../../graph.ts";
+import { addBlock, getProperties, graphFold, holds, invert, remember } from "../../../graph.ts";
 import type { Graph, GraphView } from "../../../graph.ts";
 import { PROPERTY_SET, propertySet } from "./set.ts";
 import { propertyRemoved } from "../removed/removed.ts";
+import { get, has } from "../../../immutable/immutable.ts";
 
 type Event = { type: string; v: number; payload: unknown };
 
@@ -36,9 +37,9 @@ function memory(): GraphView {
 test("a set gives the page that property, and names both the page and the key", () => {
   const state = fold([set("Bar", "Widget", "blue")]);
   assert.deepEqual(getProperties(state, "bar"), [{ key: "Widget", value: "blue" }]);
-  assert.equal(state.titles.get("bar"), "Bar");
-  assert.equal(state.titles.get("widget"), "Widget");
-  assert.equal(state.blocks.size, 0);
+  assert.equal(get(state.titles, "bar"), "Bar");
+  assert.equal(get(state.titles, "widget"), "Widget");
+  assert.equal(state.forest.nodes.size, 0);
 });
 
 test("a set over a populated state keeps what was there", async () => {
@@ -46,10 +47,11 @@ test("a set over a populated state keeps what was there", async () => {
   await addBlock(view, "Foo", "see [[Baz]]", undefined, "f");
   const before = view.state;
   const state = fold([set("Bar", "Widget", "blue"), set("Foo", "Status", "done")], before);
-  assert.equal(state.blocks, before.blocks);
+  assert.equal(state.forest, before.forest);
+  assert.equal(state.texts, before.texts);
   assert.deepEqual(getProperties(state, "Foo"), [{ key: "Status", value: "done" }]);
   assert.deepEqual(getProperties(state, "Bar"), [{ key: "Widget", value: "blue" }]);
-  assert.equal(state.titles.get("baz"), "Baz");
+  assert.equal(get(state.titles, "baz"), "Baz");
 });
 
 test("a value is a plain string: empty is kept, and a link in it names nothing", () => {
@@ -58,7 +60,7 @@ test("a value is a plain string: empty is kept, and a link in it names nothing",
     { key: "Empty", value: "" },
     { key: "Link", value: "[[Gadget]]" },
   ]);
-  assert.equal(state.titles.has("gadget"), false);
+  assert.equal(has(state.titles, "gadget"), false);
 });
 
 test("propertySet writes the event's own type and v", () => {
@@ -78,7 +80,7 @@ test("a set is undone back to the old value, by a removed when there was none, a
 
 test("a set holds until someone else changes that key", () => {
   const after = fold([set("Bar", "K", "1")]);
-  const step = { before: graphFold.initial, events: [set("Bar", "K", "1")], after };
+  const step = remember(graphFold.initial, [set("Bar", "K", "1")]);
   assert.equal(holds(fold([set("Bar", "Other", "x")], after), step), true, "another key");
   assert.equal(holds(fold([set("Bar", "K", "2")], after), step), false);
   assert.equal(holds(fold([removed("Bar", "K")], after), step), false);

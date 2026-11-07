@@ -8,6 +8,7 @@
  * module, because the app's renderer bundles this too. A caller hands the
  * commands a view whose `dispatch` writes to its own log.
  */
+import { noBlocks } from "./blocks/blocks.ts";
 import type { BlockState } from "./blocks/blocks.ts";
 import { BLOCK_HANDLES, BLOCK_UNDO, reads as readsBlocks, reduce } from "./events/blocks/slice.ts";
 import type { PageEvent } from "./events/blocks/slice.ts";
@@ -52,23 +53,27 @@ import type { AliasEvent } from "./events/aliases/slice.ts";
 import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
 import {
-  DELETE_HANDLES,
-  DELETE_UNDO,
+  PAGE_HANDLES,
+  PAGE_UNDO,
   reads as readsDeletes,
   reduce as reduceDeletes,
 } from "./events/pages/slice.ts";
 import { all, BATCH_HANDLES, unbatch } from "./events/batch/batch.ts";
 import type { BatchEvent, Batched } from "./events/batch/batch.ts";
-import { holds as holdsWith, invert as invertWith } from "./undo/undo.ts";
-import type { Step, Undo } from "./undo/undo.ts";
+import { holds as holdsWith, invert as invertWith, remember as rememberWith } from "./undo/undo.ts";
+import type { Remembered as RememberedWith, Undo } from "./undo/undo.ts";
 import { admits } from "./over/over.ts";
 import type { DeleteState } from "./deletes/deletes.ts";
-import type { DeleteEvent } from "./events/pages/slice.ts";
+import { redirect, renamedAway } from "./renames/renames.ts";
+import type { RenameState } from "./renames/renames.ts";
+import { field, unnamed } from "./events/events.ts";
+import type { PagesEvent } from "./events/pages/slice.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
 import type { EditedState } from "./edited/edited.ts";
 import { search } from "./search/search.ts";
 import { titleOf } from "./titles/titles.ts";
 import { canonicalize } from "./canonicalize/canonicalize.ts";
+import { empty as emptyMap, get as getKey } from "./immutable/immutable.ts";
 
 export { canonicalize } from "./canonicalize/canonicalize.ts";
 export { NAMESPACE } from "./events/events.ts";
@@ -78,16 +83,8 @@ export type { Check, Undo } from "./undo/undo.ts";
 export type { BatchEvent, Batched } from "./events/batch/batch.ts";
 export { DATE_PATTERN, dateOf, namesOf, today } from "./journal/journal.ts";
 export { titleOf } from "./titles/titles.ts";
-export {
-  beside,
-  blocksOn,
-  find,
-  indented,
-  lastLeaf,
-  locate,
-  outdented,
-  without,
-} from "./blocks/blocks.ts";
+export { blocksOn, find } from "./blocks/blocks.ts";
+export { beside, indented, lastLeaf, locate, outdented, without } from "./blocks/tree.ts";
 export { predict, reduce } from "./events/blocks/slice.ts";
 export type {
   Block,
@@ -95,12 +92,14 @@ export type {
   BlockDeleted,
   BlockEdited,
   BlockIndented,
+  BlockMoved,
   BlockOutdented,
   Found,
   Page,
+  Place,
 } from "./blocks/blocks.ts";
 export type { PageEvent } from "./events/blocks/slice.ts";
-export { getPages, getPreviews, linking, locateBlock, searchBlocks } from "./blocks/queries.ts";
+export { getDays, getPages, getPreviews, linking, locateBlock, searchBlocks, shownOrder } from "./blocks/queries.ts";
 export type { BlockMatch } from "./blocks/queries.ts";
 export { propertySet } from "./events/properties/set/set.ts";
 export { propertyRemoved } from "./events/properties/removed/removed.ts";
@@ -121,23 +120,38 @@ export type { AliasEvent } from "./events/aliases/slice.ts";
 export { getDeletions, getRefsTo, hasContent } from "./deletes/deletes.ts";
 export { deletePage } from "./deletes/commands.ts";
 export { pageDeleted } from "./events/pages/deleted/deleted.ts";
+export { pageRenamed } from "./events/pages/renamed/renamed.ts";
+export { renamePage } from "./renames/commands.ts";
+export type { PageRenamed } from "./renames/renames.ts";
 export type { PageDeleted } from "./deletes/deletes.ts";
-export type { DeleteEvent } from "./events/pages/slice.ts";
+export type { PagesEvent } from "./events/pages/slice.ts";
 export { blockCreated } from "./events/blocks/created/created.ts";
 export { blockEdited } from "./events/blocks/edited/edited.ts";
 export { blockDeleted } from "./events/blocks/deleted/deleted.ts";
 export { blockIndented } from "./events/blocks/indented/indented.ts";
 export { blockOutdented } from "./events/blocks/outdented/outdented.ts";
+export { blockMoved } from "./events/blocks/moved/moved.ts";
 export {
   addBlock,
   deleteBlock,
+  deleteBlocks,
+  indentBlocks,
+  outdentBlocks,
   editBlock,
   indentBlock,
+  moveBlock,
+  moveBlocks,
   outdentBlock,
+  pasteBlocks,
 } from "./blocks/commands.ts";
+export type { Pasting } from "./blocks/commands.ts";
+export { pasted } from "./blocks/paste/paste.ts";
+export type { PasteAt } from "./blocks/paste/paste.ts";
 export { getEdited } from "./edited/edited.ts";
 export { countBlocks, countLinks } from "./blocks/queries.ts";
 export { inCode, read } from "./reading/reading.ts";
+export { spans } from "./spans/spans.ts";
+export type { Span } from "./spans/spans.ts";
 export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
 
 /**
@@ -145,14 +159,16 @@ export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
  * its tags, its aliases, the first spelling the fold saw for it, how many
  * times it has been deleted, and when it last changed.
  *
- * `Map` throughout, so a title of `__proto__` is an ordinary key (#62), and
- * it survives the structured clone to the renderer (#146).
+ * A key of `__proto__` is an ordinary key throughout (#62), and all of it
+ * survives a structured clone (#146): every map in it is an immutable map of
+ * plain data (#276), so an event costs the rows it touches.
  */
 export type Graph = BlockState &
   PropertyState &
   TagState &
   AliasState &
   DeleteState &
+  RenameState &
   EditedState;
 
 /**
@@ -164,7 +180,7 @@ export const HANDLES: Record<
   | PropertyEvent["type"]
   | TagEvent["type"]
   | AliasEvent["type"]
-  | DeleteEvent["type"]
+  | PagesEvent["type"]
   | BatchEvent["type"],
   number
 > = {
@@ -172,7 +188,7 @@ export const HANDLES: Record<
   ...PROPERTY_HANDLES,
   ...TAG_HANDLES,
   ...ALIAS_HANDLES,
-  ...DELETE_HANDLES,
+  ...PAGE_HANDLES,
   ...BATCH_HANDLES,
 };
 
@@ -200,20 +216,21 @@ export const graphFold = {
     return all(state, events.map((it) => ({ ...it, at })), readable, one);
   },
   initial: {
-    blocks: new Map(),
-    titles: new Map(),
-    properties: new Map(),
-    tags: new Map(),
-    aliases: new Map(),
-    deletions: new Map(),
-    edited: new Map(),
+    ...noBlocks(),
+    titles: emptyMap(),
+    properties: emptyMap(),
+    tags: emptyMap(),
+    aliases: emptyMap(),
+    deletions: emptyMap(),
+    renames: emptyMap(),
+    edited: emptyMap(),
   } as Graph,
 };
 
-// ── Undo (#233) ─────────────────────────────────────────────────────────────
+// ── Undo (#233, #242) ───────────────────────────────────────────────────────
 
-/** What one command wrote: the graph before it, its events, and the graph after. */
-export type UndoStep = Step<Graph>;
+/** A step as it is remembered: what undoes it, and what it must find. No graph. */
+export type Remembered = RememberedWith<Graph>;
 
 /**
  * Event type → how to undo it: every slice's entries for the events it owns.
@@ -226,7 +243,7 @@ export const UNDO: Record<Exclude<keyof typeof HANDLES, BatchEvent["type"]>, Und
   ...PROPERTY_UNDO,
   ...TAG_UNDO,
   ...ALIAS_UNDO,
-  ...DELETE_UNDO,
+  ...PAGE_UNDO,
 };
 
 /**
@@ -239,11 +256,20 @@ export function invert(before: Graph, events: readonly Batched[]): Batched[] | u
 }
 
 /**
- * Whether `step` can still be undone in `now`: everything it touched is as it
- * left it, so undoing it undoes nobody else's work.
+ * `events`, written on `before`, as a step is remembered: the events that
+ * undo it, and what it has to find to be undone. Keeps no graph, so `before`
+ * and the graph after can be let go once it returns. See the README.
  */
-export function holds(now: Graph, step: UndoStep): boolean {
-  return holdsWith(graphFold.reduce, UNDO, now, step);
+export function remember(before: Graph, events: readonly Batched[]): Remembered {
+  return rememberWith(graphFold.reduce, UNDO, before, events);
+}
+
+/**
+ * Whether a remembered step can still be undone in `now`: everything it
+ * touched is as it left it, so undoing it undoes nobody else's work.
+ */
+export function holds(now: Graph, remembered: Remembered): boolean {
+  return holdsWith(now, remembered);
 }
 
 /** An event as the fold is handed one. */
@@ -266,7 +292,25 @@ function readable(event: Incoming): boolean {
 
 /** One event past the gate: every slice, then when its page changed. */
 function one(state: Graph, event: Incoming): Graph {
-  return reduceEdited(state, behindTheGate(state, event), event);
+  const routed = redirected(state, event);
+  return reduceEdited(state, behindTheGate(state, routed), routed);
+}
+
+/**
+ * `event` with the page it names sent where a rename sent that page, while
+ * the alias the rename left stands (#108). A write that sorts after a rename,
+ * from a device that had not seen it, lands on the page it was meant for,
+ * rather than giving the old name content of its own and taking it back.
+ * Every event that names its page as `page` is sent: blocks, properties,
+ * tags, aliases and a page delete. A rename names two pages, and is not.
+ */
+function redirected(state: Graph, event: Incoming): Incoming {
+  if (unnamed(event.type) === "page.renamed") return event;
+  const { payload } = event;
+  if (typeof payload !== "object" || payload === null) return event;
+  const page = field(payload, "page");
+  const to = typeof page === "string" ? redirect(state, page) : undefined;
+  return to === undefined ? event : { ...event, payload: { ...payload, page: titleOf(state, to) } };
 }
 
 /** Each slice's fold in turn. The delete fold empties what the others hold. */
@@ -368,14 +412,16 @@ export type PageMatch = {
  * Every name search offers, by key, each in the spelling it shows: every
  * title something names, and each day one of them opens, by its title and
  * its built-in names: a day named by a link to `Nov 4th, 2024` is offered as
- * `2024-11-04` and `November 4th, 2024` too.
+ * `2024-11-04` and `November 4th, 2024` too. A name a rename left behind is
+ * not offered (#108): it still opens the page, as a safety net.
  */
 function offered(state: Graph): Map<string, string> {
   const opens = resolver(state);
+  const away = renamedAway(state);
   const names = new Map<string, string>();
   for (const title of named(state)) {
     const key = canonicalize(title);
-    if (!names.has(key)) names.set(key, titleOf(state, key));
+    if (!names.has(key) && !away.has(key)) names.set(key, titleOf(state, key));
   }
   const days = new Set([...names.keys()].map(opens.key).filter((key) => DATE_PATTERN.test(key)));
   for (const day of days) {
@@ -440,7 +486,7 @@ export function listPages(state: Graph): PageListing[] {
   const keys = new Set(named(state).map(names.key));
   return [...keys]
     .map((key) => {
-      const edited = state.edited.get(key);
+      const edited = getKey(state.edited, key);
       return {
         title: titleOf(state, key),
         blocks: countBlocks(state, key),

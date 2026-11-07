@@ -15,8 +15,10 @@
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { over } from "../over/over.ts";
 import { read } from "../reading/reading.ts";
-import { blocksOn } from "../blocks/blocks.ts";
-import type { Block, BlockState } from "../blocks/blocks.ts";
+import * as forest from "../forest/forest.ts";
+import * as map from "../immutable/immutable.ts";
+import type { ImmutableMap } from "../immutable/immutable.ts";
+import type { BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { TagState } from "../tags/tags.ts";
 import type { AliasState } from "../aliases/aliases.ts";
@@ -26,7 +28,7 @@ import type { AliasState } from "../aliases/aliases.ts";
  * page tells a delete from a page that merely went empty by this going up.
  */
 export type DeleteState = {
-  readonly deletions: Map<string, number>;
+  readonly deletions: ImmutableMap<number>;
 };
 
 /** What a delete folds over: the blocks, properties, tags and aliases it empties. */
@@ -44,7 +46,7 @@ export type PageDeleted = { page: string };
 
 /** How many times `page` has been deleted. 0 for one never deleted. */
 export function getDeletions(state: DeleteState, page: string): number {
-  return state.deletions.get(canonicalize(page)) ?? 0;
+  return map.get(state.deletions, canonicalize(page)) ?? 0;
 }
 
 /** Whether a delete of `page` would change anything: something is on it. */
@@ -54,40 +56,22 @@ export function hasContent(
 ): boolean {
   const key = canonicalize(page);
   return (
-    (state.blocks.get(key)?.length ?? 0) > 0 ||
-    (state.properties.get(key)?.size ?? 0) > 0 ||
-    (state.tags.get(key)?.size ?? 0) > 0 ||
-    (state.aliases.get(key)?.size ?? 0) > 0
+    forest.rootsOf(state.forest, key).length > 0 ||
+    (map.get(state.properties, key)?.size ?? 0) > 0 ||
+    (map.get(state.tags, key)?.size ?? 0) > 0 ||
+    (map.get(state.aliases, key)?.size ?? 0) > 0
   );
 }
 
 /** Every block in a tree, depth first. */
-function* every(blocks: Block[]): Generator<Block> {
-  for (const block of blocks) {
-    yield block;
-    yield* every(block.children);
-  }
-}
-
-/**
- * How many blocks on other pages hold a `((id))` to a block on `page`: what
- * a delete would leave showing as missing. Refs on the page itself go with
- * it, so they do not count. What links to the page by title is
- * `getReferences`.
- *
- * ponytail: walks every block per call, with `read` memoised. Ask it for one
- * page at a time.
- */
 export function getRefsTo(state: BlockState, page: string): number {
-  const on = new Set([...every(blocksOn(state, page))].map((block) => block.id));
-  if (on.size === 0) return 0;
   const key = canonicalize(page);
+  const on = new Set(forest.inGroup(state.forest, key));
+  if (on.size === 0) return 0;
   let refs = 0;
-  for (const [other, blocks] of state.blocks) {
-    if (other === key) continue;
-    for (const block of every(blocks)) {
-      if (read(block.text).refs.some((id) => on.has(id))) refs++;
-    }
+  for (const [id, text] of map.entries(state.texts)) {
+    if (on.has(id)) continue;
+    if (read(text).refs.some((ref) => on.has(ref))) refs++;
   }
   return refs;
 }

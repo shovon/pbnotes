@@ -1,5 +1,6 @@
 import {
   BrowserWindow,
+  ClipboardItem,
   Menu,
   clipboard,
   ipcMain,
@@ -7,14 +8,16 @@ import {
   protocol,
 } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
-import { IMAGE_SCHEME, GRAPH_CHANNELS } from "../../../../shared/graph";
-import type { BlockMenuPick, PageMenuPick, Place } from "../../../../shared/graph";
+import { CARRY_COUNT, CARRY_LIMIT, IMAGE_SCHEME, GRAPH_CHANNELS } from "../../../../shared/graph";
+import type { BlockMenuPick, CarriedImage, Clip, PageMenuPick, Place } from "../../../../shared/graph";
 import { requireString } from "../../../ipc";
-import { readOffer } from "./block-menu/block-menu";
+import { cutLabel, deleteLabel, readOffer } from "./block-menu/block-menu";
 import { readOffer as readPageOffer, readPoint } from "./page-menu/page-menu";
 import { requireCommand, requireDay, requireTitle } from "./command/command";
 import type { GraphSession } from "./graph-session/graph-session";
+import { mimeOf } from "./images/images";
 
 // This software is split into two components: the renderer, and the main
 // process. Neither can see each other directly, and IPC is the only way to
@@ -41,6 +44,13 @@ export type Images = {
   save(bytes: Uint8Array, mime: string): Promise<string>;
   /** The file a note's `images/<name>` is, or undefined. */
   find(name: string): Promise<string | undefined>;
+  /** A token for the images of what is open, or undefined with nothing open. */
+  source(): Promise<string | undefined>;
+  /**
+   * Brings `images` into what is open, from their bytes or from the project
+   * `source` stands for, and answers each one's link or undefined.
+   */
+  carry(images: readonly CarriedImage[], source: string | undefined): Promise<(string | undefined)[]>;
 };
 
 /**
@@ -54,6 +64,28 @@ export function broadcastGraph(version: number): void {
       window.webContents.send(GRAPH_CHANNELS.changed, version);
     }
   }
+}
+
+/** The images a paste asks for, built fresh from what each reads. */
+function requireCarried(value: unknown): CarriedImage[] {
+  if (!Array.isArray(value)) throw new TypeError("Expected images to be an array");
+  if (value.length > CARRY_COUNT) throw new TypeError("Too many images to bring");
+  return value.map((it: unknown) => {
+    if (typeof it !== "object" || it === null) throw new TypeError("Expected an image");
+    const { name, bytes, mime } = it as Record<string, unknown>;
+    if (bytes === undefined) return { name: requireString(name, "name") };
+    if (!(bytes instanceof Uint8Array) || bytes.length > CARRY_LIMIT) {
+      throw new TypeError("Expected an image's bytes, within the limit");
+    }
+    return { name: requireString(name, "name"), bytes, mime: requireString(mime, "mime") };
+  });
+}
+
+/** A copy as it crossed the bridge: its text and its HTML, nothing else. */
+function requireClip(clip: unknown): Clip {
+  if (typeof clip !== "object" || clip === null) throw new TypeError("Expected a copy");
+  const { text, html } = clip as Record<string, unknown>;
+  return { text: requireString(text, "text"), html: requireString(html, "html") };
 }
 
 /** A place as it crossed the bridge: none is the journal. */
@@ -71,9 +103,19 @@ function requirePlace(place: unknown): Place | undefined {
  * scheme against `images`.
  */
 export function registerGraphIpc(session: GraphSession, images: Images): void {
-  ipcMain.handle(GRAPH_CHANNELS.view, (_event, place: unknown, today: unknown) =>
-    session.view(requirePlace(place), requireDay(today)),
-  );
+  // How far the view's list is loaded: a day on the journal (#282), a
+  // title on a page (#285). Any string for a title: it is only compared,
+  // and it is the spelling a link gave a page, which a title check could refuse.
+  ipcMain.handle(GRAPH_CHANNELS.view, (_event, place: unknown, today: unknown, through: unknown) => {
+    const at = requirePlace(place);
+    return session.view(
+      at,
+      requireDay(today),
+      through === undefined || through === null
+        ? undefined
+        : at ? requireString(through, "through") : requireDay(through, "through"),
+    );
+  });
 
   ipcMain.handle(GRAPH_CHANNELS.locate, (_event, blockId: unknown) =>
     session.locate(requireString(blockId, "blockId")),
@@ -106,6 +148,39 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
       return images.save(bytes, requireString(mime, "mime"));
     },
   );
+
+  // An image's bytes, for a copy that carries it (#261). Found as the scheme
+  // below finds one, so the name is checked by `find` before it is near a
+  // path, and typed by its extension, which is what it was stored under.
+  ipcMain.handle(GRAPH_CHANNELS.image, async (_event, name: unknown) => {
+    const file = await images.find(requireString(name, "name"));
+    const mime = file && mimeOf(file);
+    if (!file || !mime) return undefined;
+    return { bytes: new Uint8Array(await readFile(file)), mime };
+  });
+
+  // A token for where the open project's images are (#261). What it stands
+  // for stays in main: `index.ts` keeps it, and the window only carries it.
+  ipcMain.handle(GRAPH_CHANNELS.imageSource, () => images.source());
+
+  // The images a paste links, brought into what is open (#261). What
+  // arrives came off a clipboard any app can write: each name is checked by
+  // `find` before it is near a path, the bytes by their size here and their
+  // type when stored, and a token main never handed out stands for nothing.
+  ipcMain.handle(GRAPH_CHANNELS.carryImages, (_event, wanted: unknown, source: unknown) =>
+    images.carry(
+      requireCarried(wanted),
+      source === undefined ? undefined : requireString(source, "source"),
+    ),
+  );
+
+  // One copy in two formats (#261), written in one go so whatever pastes it
+  // picks the one it reads. Here, not in the window, so the copy does not
+  // depend on the window holding focus while it was put together.
+  ipcMain.handle(GRAPH_CHANNELS.copy, (_event, clip: unknown) => {
+    const { text, html } = requireClip(clip);
+    return clipboard.write([new ClipboardItem({ "text/plain": text, "text/html": html })]);
+  });
 
   /**
    * `pbnotes-image://images/<name>`: the image a note links as
@@ -140,26 +215,35 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
       const offered = readOffer(offer);
       const window = BrowserWindow.fromWebContents(event.sender) ?? undefined;
       return new Promise<BlockMenuPick | null>((resolve) => {
-        const items: MenuItemConstructorOptions[] = [
-          {
-            label: "Copy Block Reference",
-            click: () => {
-              clipboard.writeText(`((${id}))`);
-              resolve(null);
-            },
-          },
-        ];
+        const items: MenuItemConstructorOptions[] =
+          offered.reference === false
+            ? []
+            : [
+                {
+                  label: "Copy Block Reference",
+                  click: () => {
+                    clipboard.writeText(`((${id}))`);
+                    resolve(null);
+                  },
+                },
+              ];
         if (offered.delete) {
           items.push(
             // Apart from copying: one leaves the notes as they were, and
             // this one does not.
-            { type: "separator" },
+            ...(items.length > 0 ? [{ type: "separator" as const }] : []),
+            // Cut takes the blocks off the page, as delete does (#246).
             {
-              label: "Delete Block",
+              label: cutLabel(offered),
+              click: () => resolve("cut"),
+            },
+            {
+              label: deleteLabel(offered),
               click: () => resolve("delete"),
             },
           );
         }
+        if (items.length === 0) return resolve(null);
         Menu.buildFromTemplate(items).popup({
           window,
           callback: () => setTimeout(() => resolve(null), 100),

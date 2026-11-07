@@ -8,16 +8,22 @@
  */
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { field } from "../events/events.ts";
-import { find } from "../blocks/blocks.ts";
+import { keyOf } from "../blocks/blocks.ts";
+import { dateOf } from "../journal/journal.ts";
 import type { BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { DeleteState } from "../deletes/deletes.ts";
 import type { TagState } from "../tags/tags.ts";
 import type { AliasState } from "../aliases/aliases.ts";
+import { get, put } from "../immutable/immutable.ts";
+import type { ImmutableMap } from "../immutable/immutable.ts";
 
-/** Page key (`canonicalize`) → when it last changed, in ms since the epoch. */
+/**
+ * Page key (`canonicalize`) → when it last changed, in ms since the epoch.
+ * Immutable (#276): nearly every event changes one key of it.
+ */
 export type EditedState = {
-  readonly edited: Map<string, number>;
+  readonly edited: ImmutableMap<number>;
 };
 
 /** What a change is read off: the parts of the graph that hold what a user wrote. */
@@ -31,8 +37,9 @@ function when(event: { at?: unknown }): number | undefined {
 }
 
 /**
- * The page an event is about: the one its payload names, or for a block
- * event that names only a block, the page that block is on before or after.
+ * The page an event is about: the one its payload names (a rename's `to`),
+ * or for a block event that names only a block, the page that block is on
+ * before or after.
  */
 function pageOf(
   before: BlockState,
@@ -42,9 +49,12 @@ function pageOf(
   if (typeof payload !== "object" || payload === null) return undefined;
   const page = field(payload, "page");
   if (typeof page === "string") return page;
+  // A rename changes the page it lands on, which a date name files as its day.
+  const to = field(payload, "to");
+  if (typeof to === "string") return dateOf(to) ?? to;
   const id = field(payload, "id");
   if (typeof id !== "string") return undefined;
-  return (find(before, id) ?? find(after, id))?.page;
+  return keyOf(before, id) ?? keyOf(after, id);
 }
 
 /**
@@ -61,7 +71,8 @@ export function reduce<S extends Holds>(
   event: { at?: unknown; payload: unknown },
 ): S {
   if (
-    after.blocks === before.blocks &&
+    after.forest === before.forest &&
+    after.texts === before.texts &&
     after.properties === before.properties &&
     after.tags === before.tags &&
     after.aliases === before.aliases &&
@@ -73,12 +84,12 @@ export function reduce<S extends Holds>(
   const page = pageOf(before, after, event.payload);
   if (ms === undefined || page === undefined) return after;
   const key = canonicalize(page);
-  const last = after.edited.get(key);
+  const last = get(after.edited, key);
   if (last !== undefined && last >= ms) return after;
-  return { ...after, edited: new Map(after.edited).set(key, ms) };
+  return { ...after, edited: put(after.edited, key, ms) };
 }
 
 /** When `page` last changed, or undefined if nothing ever changed it. */
 export function getEdited(state: EditedState, page: string): number | undefined {
-  return state.edited.get(canonicalize(page));
+  return get(state.edited, canonicalize(page));
 }
