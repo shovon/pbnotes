@@ -64,8 +64,8 @@ import { holds as holdsWith, invert as invertWith, remember as rememberWith } fr
 import type { Remembered as RememberedWith, Undo } from "./undo/undo.ts";
 import { admits } from "./over/over.ts";
 import type { DeleteState } from "./deletes/deletes.ts";
-import { redirect, renamedAway } from "./renames/renames.ts";
-import type { RenameState } from "./renames/renames.ts";
+import { redirect, renamedAway, renamedTo } from "./renames/renames.ts";
+import type { RenameState, Renamed } from "./renames/renames.ts";
 import { field, unnamed } from "./events/events.ts";
 import type { PagesEvent } from "./events/pages/slice.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
@@ -122,7 +122,7 @@ export { deletePage } from "./deletes/commands.ts";
 export { pageDeleted } from "./events/pages/deleted/deleted.ts";
 export { pageRenamed } from "./events/pages/renamed/renamed.ts";
 export { renamePage } from "./renames/commands.ts";
-export type { PageRenamed } from "./renames/renames.ts";
+export type { PageRenamed, Renamed } from "./renames/renames.ts";
 export type { PageDeleted } from "./deletes/deletes.ts";
 export type { PagesEvent } from "./events/pages/slice.ts";
 export { blockCreated } from "./events/blocks/created/created.ts";
@@ -398,6 +398,16 @@ export function getAliases(state: Names, page: string): string[] {
 /** The page `alias` opens as an alias in effect, as it shows, or undefined. */
 export function getAliasOf(state: Names, alias: string): string | undefined {
   return resolver(state).aliasOf(alias);
+}
+
+/**
+ * Each of `names` that a rename left behind (#108), with the title of the
+ * page it became: what a window holding the old name, for a page it is not
+ * showing, holds instead (#301). An alias someone added is not a rename, and
+ * is not in the answer; nor is a name whose alias was removed since.
+ */
+export function getRenamed(state: Graph, names: readonly string[]): Renamed[] {
+  return renamedTo(state, names);
 }
 
 /** A page title search offered, and the page following it opens. */
