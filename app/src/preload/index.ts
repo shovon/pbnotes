@@ -9,7 +9,7 @@ import type { GraphApi } from '../shared/graph';
 import { BENCH_CHANNELS } from '../shared/bench';
 import type { BenchApi } from '../shared/bench';
 import { WINDOW_CHANNELS } from '../shared/window';
-import type { WindowApi } from '../shared/window';
+import type { TabItem, WindowApi } from '../shared/window';
 
 const projects: ProjectsApi = {
   list: () => ipcRenderer.invoke(PROJECT_CHANNELS.list),
@@ -73,6 +73,14 @@ const bench: BenchApi = {
 
 const window: WindowApi = {
   close: () => ipcRenderer.invoke(WINDOW_CHANNELS.close),
+  // The item alone, as `graph.onTake` hands on the way alone.
+  onTab: (listener) => {
+    const heard = (_event: IpcRendererEvent, item: TabItem) => listener(item);
+    ipcRenderer.on(WINDOW_CHANNELS.tab, heard);
+    return () => {
+      ipcRenderer.off(WINDOW_CHANNELS.tab, heard);
+    };
+  },
 };
 
 // Only this explicit surface crosses the context bridge; the renderer never

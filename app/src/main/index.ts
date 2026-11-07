@@ -18,6 +18,7 @@ import { appMenu } from "./features/menu/menu";
 import { createOpenBench } from "./features/bench/bench";
 import { registerBenchIpc } from "./features/bench/bench-ipc";
 import { registerWindowIpc } from "./features/window/window-ipc";
+import { WINDOW_CHANNELS } from "../shared/window";
 import { benchFiles } from "./features/bench/bench-store";
 import { sidebarSlots } from "./features/sidebar/sidebar-slots";
 import { rendererSource } from "./renderer-source/renderer-source";
@@ -149,11 +150,15 @@ const createWindow = (windowState: WindowState) => {
 app.on("ready", () => {
   // The app's own menu (#247): Electron's default, but with Undo and Redo
   // telling the focused window, which decides whether the open field or
-  // main takes the step. The default's would call the browser's undo.
+  // main takes the step. The default's would call the browser's undo. The
+  // tab items (#304) tell the focused window too.
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(
-      appMenu(process.platform === "darwin", (way) =>
-        BrowserWindow.getFocusedWindow()?.webContents.send(GRAPH_CHANNELS.take, way),
+      appMenu(
+        process.platform === "darwin",
+        (way) => BrowserWindow.getFocusedWindow()?.webContents.send(GRAPH_CHANNELS.take, way),
+        // The tab items (#304) the same way: the window holds its tabs.
+        (item) => BrowserWindow.getFocusedWindow()?.webContents.send(WINDOW_CHANNELS.tab, item),
       ),
     ),
   );
