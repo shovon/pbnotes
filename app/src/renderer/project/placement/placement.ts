@@ -1,7 +1,7 @@
 /**
  * Where a new block goes. Shared by the two places that add blocks without a
  * box saying where: `PageView`'s box at the end of what is in view, and
- * `ProjectView`'s pasted or dropped images.
+ * `Tab`'s pasted or dropped images.
  *
  * Pure, over the blocks as drawn, so the rules run under `node --test` with
  * nothing around them. The views make the id, ask main to write, and draw.

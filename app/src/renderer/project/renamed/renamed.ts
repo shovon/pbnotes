@@ -10,7 +10,7 @@
  * not a rename. A day renamed away is not seen here: its old date opens the
  * empty day, which no answer tells from its blocks being deleted.
  *
- * Pure, so the rule runs under `node --test`; `ProjectView` acts on it.
+ * Pure, so the rule runs under `node --test`; `Tab` acts on it.
  */
 import { canonicalize, dateOf } from '@pbnotes/graph';
 import type { Held } from '../held/held.ts';

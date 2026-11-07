@@ -5,7 +5,7 @@
  * fold counts every delete of a page (`deletions`), and this is that count
  * going up between two answers for the same page.
  *
- * Pure, so the rule runs under `node --test`; `ProjectView` acts on it.
+ * Pure, so the rule runs under `node --test`; `Tab` acts on it.
  */
 import { canonicalize } from '@pbnotes/graph';
 import type { Held } from '../held/held.ts';

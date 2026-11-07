@@ -1,7 +1,7 @@
 /**
  * The steps along a trail: where the view is, kept as how it got there. Pure,
- * so they run under `node --test` with nothing around them; `ProjectView`
- * holds the trail these are applied to.
+ * so they run under `node --test` with nothing around them; the trail is
+ * part of `TabState` (`Tab/state/`), which `ProjectView` holds and `Tab` steps.
  */
 import { canonicalize } from "@pbnotes/graph";
 import type { Place } from "../../../shared/graph.ts";

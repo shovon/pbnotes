@@ -5,7 +5,7 @@
  * Only opening a page reorders the stack: editing in a card never moves it,
  * so a card does not jump out from under someone writing in it.
  *
- * Pure, so it runs under `node --test`; `ProjectView` holds the stack.
+ * Pure, so it runs under `node --test`; it is part of `TabState` (`Tab/state/`), and `Tab` steps it.
  */
 import { canonicalize } from '@pbnotes/graph';
 

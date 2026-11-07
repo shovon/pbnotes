@@ -156,9 +156,9 @@ export default function PageView({
   scope: scoped,
   act,
 }: Props) {
-  /** The selection, which `ProjectView` holds (#253). */
+  /** The selection, which `Tab` holds (#253). */
   const selecting = useContext(Selecting);
-  /** The blocks being dragged by a dot, which `ProjectView` runs (#251, #269). */
+  /** The blocks being dragged by a dot, which `Tab` runs (#251, #269). */
   const dragging = useContext(Dragging);
   const scope = scoped ?? sent.title;
   /**

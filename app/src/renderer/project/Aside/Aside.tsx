@@ -16,7 +16,7 @@ type Props = {
 
 /**
  * The right sidebar (#287): pages kept open beside the one on screen, one
- * card each, stacked. `ProjectView` leaves it out while it holds no card.
+ * card each, stacked. `Tab` leaves it out while it holds no card.
  *
  * Fixed under the title-bar strip, the height of the window, with its own
  * scroll. While it is in the DOM `App` leaves room for it beside the page,

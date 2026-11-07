@@ -2,7 +2,7 @@
  * The mouse side of dragging to select (#262): a thin adapter from a drag
  * on the window (`gesture/`) to `sweep.ts`, which does the arithmetic.
  * Knows nothing of blocks: what a row is, where a press may start and what a
- * sweep selects are handed in by `ProjectView`.
+ * sweep selects are handed in by `Tab`.
  *
  * Rows are in page coordinates (`clientY` plus the window's scroll), so a run
  * holds still while the page scrolls under the pointer.

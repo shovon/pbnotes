@@ -4,7 +4,7 @@ import { createContext } from 'react';
 export type FromBox = 'up' | 'down' | 'here' | 'all';
 
 /**
- * What every page view needs of the selection (#253), from `ProjectView`,
+ * What every page view needs of the selection (#253), from `Tab`,
  * which holds it. A context rather than props, because a cut under a page is
  * another page view, several components down.
  */
