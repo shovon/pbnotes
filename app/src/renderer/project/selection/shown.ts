@@ -10,6 +10,7 @@
  */
 import type { Shown } from './roots/roots';
 import type { Empty as DropEmpty, Row as DropRow } from '../drag/drop/drop';
+import { PAGE } from '../column/column';
 
 /** One place a block shows. */
 export type Entry = Shown & {
@@ -77,26 +78,45 @@ export function shown(root: ParentNode | null | undefined): Entry[] {
   });
 }
 
+/** The column `element` is in (`column/`): the page's, unless one is around it. */
+export function columnOf(element: Element | null | undefined): string {
+  return element?.closest<HTMLElement>('[data-column]')?.dataset.column ?? PAGE;
+}
+
+/** The column under the point `x`, `y`, in client coordinates. */
+export function columnAt(x: number, y: number): string {
+  return columnOf(document.elementFromPoint(x, y));
+}
+
+/** The element that scrolls the column `name` under `root`, or null for the page's, the window. */
+export function scrollerOf(root: ParentNode | null | undefined, name: string): Element | null {
+  if (!root || name === PAGE) return null;
+  return root.querySelector(`[data-column="${CSS.escape(name)}"]`);
+}
+
 /**
  * Every block's own row under `root`, in the order it shows, in page
- * coordinates: where a drag touches it (#262). A slot holds its row and dot,
+ * coordinates: where a drag touches it (#262), and the column it is in, so
+ * a drag measures one column's rows (#305). A slot holds its row and dot,
  * and never its children, which a view draws beside it.
  */
-export function rows(root: ParentNode | null | undefined): { key: string; top: number; bottom: number }[] {
+export function rows(
+  root: ParentNode | null | undefined,
+): { key: string; column: string; top: number; bottom: number }[] {
   if (!root) return [];
   return [...root.querySelectorAll<HTMLElement>('[data-slot]')].flatMap((element) => {
     const key = element.dataset.slot;
     if (key === undefined) return [];
     const { top, bottom } = element.getBoundingClientRect();
-    return [{ key, top: top + window.scrollY, bottom: bottom + window.scrollY }];
+    return [{ key, column: columnOf(element), top: top + window.scrollY, bottom: bottom + window.scrollY }];
   });
 }
 
 /**
  * Every block's own row under `root`, as a drop reads it (#251): the slot
- * and what it shows, and its box, in page coordinates.
+ * and what it shows, its box, in page coordinates, and its column (#305).
  */
-export function dropRows(root: ParentNode | null | undefined): DropRow[] {
+export function dropRows(root: ParentNode | null | undefined): (DropRow & { column: string })[] {
   if (!root) return [];
   return [...root.querySelectorAll<HTMLElement>('[data-slot]')].flatMap((element) => {
     const { slot: key, slotScope: scope, slotPage: page, slotBlock: id, slotParent: parent } =
@@ -112,18 +132,22 @@ export function dropRows(root: ParentNode | null | undefined): DropRow[] {
         id,
         ...(parent === undefined ? {} : { parent }),
         ...box(element),
+        column: columnOf(element),
         whole: element.dataset.slotWhole !== undefined,
       },
     ];
   });
 }
 
-/** Every page with no blocks yet under `root`, with the room it shows, in page coordinates. */
-export function emptyPages(root: ParentNode | null | undefined): DropEmpty[] {
+/**
+ * Every page with no blocks yet under `root`, with the room it shows, in
+ * page coordinates, and its column (#305).
+ */
+export function emptyPages(root: ParentNode | null | undefined): (DropEmpty & { column: string })[] {
   if (!root) return [];
   return [...root.querySelectorAll<HTMLElement>('[data-empty-page]')].flatMap((element) => {
     const page = element.dataset.emptyPage;
-    return page === undefined ? [] : [{ page, ...box(element) }];
+    return page === undefined ? [] : [{ page, ...box(element), column: columnOf(element) }];
   });
 }
 

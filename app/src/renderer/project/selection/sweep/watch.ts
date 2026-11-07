@@ -19,11 +19,20 @@ export type Press = {
   add: boolean;
 };
 
-export type Watched = {
-  /** Every row that shows, top to bottom, in page coordinates. */
-  rows(): Row[];
+/** A point in client coordinates, as the gesture hands it on. */
+type Point = { x: number; y: number };
+
+export type Watched<P extends Press = Press> = {
+  /**
+   * The rows a drag from `press` can touch, top to bottom, in page
+   * coordinates: those of the one column it went down in (#305), so a row
+   * beside it at the same height is never taken for one it touched.
+   */
+  rows(press: P): Row[];
+  /** What scrolls near its edges for a drag from `press`: an element, or null for the window. */
+  scroller?(press: P, at: Point): Element | null;
   /** What a press is, or undefined when it cannot start a drag. */
-  press(event: MouseEvent): Press | undefined;
+  press(event: MouseEvent): P | undefined;
   /** A drag-select began: what it adds to is fixed now. */
   start(add: boolean): void;
   /** The run the drag covers, from anchor to head, or undefined for none. */
@@ -35,34 +44,35 @@ export type Watched = {
 };
 
 /** Where a press went down, kept for the drag it may become. */
-type Held = Press & {
+type Held<P extends Press> = P & {
   /** Where it went down, in page coordinates. */
   from: number;
 };
 
 /** Listens on the window until the returned function is called. */
-export function watchDrag(on: Watched): () => void {
+export function watchDrag<P extends Press>(on: Watched<P>): () => void {
   const page = (clientY: number) => clientY + window.scrollY;
 
   /** The anchor's middle, now: a box closing can move it from where it was. */
-  const from = (it: Held, rows: Row[]) => {
+  const from = (it: Held<P>, rows: Row[]) => {
     const row = it.start === undefined ? undefined : rows.find((r) => r.key === it.start);
     return row ? (row.top + row.bottom) / 2 : it.from;
   };
 
-  return watchGesture<Held>({
+  return watchGesture<Held<P>>({
     press: (event) => {
       const it = on.press(event);
       return it && { ...it, from: page(event.clientY) };
     },
     begins: (held, start, to) =>
-      begins(on.rows(), held.start, page(to.y), Math.hypot(to.x - start.x, to.y - start.y)),
+      begins(on.rows(held), held.start, page(to.y), Math.hypot(to.x - start.x, to.y - start.y)),
     start: (held) => on.start(held.add),
     move: (held, to) => {
-      const rows = on.rows();
+      const rows = on.rows(held);
       on.sweep(swept(rows, from(held, rows), page(to.y)));
     },
     cancel: () => on.cancel(),
     end: () => on.end(),
+    scroller: (held, at) => on.scroller?.(held, at) ?? null,
   });
 }
