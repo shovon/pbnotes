@@ -11,6 +11,9 @@ export const SIDEBAR_SLOTS = {
   recentPages: 'recent-pages',
   /** Whether the sidebar is collapsed. */
   sidebar: 'sidebar',
+  /** Whether the Recent section is collapsed to its heading (#299). */
+  recentSection: 'recent-section',
 } as const;
 
+/** Whether something is collapsed: the sidebar, or its Recent section. */
 export type SidebarState = { collapsed: boolean };

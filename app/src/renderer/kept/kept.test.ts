@@ -97,18 +97,21 @@ test('a failure is reported, and a load that fails gives undefined', async () =>
   assert.equal(reported.length, 2);
 });
 
-test("the sidebar's two values, under their slots, off together", async () => {
+test("the sidebar's three values, under their slots, off together", async () => {
   const bench = fakeBench();
   const kept = sidebarKept(bench, () => undefined);
   kept.recentPages.save(['Mira']);
   kept.sidebar.save({ collapsed: true });
+  kept.recentSection.save({ collapsed: true });
   await settle();
   assert.deepEqual(bench.sets, [
     ['recent-pages', ['Mira']],
     ['sidebar', { collapsed: true }],
+    ['recent-section', { collapsed: true }],
   ]);
   kept.off();
   kept.recentPages.save(['Bar']);
+  kept.recentSection.save({ collapsed: false });
   await settle();
-  assert.equal(bench.sets.length, 2);
+  assert.equal(bench.sets.length, 3);
 });

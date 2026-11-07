@@ -12,6 +12,8 @@ const meta = {
     onJournal: fn(),
     onAllPages: fn(),
     onOpen: fn(),
+    recentCollapsed: false,
+    onToggleRecent: fn(),
   },
 } satisfies Meta<typeof Sidebar>;
 
@@ -26,6 +28,9 @@ export const OnJournal: Story = { args: { showing: undefined } };
 
 /** On the list of every page: All pages is highlighted, and nothing else is. */
 export const OnAllPages: Story = { args: { showing: undefined, browsing: true } };
+
+/** Recent collapsed to its heading (#299): the chevron points right. */
+export const RecentCollapsed: Story = { args: { recentCollapsed: true } };
 
 /** Nothing opened yet in this project. */
 export const Empty: Story = { args: { recent: [], showing: undefined } };

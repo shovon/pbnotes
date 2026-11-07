@@ -29,6 +29,7 @@ import TabStrip from './TabStrip/TabStrip';
 import { shown, whereFrom } from './opening/opening';
 import type { Keys, Where } from './opening/opening';
 import type { TabItem } from '../../shared/window';
+import { useKept } from '../kept/useKept';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -82,6 +83,8 @@ type Props = {
   recentPages: Kept<string[]>;
   /** Whether this project's sidebar is collapsed. */
   sidebar: Kept<{ collapsed: boolean }>;
+  /** Whether Recent is collapsed to its heading (#299). */
+  recentSection: Kept<{ collapsed: boolean }>;
 };
 
 /**
@@ -108,6 +111,7 @@ export default function ProjectView({
   onTab,
   recentPages,
   sidebar,
+  recentSection,
 }: Props) {
   /** Names a tab as it opens: only told apart, never read. */
   const count = useRef(1);
@@ -356,29 +360,24 @@ export default function ProjectView({
    * Whether the sidebar is hidden. Showing until what was kept has loaded,
    * and when nothing was. A toggle before it lands wins over it.
    */
-  const [collapsed, setCollapsed] = useState(false);
-  const toggled = useRef(false);
-  useEffect(() => {
-    let live = true;
-    void sidebar.load().then((kept) => {
-      if (live && kept && !toggled.current) setCollapsed(kept.collapsed);
-    });
-    return () => {
-      live = false;
-    };
-  }, [sidebar]);
+  const [{ collapsed }, setSidebar] = useKept(sidebar, { collapsed: false });
   /** The button and the shortcut both; rebound each render, for `collapsed`. */
   const toggle = useRef(() => undefined as void);
   toggle.current = () => {
-    toggled.current = true;
     // Shown or hidden for good now, so not floating, however it was asked for.
     peek.stop();
-    const next = !collapsed;
-    setCollapsed(next);
-    sidebar.save({ collapsed: next });
+    setSidebar({ collapsed: !collapsed });
   };
   /** Collapsed, the sidebar floats over the page while the toggle is pointed at. */
   const peek = usePeek(collapsed);
+  /**
+   * Whether Recent shows only its heading (#299). Here rather than in the
+   * sidebar, which is a new one each time it floats or stops floating. It
+   * hides the list and nothing more: pages opened meanwhile still go in it.
+   */
+  const [{ collapsed: recentCollapsed }, setRecentSection] = useKept(recentSection, {
+    collapsed: false,
+  });
 
   /**
    * Undo (#247): the menu's Undo and Redo, and the browser's own undo from
@@ -461,6 +460,8 @@ export default function ProjectView({
           onJournal={() => step(home)}
           onAllPages={() => step(browse)}
           onOpen={openWith}
+          recentCollapsed={recentCollapsed}
+          onToggleRecent={() => setRecentSection({ collapsed: !recentCollapsed })}
           floating={collapsed}
           onPointerEnter={peek.stay}
           onPointerLeave={peek.leave}

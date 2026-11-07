@@ -28,8 +28,12 @@ export const sidebar: Slot<SidebarState> = {
   },
 };
 
+/** Whether Recent is collapsed (#299): the same shape as the sidebar's. */
+export const recentSection: Slot<SidebarState> = sidebar;
+
 /** Every slot the sidebar keeps, by name, for `createOpenBench`. */
 export const sidebarSlots = new Map<string, Slot<unknown>>([
   [SIDEBAR_SLOTS.recentPages, recentPages],
   [SIDEBAR_SLOTS.sidebar, sidebar],
+  [SIDEBAR_SLOTS.recentSection, recentSection],
 ]);
