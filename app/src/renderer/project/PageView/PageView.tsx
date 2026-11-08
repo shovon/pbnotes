@@ -715,29 +715,29 @@ export default function PageView({
   return (
     <>
       {/* The header: the title, and on a page's own view its tags and
-          properties. While the page has no tags, "+ Add tag" sits beside
-          the title; once it has one, the tags take the line under it.
-          "+ Add property" follows "+ Add tag" on whichever line that is,
-          while the page has no properties; once it has some, or a draft is
-          open, the table takes a line of its own with the button under
-          it. The break after the title is an `::after` ordered between the
-          title and the rest. Only the layout changes, never the tree, so
-          a draft or an open input is not remounted.
+          properties. What is still empty (`data-bare`) sits on a line above
+          the title, the way Notion puts its "add" buttons: "+ Add tag" until
+          the page has a tag, "+ Add property" until it has a property or a
+          draft is open. What has something in it takes a line of its own
+          under the title, tags above properties. The first tag moves its
+          row, input and all, under the title on the Enter that adds it.
+          Only the order changes, never the tree, so a draft or an open
+          input is not remounted. Tab still goes title first.
 
           What is marked `data-reveal` ("+ Add tag" and "+ Add property") is
-          hidden, so a new page is not two empty placeholders beside its
-          title. Both show while the title's or the tags' line is hovered or
-          holds focus, "+ Add property" only while it is on that line (no
-          properties yet); pointing at the table under it lights neither
-          that line nor "+ Add tag". The table and its button show "+ Add
-          property" too. While a tag is being typed, "+ Add property" stays
-          hidden: the line is the tag's.
+          hidden, so a new page is not two empty placeholders over its
+          title. Both show while the header is hovered or holds focus,
+          "+ Add property" only while it is bare (above the title);
+          pointing at the table lights neither that nor "+ Add tag". The
+          table and its button show "+ Add property" too. While a tag is
+          being typed, "+ Add property" stays hidden: the header is the
+          tag's.
           Hidden is opacity, not removal: they keep their room, and nothing
           moves as the pointer crosses the title. */}
       <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity [&_[data-line]:hover:not(:has(>section:not([data-bare]):hover)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare])>[data-reveal]]:opacity-100 [&_[data-line]:focus-within:not(:has(>section:not([data-bare]):focus-within)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare])>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:hover>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:focus-within>[data-reveal]]:opacity-100">
         <div
           data-line
-          className="flex flex-wrap items-baseline gap-x-3 [&>*]:min-w-0 [&>*:not(:first-child)]:order-2 [&>section:not([data-bare])]:basis-full has-[>[aria-label=Tags]:not([data-bare])]:after:order-1 has-[>[aria-label=Tags]:not([data-bare])]:after:basis-full"
+          className="flex flex-wrap items-baseline gap-x-3 [&>*]:min-w-0 [&>:not([data-bare])]:basis-full [&>[data-bare]]:-order-1 [&>[data-bare]]:mt-4 [&>[data-bare]]:mb-0 [&:has(>[data-bare])>:first-child]:mt-1"
         >
           {reference ? (
             <h4 className="mt-3 mb-1 text-sm font-semibold">
@@ -790,14 +790,14 @@ export default function PageView({
             </h2>
           )}
 
-          {/* Beside the title, or under it once there are some, above the
+          {/* Above the title, or under it once there are some, above the
               properties. A journal day shows its tags only when it has some,
               and neither a zoom nor a cut shows them. */}
           {tags && !reference && !root && (!linked || tags.length > 0) && (
             <Tags tags={tags} findTags={findTitles} onAdd={tagPage} onRemove={untagPage} />
           )}
 
-          {/* Under the title, or beside it while empty, on the page's own
+          {/* Under the title, or above it while empty, on the page's own
               view. A journal day shows its
               table only when it has something in it: an empty one on every day
               is noise, and the first property on a day is added from its page.
