@@ -18,7 +18,7 @@
   /* The title bar (#303): a shade off the page, so the active tab, in the
      page's colour, reads as the page come up into it. A placeholder until
      the bar is designed. */
-  --color-bar: #eeeef0;
+  --color-bar: #f6f6f7;
   --color-accent: #2f6feb;
   --color-on-accent: #ffffff;
   --color-danger: #c0392b;
@@ -53,7 +53,7 @@
     --color-fg: #ececee;
     --color-muted: #9a9aa0;
     --color-line: #313135;
-    --color-bar: #28282b;
+    --color-bar: #222224;
     --color-accent: #6ea0ff;
     --color-danger: #ff6b5c;
     --color-warn-bg: #3a2e14;
