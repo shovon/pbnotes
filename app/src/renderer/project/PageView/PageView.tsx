@@ -719,9 +719,9 @@ export default function PageView({
           the title, the way Notion puts its "add" buttons: "Add tag" until
           the page has a tag, "Add property" until it has a property or a
           draft is open. What has something in it takes a line of its own
-          under the title, tags above properties. The first tag moves its
-          row, input and all, under the title on the Enter that adds it.
-          Only the order changes, never the tree, so a draft or an open
+          under the title, tags above properties. An open input or draft
+          counts as something: either button opens it under the title,
+          where what it adds will be, and points at it there. Only the order changes, never the tree, so a draft or an open
           input is not remounted. Tab still goes title first.
 
           What is marked `data-reveal` ("Add tag" and "Add property") is

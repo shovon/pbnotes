@@ -6,6 +6,7 @@ import { commit, draft, editable, keyless, shown, suggested } from './rows';
 import type { Open, Write } from './rows';
 import { TableProperties } from 'lucide-react';
 import Icon from '../../../Icon/Icon';
+import { arrive } from '../arrive';
 
 type Props = {
   /** The rows as drawn: main's, with this view's writes in flight over them. */
@@ -62,6 +63,18 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
   const keyBox = useRef<HTMLDivElement>(null);
   const keyInput = useRef<HTMLInputElement>(null);
   const valueInput = useRef<HTMLInputElement>(null);
+
+  /**
+   * Set by "Add property" pressed while the section is bare: the draft opens
+   * under the title, not where the button was, so it is pointed at once
+   * drawn (`arrive`).
+   */
+  const arriving = useRef(false);
+  useEffect(() => {
+    if (!open || !arriving.current) return;
+    arriving.current = false;
+    arrive(keyBox.current?.parentElement);
+  }, [open]);
 
   /** Points at the key, the cell that has to change before the row can be left. */
   const flash = () =>
@@ -338,7 +351,10 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
         type="button"
         data-reveal
         className="inline-flex cursor-pointer items-center gap-1 rounded-md py-0.5 text-muted hover:text-fg focus-visible:text-fg"
-        onClick={() => start(draft(), 'key')}
+        onClick={() => {
+          arriving.current = bare;
+          start(draft(), 'key');
+        }}
       >
         <Icon of={TableProperties} />
         Add property
