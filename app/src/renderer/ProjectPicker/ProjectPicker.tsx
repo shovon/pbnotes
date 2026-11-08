@@ -20,9 +20,10 @@ type Props = {
  * type-ahead for free, and it stays right for forty projects as well as for
  * two.
  *
- * As wide as the room it is given and no wider (#303): `App` caps it at the
- * sidebar's edge, so a long name is cut short rather than pushed into the
- * tabs. Cut short, pointing at it fades in a wider picker over it, with
+ * As wide as the room it is given, whatever the project is called: `App`
+ * gives it up to the sidebar's edge, so it does not jump in width from one
+ * project to the next, and a long name is cut short rather than pushed into
+ * the tabs (#303). Cut short, pointing at it fades in a wider picker over it, with
  * the whole name, so the open project can be read without opening the list.
  */
 /** The wider picker's look, for the one shown and the one measured. */
@@ -78,16 +79,15 @@ export default function ProjectPicker({ projects, projectId, onSelect, onAdd }: 
     return () => seen.disconnect();
   }, [name]);
   return (
-    <span className="relative ml-1.5 flex min-w-0">
+    <span className="relative mx-1.5 flex min-w-0 flex-1">
       {/* Sits in the title bar strip, so it takes itself back out of the drag
           region or it cannot be clicked. Borderless until pointed at: at the
           top of the window it reads as the name of what is open, and a
-          permanent box up there is chrome for chrome. `field-sizing-content`
-          because a <select> is otherwise as wide as its widest option, which
-          strands the chevron a whole "Open project…" away from a short name. */}
+          permanent box up there is chrome for chrome. Fills its room rather
+          than fitting its name, so it is one width for every project. */}
       <select
         ref={select}
-        className="peer app-region-no-drag field-sizing-content max-w-full min-w-0 cursor-pointer appearance-none text-ellipsis rounded-md border border-transparent py-0.5 pr-6 pl-2 font-semibold hover:border-accent"
+        className="peer app-region-no-drag w-full min-w-0 cursor-pointer appearance-none text-ellipsis rounded-md border border-transparent py-0.5 pr-6 pl-2 font-semibold hover:border-accent"
         aria-label="Project"
         /* Controlled, so picking "Open project…" snaps back to the open
            project while the directory dialog decides what happens next. */
