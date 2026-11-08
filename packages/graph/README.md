@@ -18,7 +18,7 @@ Each of those writes one event (`deleteBlocks`, `indentBlocks`, `outdentBlocks` 
 
 Page properties have commands too, `setProperty`, `removeProperty` and `renameProperty`, and builders, `propertySet` and `propertyRemoved`.
 
-Page tags have `addTag` and `removeTag`, with builders `tagAdded` and `tagRemoved`. Aliases have builders, `aliasAdded` and `aliasRemoved`, and no commands yet.
+Page tags have `addTag` and `removeTag`, with builders `tagAdded` and `tagRemoved`. Aliases have builders, `aliasAdded` and `aliasRemoved`, and no commands yet. A page's icon has `setIcon` and `removeIcon`, with builders `iconSet` and `iconRemoved`.
 
 A page is deleted with `deletePage`, whose builder is `pageDeleted`.
 
@@ -26,9 +26,9 @@ Several events that must land together go in one `batch` (below), built from the
 
 Undo is `remember`, `holds` and `invert` (below): a step remembered as what takes it back, whether it can still be taken back, and the events alone.
 
-A view that draws its writes before they are recorded folds them with `predict` for blocks, `predictProperties` for a page's properties and `predictTags` for its tags. Each passes over events that are not its own, and reads a batch as the events it holds, so a view can hand all three everything it has in flight.
+A view that draws its writes before they are recorded folds them with `predict` for blocks, `predictProperties` for a page's properties, `predictTags` for its tags and `predictIcon` for its icon. Each passes over events that are not its own, and reads a batch as the events it holds, so a view can hand all of them everything it has in flight.
 
-The queries (`getPage`, `getPages`, `getDays`, `getReferences`, `getPreviews`, `getProperties`, `getTags`, `getTaggedBy`, `getAliases`, `getAliasOf`, `getRenamed`, `resolve`, `getDeletions`, `getRefsTo`, `hasContent`, `searchPages`, `searchNames`, `listPages` and `locateBlock`) take the folded graph alone, since they never write. The ones that take a page's title resolve it first (see "What a name opens"), so `getPage(graph, "JS")` is the page `JS` opens.
+The queries (`getPage`, `getPages`, `getDays`, `getReferences`, `getPreviews`, `getProperties`, `getTags`, `getTaggedBy`, `getIcon`, `getAliases`, `getAliasOf`, `getRenamed`, `resolve`, `getDeletions`, `getRefsTo`, `hasContent`, `searchPages`, `searchNames`, `listPages` and `locateBlock`) take the folded graph alone, since they never write. The ones that take a page's title resolve it first (see "What a name opens"), so `getPage(graph, "JS")` is the page `JS` opens.
 
 ## What it does not depend on
 
@@ -118,6 +118,22 @@ A page can answer to other names. An alias is a page title, compared through `ca
 - **An alias names a page; it never creates one,** as with tags. A page that has aliases has something on it: `hasContent` counts them, a page delete removes them, and adding or removing one is an edit to the page.
 - **Malformed is skipped whole:** a payload that is not an object, or a `page` or `alias` that is not a string or is blank once trimmed. Any other field is ignored.
 
+## A page's icon is a contract
+
+A page can have one icon, shown beside its title (#322). To the graph it is an opaque string: an emoji, an `image:<hash>`, or anything a later build learns to draw. What it means is up to whoever draws it.
+
+| Type | `v` | Payload | Meaning |
+|---|---|---|---|
+| `icon.set` | 1 | `{ page, icon }` | `page`'s icon is now `icon`. |
+| `icon.removed` | 1 | `{ page }` | `page` has no icon. |
+
+- **An icon is not a property.** A property key is a page, so an `icon` key would name an "icon" page and show in every properties table.
+- **The graph never reads the string.** No check that it is an emoji or one character. `""` is an icon, not an absence; removing is its own event. **A reader that can't draw a value shows no icon,** rather than an error or the raw string.
+- **The later event wins,** in fold order, the same on every machine, as with block text. Removing an icon the page lacks changes nothing.
+- **An icon names a page; it never creates one,** as with tags. A page with an icon has something on it: `hasContent` counts it, it is listed and searched, `resolve` rule 1 counts it as a page of its own, a page delete removes it (and its undo sets it back), a rename moves it, and setting or removing one is an edit to the page.
+- **Malformed is skipped whole:** a payload that is not an object, a `page` that is not a string or is blank once trimmed, or an `icon` that is not a string. Any other field is ignored.
+- **`getIcon(graph, page)`** is the icon of the page `page` opens, or undefined. **The commands** refuse a blank page and write nothing for a change that changes nothing: `setIcon(view, page, icon)` for the icon the page has, `removeIcon(view, page)` for a page with none. **`predictIcon(icon, page, events)`** folds writes still in flight over the icon a page was sent.
+
 ## Built-in date names are a contract
 
 A journal day answers to its date in words, with nothing written. A name, once `canonicalize`d, is a date name when it reads as a real day in one of these formats:
@@ -137,14 +153,14 @@ A journal day answers to its date in words, with nothing written. A name, once `
 
 **`resolve(graph, title)`** is the page a name opens, as it shows. The first of these that applies:
 
-1. **A name with a page of its own opens itself:** blocks, properties or tags on it. Nothing is ever hidden behind another name.
+1. **A name with a page of its own opens itself:** blocks, properties, tags or an icon on it. Nothing is ever hidden behind another name.
 2. **A date name opens its day.**
 3. **A `YYYY-MM-DD` opens itself.** No alias takes a day over, in either form, but a day can have aliases.
 4. **A name with aliases of its own opens itself.** One hop only, so nothing chains and nothing loops.
 5. **An alias opens the page that claims it.** When two pages claim one, the one whose `canonicalize`d title sorts first wins, the same on every machine. A page claiming it that is a date name, with nothing on it, is its day.
 6. Otherwise, the name opens itself.
 
-- **The reads resolve first.** `getPage`, `getProperties` and `getTags` read the page a name opens. `getReferences` and `getTaggedBy` match every name that opens it: its title, its date names if it is a day, and its aliases in effect. A link keeps the spelling it was written with.
+- **The reads resolve first.** `getPage`, `getProperties`, `getTags` and `getIcon` read the page a name opens. `getReferences` and `getTaggedBy` match every name that opens it: its title, its date names if it is a day, and its aliases in effect. A link keeps the spelling it was written with.
 - **`getAliases(graph, page)`** lists the aliases in effect, not the built-in names, and **`getAliasOf(graph, alias)`** the page an alias in effect opens.
 - **`searchNames(graph, query)`** offers each name with the page it `opens`; `searchPages` is the titles alone. Beside the titles it always offered, it offers aliases, and for each day any offered name opens, the day's title and its date names. A day nothing names isn't offered, since the days can't be listed without end. A name a rename left behind isn't offered either (below).
 - **`listPages`** lists each page once, under its title. A name that opens another page isn't a row, and its links and tags count for the page it opens, a block or a tagging page once however many of the page's names it uses.
@@ -153,7 +169,7 @@ A journal day answers to its date in words, with nothing written. A name, once `
 
 | Type | `v` | Payload | Meaning |
 |---|---|---|---|
-| `page.deleted` | 1 | `{ page }` | The user was done with `page`: its blocks, its properties, its tags and its aliases. Tags on other pages that point to it stay, as links to it do. |
+| `page.deleted` | 1 | `{ page }` | The user was done with `page`: its blocks, its properties, its tags, its aliases and its icon. Tags on other pages that point to it stay, as links to it do. |
 
 - **One event for the whole page.** No `block.deleted` per block and no `property.removed` per key, so a crash or a sync still arriving can never leave a page half deleted.
 - **It applies to the page as it stands at that point in fold order.** A block or property that sorts before it goes with it, however late it arrived. One that sorts after it is a later fact and stands. An edit that sorts after it, to a block it removed, changes nothing, like any edit to a block the fold does not have.
@@ -173,11 +189,11 @@ A reader that folds this event has to do all of what follows to show the same gr
 
 - **One event, and the fold does all of it.** No `block.edited` per linking block: an edit replaces a block's whole text, and one that sorted after a concurrent edit on another device would wipe that edit out. The rewrite applies to whatever text is there at its place in fold order, so a block written offline that sorts before the rename is rewritten when it arrives.
 - **Titles are filed by `keyFor`:** the day a date name means, or the title's `canonicalize`d key. Renaming to `Nov 6th, 2026` makes the page that day.
-- **When the keys differ, the page moves:** its blocks (in their order and nesting, `regroup`), properties, tags, aliases and last-edited time go to `to`'s key, and `to` becomes its spelling.
+- **When the keys differ, the page moves:** its blocks (in their order and nesting, `regroup`), properties, tags, aliases, icon and last-edited time go to `to`'s key, and `to` becomes its spelling.
 - **The old title becomes an alias,** along with the aliases the page had; a page never answers to its own title, so renaming onto one of its aliases drops it. **A day leaves no alias,** since nothing takes a `YYYY-MM-DD` over (`resolve` rule 3): a write on the day afterwards stays on the day.
 - **What pointed at the old title points at `to`:** every link in every block (below), every tag on any page, and every property key on any page, unless that page already has the key `to`, when both are left as they are. For a day, every link, tag or key by any of its date names.
 - **Links are rewritten where they are written,** read with the parser the renderer reads with (`relink`): one in code, math, a URL or an alias's label is left alone, as is everything else in the text. `[[x]]`, `#[[x]]` and `[label]([[x]])` keep their form and label. A bare `#x` stays bare unless `to` can't be a bare tag, when it becomes `#[[to]]`.
-- **A write on the old title goes to the page it became** while that page still answers to it (`redirect`): any event with a `page` field (blocks, properties, tags, aliases, a page delete) that sorts after the rename. A device that wrote offline before seeing the rename lands where it meant to, rather than giving the old title content of its own, which would take the name back (rule 1). Removing the alias ends it.
+- **A write on the old title goes to the page it became** while that page still answers to it (`redirect`): any event with a `page` field (blocks, properties, tags, aliases, icons, a page delete) that sorts after the rename. A device that wrote offline before seeing the rename lands where it meant to, rather than giving the old title content of its own, which would take the name back (rule 1). Removing the alias ends it.
 - **A page with nothing on it is renamed like any other.** Every page already exists, and its links, tags and keys are what there is to rename: they follow, and the old title becomes an alias.
 - **A rename that can't move the page does nothing:** `to` has content of its own (`hasContent`), `to` is a name a rename sends to another page, or `from` has nothing on it and either another page claims it as an alias or nothing names it at all. The alias case is what holds two renames of one page: the first leaves `from` empty and claimed by the page it became, so the first in fold order wins. A page nothing is on or names has nothing to rename. Nothing is ever merged without being asked.
 - **When the keys are the same, only the spelling changes** (#89): the page shows as `to` from then on, even though `titles` otherwise keeps the first spelling seen. Nothing moves and no text changes. A day's spelling never changes.

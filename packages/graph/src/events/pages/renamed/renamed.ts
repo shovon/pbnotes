@@ -26,7 +26,7 @@ import { over } from "../../../over/over.ts";
 
 /**
  * A reading of the page at `key` as a rename left it: its blocks in order
- * with their text, its properties, tags and aliases. Ids and names only.
+ * with their text, its properties, tags, aliases and icon. Ids and names only.
  */
 function page(key: string): (now: Holds) => string {
   return (now) =>
@@ -35,6 +35,7 @@ function page(key: string): (now: Holds) => string {
       [...(map.get(now.properties, key) ?? [])].sort(),
       [...(map.get(now.tags, key) ?? [])].sort(),
       [...(map.get(now.aliases, key) ?? [])].sort(),
+      map.get(now.icons, key) ?? null,
     ]);
 }
 

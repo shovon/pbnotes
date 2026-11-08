@@ -8,6 +8,7 @@ import {
   blocksOn,
   getDays,
   getDeletions,
+  getIcon,
   getPage,
   getPreviews,
   getProperties,
@@ -62,7 +63,8 @@ export const CUT_BLOCKS = 200;
  * and so there is no list. Every page carries its properties, under a zoom
  * too: whether to draw them is the window's. Its tags and what tags it are
  * left out under a zoom, as what links to it is: the zoom shows a block, not
- * the page.
+ * the page. Its icon comes in every mode, as properties do, and is absent
+ * for a page with none.
  */
 export function getView(
   view: { readonly state: Graph; readonly version: number },
@@ -78,6 +80,7 @@ export function getView(
   // A page's own view reads its references in chunks; a journal day, whole.
   const chunked = at && !at.block ? cuts(getReferences(state, at.page), through) : undefined;
   const showing = pages.map((page) => {
+    const icon = getIcon(state, page.title);
     const all = at?.block ? [] : chunked?.all ?? getReferences(state, page.title);
     return {
       page,
@@ -88,6 +91,7 @@ export function getView(
       taggedBy: at?.block ? [] : getTaggedBy(state, page.title),
       deletions: getDeletions(state, page.title),
       refsTo: at && !at.block ? getRefsTo(state, page.title) : 0,
+      ...(icon === undefined ? {} : { icon }),
     };
   });
   const list = journal ?? chunked;

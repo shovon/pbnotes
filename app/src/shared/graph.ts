@@ -64,7 +64,8 @@ export type PlaceView = {
    * zoom, where what links to one block is not what links to its page. And
    * each with its properties, in every mode: whether to draw them is the
    * view's. And each with its tags, and the pages that tag it, in every mode
-   * but a zoom, where both are empty as `references` is. And how many times
+   * but a zoom, where both are empty as `references` is. And its icon, in
+   * every mode, as properties are. And how many times
    * the page has been deleted: a window on it that sees this go up knows it
    * was deleted, not merely emptied.
    *
@@ -88,6 +89,11 @@ export type PlaceView = {
     tags: string[];
     /** The pages that point to it, as `getTaggedBy` returns them. */
     taggedBy: string[];
+    /**
+     * Its icon as written (#322), absent for none. Any string: the window
+     * draws what it can, and shows no icon for a value it can't.
+     */
+    icon?: string;
     deletions: number;
     refsTo: number;
   }[];
@@ -500,6 +506,17 @@ export type Command =
    */
   | { type: 'removeTag'; title: string; tag: string }
   /**
+   * Appends an `icon.set` event: `title`'s icon is now `icon`. Any string:
+   * what it means is the window's to draw. Setting the icon the page already
+   * has resolves with nothing written.
+   */
+  | { type: 'setIcon'; title: string; icon: string }
+  /**
+   * Appends an `icon.removed` event. Removing the icon of a page that has
+   * none resolves with nothing written.
+   */
+  | { type: 'removeIcon'; title: string }
+  /**
    * Appends a `page.deleted` event: the page's blocks, properties and tags are
    * gone from the fold, and stay on disk. A page with nothing on it resolves
    * with nothing written, since the delete would change nothing.
@@ -545,7 +562,7 @@ export type Taking = Extract<Command, { type: 'undo' | 'redo' }>;
  *
  * `page` and `block` are where the step happened, for the window to go to,
  * with every result but `nothing`. `block` is absent for a step that is
- * about a page as a whole (a property, a tag, a page delete).
+ * about a page as a whole (a property, a tag, an icon, a page delete).
  */
 export type Undone = {
   version: number;

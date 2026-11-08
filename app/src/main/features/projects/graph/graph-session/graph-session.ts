@@ -26,11 +26,13 @@ import {
   moveBlock,
   moveBlocks,
   outdentBlock,
+  removeIcon,
   removeProperty,
   removeTag,
   renameProperty,
   searchBlocks,
   searchNames,
+  setIcon,
   setProperty,
 } from "@pbnotes/graph";
 import type { Batched, GraphView as Base, PageMatch } from "@pbnotes/graph";
@@ -285,6 +287,10 @@ function apply(view: GraphView, command: Exclude<Command, Taking>): Promise<unkn
       return addTag(view, command.title, command.tag);
     case "removeTag":
       return removeTag(view, command.title, command.tag);
+    case "setIcon":
+      return setIcon(view, command.title, command.icon);
+    case "removeIcon":
+      return removeIcon(view, command.title);
     case "deletePage":
       return deletePage(view, command.title);
     case "renamePage":

@@ -238,6 +238,16 @@ const CHECKERS: {
     title: requireTitle(own(raw, "title")),
     tag: requireTitle(own(raw, "tag")),
   }),
+  // An icon is any string: what it means is the window's (#322).
+  setIcon: (raw) => ({
+    type: "setIcon",
+    title: requireTitle(own(raw, "title")),
+    icon: requireString(own(raw, "icon"), "icon"),
+  }),
+  removeIcon: (raw) => ({
+    type: "removeIcon",
+    title: requireTitle(own(raw, "title")),
+  }),
   deletePage: (raw) => ({
     type: "deletePage",
     title: requireTitle(own(raw, "title")),

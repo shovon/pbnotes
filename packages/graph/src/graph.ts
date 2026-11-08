@@ -50,6 +50,10 @@ import {
   reduce as reduceAliases,
 } from "./events/aliases/slice.ts";
 import type { AliasEvent } from "./events/aliases/slice.ts";
+import { iconOf, named as namedByIcons } from "./icons/icons.ts";
+import type { IconState } from "./icons/icons.ts";
+import { ICON_HANDLES, ICON_UNDO, reads as readsIcons, reduce as reduceIcons } from "./events/icons/slice.ts";
+import type { IconEvent } from "./events/icons/slice.ts";
 import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
 import {
@@ -117,6 +121,12 @@ export { aliasAdded } from "./events/aliases/added/added.ts";
 export { aliasRemoved } from "./events/aliases/removed/removed.ts";
 export type { AliasAdded, AliasRemoved } from "./aliases/aliases.ts";
 export type { AliasEvent } from "./events/aliases/slice.ts";
+export { iconSet } from "./events/icons/set/set.ts";
+export { iconRemoved } from "./events/icons/removed/removed.ts";
+export { predictIcon } from "./events/icons/slice.ts";
+export { removeIcon, setIcon } from "./icons/commands.ts";
+export type { IconRemoved, IconSet } from "./icons/icons.ts";
+export type { IconEvent } from "./events/icons/slice.ts";
 export { getDeletions, getRefsTo, hasContent } from "./deletes/deletes.ts";
 export { deletePage } from "./deletes/commands.ts";
 export { pageDeleted } from "./events/pages/deleted/deleted.ts";
@@ -156,7 +166,7 @@ export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
 
 /**
  * The graph: every page, by `canonicalize`: the blocks on it, its properties,
- * its tags, its aliases, the first spelling the fold saw for it, how many
+ * its tags, its aliases, its icon, the first spelling the fold saw for it, how many
  * times it has been deleted, and when it last changed.
  *
  * A key of `__proto__` is an ordinary key throughout (#62), and all of it
@@ -167,6 +177,7 @@ export type Graph = BlockState &
   PropertyState &
   TagState &
   AliasState &
+  IconState &
   DeleteState &
   RenameState &
   EditedState;
@@ -180,6 +191,7 @@ export const HANDLES: Record<
   | PropertyEvent["type"]
   | TagEvent["type"]
   | AliasEvent["type"]
+  | IconEvent["type"]
   | PagesEvent["type"]
   | BatchEvent["type"],
   number
@@ -188,6 +200,7 @@ export const HANDLES: Record<
   ...PROPERTY_HANDLES,
   ...TAG_HANDLES,
   ...ALIAS_HANDLES,
+  ...ICON_HANDLES,
   ...PAGE_HANDLES,
   ...BATCH_HANDLES,
 };
@@ -221,6 +234,7 @@ export const graphFold = {
     properties: emptyMap(),
     tags: emptyMap(),
     aliases: emptyMap(),
+    icons: emptyMap(),
     deletions: emptyMap(),
     renames: emptyMap(),
     edited: emptyMap(),
@@ -243,6 +257,7 @@ export const UNDO: Record<Exclude<keyof typeof HANDLES, BatchEvent["type"]>, Und
   ...PROPERTY_UNDO,
   ...TAG_UNDO,
   ...ALIAS_UNDO,
+  ...ICON_UNDO,
   ...PAGE_UNDO,
 };
 
@@ -284,7 +299,7 @@ function gated(event: Incoming): boolean {
 function readable(event: Incoming): boolean {
   return (
     gated(event) &&
-    [readsBlocks, readsProperties, readsTags, readsAliases, readsDeletes].some((reads) =>
+    [readsBlocks, readsProperties, readsTags, readsAliases, readsIcons, readsDeletes].some((reads) =>
       reads(event),
     )
   );
@@ -302,7 +317,7 @@ function one(state: Graph, event: Incoming): Graph {
  * from a device that had not seen it, lands on the page it was meant for,
  * rather than giving the old name content of its own and taking it back.
  * Every event that names its page as `page` is sent: blocks, properties,
- * tags, aliases and a page delete. A rename names two pages, and is not.
+ * tags, aliases, icons and a page delete. A rename names two pages, and is not.
  */
 function redirected(state: Graph, event: Incoming): Incoming {
   if (unnamed(event.type) === "page.renamed") return event;
@@ -320,18 +335,20 @@ function behindTheGate(state: Graph, event: { type: string; payload: unknown }):
     reduceProperties,
     reduceTags,
     reduceAliases,
+    reduceIcons,
     reduceDeletes,
   ];
   return slices.reduce((folded, slice) => slice(folded, event), state);
 }
 
-/** Every title something names now: blocks, links, properties, tags and aliases. */
+/** Every title something names now: blocks, links, properties, tags, aliases and icons. */
 function named(state: Graph): string[] {
   return [
     ...namedByBlocks(state),
     ...namedByProperties(state),
     ...namedByTags(state),
     ...namedByAliases(state),
+    ...namedByIcons(state),
   ];
 }
 
@@ -343,7 +360,16 @@ function named(state: Graph): string[] {
 // its names.
 
 /** What resolving reads. */
-type Names = BlockState & PropertyState & TagState & AliasState;
+type Names = BlockState & PropertyState & TagState & AliasState & IconState;
+
+/**
+ * The icon of the page `title` opens, as written, or undefined for none. The
+ * graph never reads it: what it means, and whether it can be drawn, is the
+ * reader's (#322).
+ */
+export function getIcon(state: Names, title: string): string | undefined {
+  return iconOf(state, resolve(state, title));
+}
 
 /**
  * The page `title` opens, as it shows: the page that claims it as an alias,
@@ -449,7 +475,7 @@ function offered(state: Graph): Map<string, string> {
  * then the rest, each A to Z, at most `limit`, each with the page it opens.
  * A page is any title something names now: blocks on it, a link to it, a
  * property on it, a property key, a tag on it, a tag pointing to it, an
- * alias, or a page with one. A day anything names is offered by its date
+ * alias, a page with one, or an icon on it. A day anything names is offered by its date
  * names too, so `Nov 4` finds `Nov 4th, 2024`. Each is offered once, in the
  * spelling it shows.
  */

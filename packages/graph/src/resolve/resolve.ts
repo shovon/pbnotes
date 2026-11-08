@@ -6,8 +6,8 @@
  *
  * The order, first that applies:
  *
- * 1. **A name with a page of its own opens itself:** blocks, properties or
- *    tags of its own. Nothing is ever hidden behind another name.
+ * 1. **A name with a page of its own opens itself:** blocks, properties,
+ *    tags or an icon of its own. Nothing is ever hidden behind another name.
  * 2. **A date name opens its day.**
  * 3. **A `YYYY-MM-DD` opens itself,** the day. No alias takes one over.
  * 4. **A name with aliases of its own opens itself.** One hop only, so
@@ -30,9 +30,10 @@ import type { BlockState } from "../blocks/blocks.ts";
 import * as forest from "../forest/forest.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { TagState } from "../tags/tags.ts";
+import type { IconState } from "../icons/icons.ts";
 
 /** What resolving reads: whether a name has a page of its own, and the aliases. */
-export type Holds = BlockState & PropertyState & TagState & AliasState;
+export type Holds = BlockState & PropertyState & TagState & AliasState & IconState;
 
 /** Resolving against one state, with what it needs built once. */
 export type Resolver = {
@@ -61,11 +62,12 @@ export function resolver(state: Holds): Resolver {
 
   let claimed: Map<string, string[]> | undefined;
 
-  /** Rule 1: blocks, properties or tags of its own. Aliases are rule 4. */
+  /** Rule 1: blocks, properties, tags or an icon of its own. Aliases are rule 4. */
   const own = (key: string) =>
     forest.rootsOf(state.forest, key).length > 0 ||
     (map.get(state.properties, key)?.size ?? 0) > 0 ||
-    (map.get(state.tags, key)?.size ?? 0) > 0;
+    (map.get(state.tags, key)?.size ?? 0) > 0 ||
+    map.has(state.icons, key);
 
   /** Whether rules 1 to 4 leave `key` to an alias. */
   const free = (key: string) =>

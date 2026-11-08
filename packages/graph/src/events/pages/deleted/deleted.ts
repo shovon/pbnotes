@@ -3,9 +3,9 @@
  * Everything about the event, from reading its payload to undoing it (#238).
  *
  * One event for the whole page, so a crash or a sync still arriving can never
- * leave it half deleted. It empties the page's blocks, properties, tags and
- * aliases at its key, as the page stands at this point in fold order: what is
- * written after it in fold order is a later fact, and stands. `titles` is left
+ * leave it half deleted. It empties the page's blocks, properties, tags,
+ * aliases and icon at its key, as the page stands at this point in fold
+ * order: what is written after it in fold order is a later fact, and stands. `titles` is left
  * alone, so a page a link keeps alive still shows the spelling it had. Tags
  * other pages hold that point to it stay: they are on those pages, as links
  * to it are.
@@ -21,6 +21,7 @@ import { recreate } from "../../blocks/created/created.ts";
 import { propertySet } from "../../properties/set/set.ts";
 import { tagAdded } from "../../tags/added/added.ts";
 import { aliasAdded } from "../../aliases/added/added.ts";
+import { iconSet } from "../../icons/set/set.ts";
 import { titleOf } from "../../../titles/titles.ts";
 import { DELETE } from "../../../deletes/deletes.ts";
 import type { PageDeleted } from "../../../deletes/deletes.ts";
@@ -42,16 +43,18 @@ export const PAGE_DELETED = DELETE.define({
     const properties = map.remove(state.properties, key);
     const tags = map.remove(state.tags, key);
     const aliases = map.remove(state.aliases, key);
+    const icons = map.remove(state.icons, key);
     const deletions = map.put(state.deletions, key, (map.get(state.deletions, key) ?? 0) + 1);
-    return { ...state, forest: blocks, texts, properties, tags, aliases, deletions };
+    return { ...state, forest: blocks, texts, properties, tags, aliases, icons, deletions };
   },
   undo: {
-    // Every block back in place, then every property, tag and alias, each
-    // spelled as the graph before the delete had it.
+    // Every block back in place, then every property, tag and alias, and the
+    // icon, each spelled as the graph before the delete had it.
     inverse: (state, { page }) => {
       const key = canonicalize(page);
       const title = titleOf(state, page);
       const blocks = pageBlocks(state, key);
+      const icon = map.get(state.icons, key);
       return [
         ...blocks.flatMap((block, at) =>
           recreate(title, block, at === 0 ? { first: true } : { after: blocks[at - 1].id }),
@@ -63,6 +66,7 @@ export const PAGE_DELETED = DELETE.define({
         ...[...(map.get(state.aliases, key) ?? [])].map((alias) =>
           aliasAdded(title, titleOf(state, alias)),
         ),
+        ...(icon === undefined ? [] : [iconSet(title, icon)]),
       ];
     },
     // A page that gained something since still takes its old content back

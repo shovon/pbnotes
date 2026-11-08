@@ -181,6 +181,7 @@ export function rename<S extends Holds>(state: S, it: PageRenamed): S {
     texts,
     properties: each(moved(state.properties, was, now), (props) => rekeyed(props, names, now)),
     tags: each(moved(state.tags, was, now), (set) => renamedIn(set, names, now)),
+    icons: moved(state.icons, was, now),
     aliases: answers.size === 0 ? aliases : map.put(aliases, now, answers),
     renames,
     edited: edited === undefined ? state.edited : map.put(map.remove(state.edited, was), now, edited),

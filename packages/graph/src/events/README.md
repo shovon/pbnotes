@@ -9,6 +9,7 @@ events/
   properties/       set/  removed/  slice.ts
   tags/             added/  removed/  slice.ts
   aliases/          added/  removed/  slice.ts
+  icons/            set/  removed/  slice.ts
   pages/            deleted/  renamed/  slice.ts
   batch/            the batch event, which holds others (#225)
 ```
