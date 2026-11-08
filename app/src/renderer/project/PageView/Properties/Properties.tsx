@@ -335,7 +335,7 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
       <button
         type="button"
         data-reveal
-        className="rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
+        className="cursor-pointer rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
         onClick={() => start(draft(), 'key')}
       >
         + Add property
