@@ -93,24 +93,26 @@ export default function Sidebar({
         {...hover}
         className={`${lift} fixed top-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] bottom-0 left-0 w-sidebar overflow-y-auto border-r border-line bg-bg px-2 py-3`}
       >
-        <button
-          type="button"
-          className={`${place} ${journal ? current : ""}`}
-          aria-current={journal ? "page" : undefined}
-          onClick={onJournal}
-        >
-          <Icon of={CalendarDays} />
-          <span className="truncate">Journal</span>
-        </button>
-        <button
-          type="button"
-          className={`${place} ${browsing ? current : ""}`}
-          aria-current={browsing ? "page" : undefined}
-          onClick={onAllPages}
-        >
-          <Icon of={Files} />
-          <span className="truncate">All pages</span>
-        </button>
+        <div className="flex flex-col gap-px">
+          <button
+            type="button"
+            className={`${place} ${journal ? current : ""}`}
+            aria-current={journal ? "page" : undefined}
+            onClick={onJournal}
+          >
+            <Icon of={CalendarDays} />
+            <span className="truncate">Journal</span>
+          </button>
+          <button
+            type="button"
+            className={`${place} ${browsing ? current : ""}`}
+            aria-current={browsing ? "page" : undefined}
+            onClick={onAllPages}
+          >
+            <Icon of={Files} />
+            <span className="truncate">All pages</span>
+          </button>
+        </div>
 
         <h2 className="mt-4 mb-1">
           <button
@@ -130,7 +132,9 @@ export default function Sidebar({
               Pages you open show up here.
             </p>
           ) : (
-            <ul>
+            // A hairline between entries, so two highlights side by side
+            // read as two.
+            <ul className="flex flex-col gap-px">
               {recent.map((page) => {
                 const here = isShowing(page, showing);
                 return (
