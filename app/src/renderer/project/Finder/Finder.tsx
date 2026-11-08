@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { FileText } from 'lucide-react';
+import PageIcon from '../PageIcon/PageIcon';
 import { hitOf, marked, nothing, rows, step } from './results/results';
 import type { Found, Hit, Row } from './results/results';
 import type { Keys } from '../opening/opening';
@@ -70,14 +72,22 @@ export default function Finder({ find, onOpen, onClose }: FinderProps) {
       onClick={(event) => pick(row, event)}
     >
       {row.kind === 'page' ? (
-        <div className="truncate">
-          <Marked text={row.title} query={query} />
-          {row.opens !== row.title && (
-            <span className={index === active ? 'text-on-accent/80' : 'text-muted'}>
-              {' → '}
-              {row.opens}
-            </span>
-          )}
+        <div className="flex items-center gap-2">
+          {/* The page it opens: an alias shows the icon of the page it is one of. */}
+          <PageIcon
+            icon={row.icon}
+            fallback={FileText}
+            className="inline-flex w-4 justify-center text-sm"
+          />
+          <span className="min-w-0 truncate">
+            <Marked text={row.title} query={query} />
+            {row.opens !== row.title && (
+              <span className={index === active ? 'text-on-accent/80' : 'text-muted'}>
+                {' → '}
+                {row.opens}
+              </span>
+            )}
+          </span>
         </div>
       ) : (
         <>

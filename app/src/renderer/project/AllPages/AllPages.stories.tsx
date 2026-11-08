@@ -78,6 +78,18 @@ export const ByTaggedBy: Story = { args: { start: toggle(INITIAL, 'taggedBy') } 
 /** Newest first; pages that never changed go last. */
 export const ByLastEdited: Story = { args: { start: toggle(INITIAL, 'edited') } };
 
+/** Pages with icons (#329): each before its title, `file-text` for one with none, and nothing raw for one this build can't draw. */
+export const WithIcons: Story = {
+  args: {
+    graph: bridge(
+      few.map((page) => {
+        const icon = { Mira: '🌲', 'Project Atlas': '🗺️', Oslo: '🇳🇴', Work: 'image:abc' }[page.title];
+        return icon === undefined ? page : { ...page, icon };
+      }),
+    ),
+  },
+};
+
 /** Still waiting for main. */
 export const Loading: Story = {
   args: {

@@ -21,6 +21,12 @@ const opens = new Map([
   ['Oct 12th, 2026', '2026-10-12'],
 ]);
 
+/** Pages with icons (#329). An alias's is the icon of the page it opens. */
+const icons = new Map([
+  ['Mira', '🌲'],
+  ['Project Atlas', '🗺️'],
+]);
+
 /** Block text as it is shown: links already read, so `[[Mira]]` is `Mira`. */
 const blocks: FoundBlock[] = [
   { id: 'b1', page: '2026-10-12', text: 'Call Mira about the lease' },
@@ -57,7 +63,11 @@ const find = async (query: string): Promise<Found> => {
           Number(!a.toLowerCase().startsWith(q)) - Number(!b.toLowerCase().startsWith(q)) ||
           a.localeCompare(b),
       )
-      .map((title) => ({ title, opens: opens.get(title) ?? title })),
+      .map((title) => {
+        const to = opens.get(title) ?? title;
+        const icon = icons.get(to);
+        return { title, opens: to, ...(icon === undefined ? {} : { icon }) };
+      }),
     blocks: blocks.filter((block) => has(block.text)),
   };
 };
@@ -116,5 +126,12 @@ export const Failed: Story = {
   },
   play: async ({ canvas, userEvent }) => {
     await userEvent.type(canvas.getByRole('combobox'), 'mira');
+  },
+};
+
+/** `atlas` typed: the page and its alias both draw its icon, the page each opens (#329). */
+export const WithIcons: Story = {
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.type(canvas.getByRole('combobox'), 'atlas');
   },
 };

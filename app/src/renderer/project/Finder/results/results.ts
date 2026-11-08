@@ -9,9 +9,10 @@ export type FoundBlock = { id: string; page: string; text: string };
 
 /**
  * A title that matched, and the page following it opens: another page for an
- * alias or a date name (#221), else the title itself.
+ * alias or a date name (#221), else the title itself. `icon` is the icon of
+ * the page it opens (#329), as main sent it.
  */
-export type FoundPage = { title: string; opens: string };
+export type FoundPage = { title: string; opens: string; icon?: string };
 
 /** What a search answers with: titles first, then blocks. */
 export type Found = { pages: readonly FoundPage[]; blocks: readonly FoundBlock[] };
