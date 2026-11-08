@@ -63,6 +63,8 @@
     "@pbnotes/graph": "*",
     "@pbnotes/ledger": "*",
     "electron-squirrel-startup": "^1.0.1",
+    "emojibase": "^18.0.0",
+    "emojibase-data": "^18.0.0",
     "katex": "^0.16.47",
     "lucide-react": "^1.70.0",
     "mdast-util-gfm-strikethrough": "^2.0.1",
