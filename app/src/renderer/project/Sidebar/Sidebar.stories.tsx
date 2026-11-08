@@ -23,6 +23,20 @@ type Story = StoryObj<typeof meta>;
 /** On a page: it heads the recent list, highlighted. */
 export const Open: Story = {};
 
+/**
+ * Pages with icons show them before their titles (#331); a page with none
+ * shows `file-text`, as does one whose icon this build can't draw.
+ */
+export const WithIcons: Story = {
+  args: {
+    icons: new Map([
+      ['Mira', '🌲'],
+      ['Reading list', '📚'],
+      ['Project Atlas', 'image:3f2a'],
+    ]),
+  },
+};
+
 /** On the journal: the Journal entry is highlighted, and no page is. */
 export const OnJournal: Story = { args: { showing: undefined } };
 

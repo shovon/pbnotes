@@ -146,6 +146,7 @@ export const GRAPH_CHANNELS = {
   take: 'graph:take',
   locate: 'graph:locate',
   renamed: 'graph:renamed',
+  icons: 'graph:icons',
   search: 'graph:search',
   find: 'graph:find',
   pages: 'graph:pages',
@@ -205,6 +206,14 @@ export type GraphApi = {
    * a rename, and is not in the answer.
    */
   renamed(names: readonly string[]): Promise<{ from: string; to: string }[]>;
+  /**
+   * The icon of the page each of `titles` opens (#331), as `[title, icon]`
+   * for those that have one, in the order asked: what the sidebar draws
+   * beside its Recent list, which keeps titles alone. Pairs, not an object,
+   * since a title can be `__proto__`. Any string the graph holds: the window
+   * draws what it can.
+   */
+  icons(titles: readonly string[]): Promise<[string, string][]>;
   /**
    * The titles of the project's pages that contain `query`, ignoring case:
    * those starting with it first, then A to Z, a handful at most, each with

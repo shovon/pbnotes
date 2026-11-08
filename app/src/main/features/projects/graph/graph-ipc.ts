@@ -125,6 +125,10 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
     session.renamed(requireStringArray(names, "names")),
   );
 
+  ipcMain.handle(GRAPH_CHANNELS.icons, (_event, titles: unknown) =>
+    session.icons(requireStringArray(titles, "titles")),
+  );
+
   ipcMain.handle(GRAPH_CHANNELS.search, (_event, query: unknown) =>
     session.search(requireString(query, "query")),
   );

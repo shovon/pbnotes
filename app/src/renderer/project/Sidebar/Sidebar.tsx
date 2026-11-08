@@ -1,5 +1,6 @@
-import { CalendarDays, ChevronDown, ChevronRight, Files } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronRight, Files, FileText } from "lucide-react";
 import Icon from "../../Icon/Icon";
+import PageIcon from "../PageIcon/PageIcon";
 import { isShowing } from "./recent/recent";
 import type { Keys } from "../opening/opening";
 
@@ -27,6 +28,11 @@ import type { Keys } from "../opening/opening";
 type Props = {
   /** Titles, newest first. */
   recent: readonly string[];
+  /**
+   * The icon of each recent page that has one, by its title as `recent`
+   * holds it (#331). A page with none shows `file-text`.
+   */
+  icons?: ReadonlyMap<string, string>;
   /** The page on screen, or undefined on the journal or the list. */
   showing: string | undefined;
   /** Whether the list of every page is on screen. */
@@ -48,15 +54,14 @@ type Props = {
   onPointerLeave?: () => void;
 };
 
-const entry =
-  "block w-full cursor-pointer truncate rounded-md px-2 py-1 text-left text-sm hover:bg-line/50";
 const current = "bg-line/50 font-medium";
-/** A fixed entry: an icon, then its label, which is cut short if need be. */
+/** An entry: an icon, then its label, which is cut short if need be. */
 const place =
   "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-line/50";
 
 export default function Sidebar({
   recent,
+  icons = NO_ICONS,
   showing,
   browsing,
   onJournal,
@@ -141,13 +146,20 @@ export default function Sidebar({
                   <li key={page}>
                     <button
                       type="button"
-                      className={`${entry} ${here ? current : ""}`}
+                      className={`${place} ${here ? current : ""}`}
                       aria-current={here ? "page" : undefined}
                       // Truncated to one line; the whole title on hover.
                       title={page}
                       onClick={(event) => onOpen(page, event)}
                     >
-                      {page}
+                      {/* An emoji in the 16px slot a Lucide icon takes, so
+                          every title lines up. */}
+                      <PageIcon
+                        icon={icons.get(page)}
+                        fallback={FileText}
+                        className="inline-flex w-4 justify-center text-sm"
+                      />
+                      <span className="min-w-0 truncate">{page}</span>
                     </button>
                   </li>
                 );
@@ -159,3 +171,6 @@ export default function Sidebar({
     </>
   );
 }
+
+/** No icons known yet: one map, so the default is the same each render. */
+const NO_ICONS: ReadonlyMap<string, string> = new Map();
