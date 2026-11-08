@@ -25,6 +25,6 @@ export type WindowColors = Readonly<{
 // `bar` and `fg` tokens (`renderer/index.css`), repeated because the main
 // process cannot read them — change one, change the other.
 export const windowColors = (dark: boolean): WindowColors => {
-  const [bg, bar, fg] = dark ? ['#1b1b1d', '#28282b', '#ececee'] : ['#ffffff', '#eeeef0', '#1c1c1e']
+  const [bg, bar, fg] = dark ? ['#1b1b1d', '#222224', '#ececee'] : ['#ffffff', '#f6f6f7', '#1c1c1e']
   return { backgroundColor: bg, titleBarOverlay: { color: bar, symbolColor: fg } }
 }
