@@ -4,6 +4,9 @@ import { canonicalize } from '@pbnotes/graph';
 import type { Property } from '@pbnotes/graph';
 import { commit, draft, editable, keyless, shown, suggested } from './rows';
 import type { Open, Write } from './rows';
+import { TableProperties } from 'lucide-react';
+import Icon from '../../../Icon/Icon';
+import { arrive } from '../arrive';
 
 type Props = {
   /** The rows as drawn: main's, with this view's writes in flight over them. */
@@ -36,7 +39,7 @@ const input = 'bg-transparent outline-none placeholder:text-muted';
  * open row is keyed by the key it was opened on, so it stays mounted, caret
  * and all, while new rows arrive around it, even one without it.
  *
- * "+ Add property" is a button under the table, drawn like "+ Add tag", and
+ * "Add property" is a button under the table, drawn like "Add tag", and
  * marked `data-reveal` the same way. With
  * no rows and none open there is no table, and the section is marked
  * `data-bare` for a holder that sets it beside something else while there is
@@ -60,6 +63,18 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
   const keyBox = useRef<HTMLDivElement>(null);
   const keyInput = useRef<HTMLInputElement>(null);
   const valueInput = useRef<HTMLInputElement>(null);
+
+  /**
+   * Set by "Add property" pressed while the section is bare: the draft opens
+   * under the title, not where the button was, so it is pointed at once
+   * drawn (`arrive`).
+   */
+  const arriving = useRef(false);
+  useEffect(() => {
+    if (!open || !arriving.current) return;
+    arriving.current = false;
+    arrive(keyBox.current?.parentElement);
+  }, [open]);
 
   /** Points at the key, the cell that has to change before the row can be left. */
   const flash = () =>
@@ -308,7 +323,7 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
   const at = open?.from && canonicalize(open.from.key);
   const drawn = shown(rows, open);
 
-  /** Nothing in the table: the button alone, drawn like "+ Add tag". */
+  /** Nothing in the table: the button alone, drawn like "Add tag". */
   const bare = drawn.length === 0 && !open;
 
   return (
@@ -335,10 +350,14 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
       <button
         type="button"
         data-reveal
-        className="rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
-        onClick={() => start(draft(), 'key')}
+        className="inline-flex cursor-pointer items-center gap-1 rounded-md py-0.5 text-muted hover:text-fg focus-visible:text-fg"
+        onClick={() => {
+          arriving.current = bare;
+          start(draft(), 'key');
+        }}
       >
-        + Add property
+        <Icon of={TableProperties} />
+        Add property
       </button>
     </section>
   );

@@ -44,7 +44,7 @@ export const WithRows: Story = {
   },
 };
 
-/** Click "+ Add property", then type `Status` and leave: refused, and the key flashes. */
+/** Click "Add property", then type `Status` and leave: refused, and the key flashes. */
 export const TakenKey: Story = {
   args: { rows: [{ key: 'Status', value: 'doing' }] },
 };

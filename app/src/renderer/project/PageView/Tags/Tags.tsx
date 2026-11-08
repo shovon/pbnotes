@@ -2,6 +2,9 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { FocusEvent, KeyboardEvent } from 'react';
 import { canonicalize } from '@pbnotes/graph';
 import { adding, offered } from './adding/adding';
+import { Tag } from 'lucide-react';
+import Icon from '../../../Icon/Icon';
+import { arrive } from '../arrive';
 
 type Props = {
   /** The tags as drawn: main's, with this view's writes in flight over them. */
@@ -18,13 +21,15 @@ type Props = {
  * A row of tags as chips, each a link to its page, and an input to add one:
  * the tags of whatever it is handed, which it never names.
  *
- * "+ Add tag" is marked `data-reveal`: whoever holds the row may hide it
+ * "Add tag" is marked `data-reveal`: whoever holds the row may hide it
  * until wanted, as `PageView` does until its header is hovered or focused.
  * The open input is not marked, so it stays shown until it closes.
  *
- * With no chips the row is marked `data-bare`, for a holder that lays it
- * out differently until the first tag is added. An open input does not
- * count: typing the first tag moves nothing. While the input is open the
+ * With no chips and no input open the row is marked `data-bare`, for a
+ * holder that lays it out differently until there is a tag. Opening the
+ * input counts as having one: it opens where the chips will be, and is
+ * pointed at (`arrive`), since that is not where "Add tag" was. Closing it
+ * with nothing added makes the row bare again. While the input is open the
  * row is marked `data-typing`.
  *
  * Enter adds what is typed and keeps the input open for the next. Escape
@@ -35,6 +40,13 @@ export default function Tags({ tags, findTags, onAdd, onRemove }: Props) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState('');
   const chips = useRef(new Map<string, HTMLElement>());
+  const input = useRef<HTMLInputElement>(null);
+
+  /* The first tag's input opens where the chips will be, not where "Add tag"
+     was: point at it. Not on later opens, which open where the button was. */
+  useEffect(() => {
+    if (open && tags.length === 0) arrive(input.current);
+  }, [open]);
 
   const close = () => {
     setOpen(false);
@@ -118,7 +130,7 @@ export default function Tags({ tags, findTags, onAdd, onRemove }: Props) {
     <div
       aria-label="Tags"
       role="group"
-      data-bare={tags.length === 0 ? '' : undefined}
+      data-bare={tags.length === 0 && !open ? '' : undefined}
       data-typing={open ? '' : undefined}
       className="mb-3 flex flex-wrap items-start gap-1.5 text-sm"
     >
@@ -154,6 +166,7 @@ export default function Tags({ tags, findTags, onAdd, onRemove }: Props) {
       {open ? (
         <span className="relative">
           <input
+            ref={input}
             autoFocus
             aria-label="Tag"
             placeholder="Tag"
@@ -200,10 +213,11 @@ export default function Tags({ tags, findTags, onAdd, onRemove }: Props) {
         <button
           type="button"
           data-reveal
-          className="rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
+          className="inline-flex cursor-pointer items-center gap-1 rounded-md py-0.5 not-first:ml-1.5 text-muted hover:text-fg focus-visible:text-fg"
           onClick={() => setOpen(true)}
         >
-          + Add tag
+          <Icon of={Tag} />
+          Add tag
         </button>
       )}
     </div>

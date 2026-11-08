@@ -98,16 +98,16 @@ export const WithProperties: Story = {
   },
 };
 
-/** A new page, nothing on it yet: "+ Add tag" and "+ Add property" sit to
-    the right of the title, and keep their room but show only while that
-    line is hovered or holds focus. Hover the title to see them; adding a
-    property puts the properties on a line of their own. */
+/** A new page, nothing on it yet: "Add tag" and "Add property" sit
+    above the title, and keep their room but show only while the header is
+    hovered or holds focus. Hover the title to see them; adding a tag or a
+    property moves it under the title. */
 export const NewPage: Story = {
   args: { page: page('Shed', []), properties: [], tags: [] },
 };
 
 /** A page with tags: chips on the line under the title, above the properties, each a
-    link to the page it names. "+ Add tag" shows on hover, as above. */
+    link to the page it names. "Add tag" shows on hover, as above. */
 export const WithTags: Story = {
   args: {
     page: page('Mira', [block('16', 'Prefers #[[the good coffee]].')]),
@@ -117,7 +117,7 @@ export const WithTags: Story = {
 };
 
 /** A page with tags and no properties: the tags take the line under the
-    title, and "+ Add property" sits to the right of "+ Add tag". */
+    title, and "Add property" sits above the title. */
 export const TagsOnly: Story = {
   args: {
     page: page('Mira', [block('16', 'Prefers #[[the good coffee]].')]),
