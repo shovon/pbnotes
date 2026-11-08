@@ -1,8 +1,8 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Place } from '../../../shared/graph.ts';
-import { keep } from './held.ts';
+import type { Place, PlaceView } from '../../../shared/graph.ts';
+import { heldIcon, keep, tabIcon } from './held.ts';
 import type { Held } from './held.ts';
 
 const at = (place: Place | undefined, version: number): Held => ({
@@ -40,4 +40,27 @@ test('the first answer for a new place replaces a view of the old one, whatever 
 test('a rezoom out to the page is the page, with or without the block key', () => {
   const next = at({ page: 'Mira', block: undefined }, 5);
   assert.equal(keep(null, mira, next), next);
+});
+
+test('a held view gives its page and icon, and nothing for the journal or no icon (#323)', () => {
+  const view = (icon?: string): PlaceView => ({
+    version: 1,
+    showing: [
+      { page: { title: 'Mira', blocks: [] }, references: [], links: 0, properties: [], tags: [], taggedBy: [], deletions: 0, refsTo: 0, ...(icon === undefined ? {} : { icon }) },
+    ],
+    previews: [],
+  });
+  assert.deepEqual(heldIcon({ place: { page: 'Mira' }, view: view('🌲') }), { page: 'Mira', icon: '🌲' });
+  assert.deepEqual(heldIcon({ place: { page: 'Mira', block: 'b' }, view: view('🌲') }), { page: 'Mira', icon: '🌲' });
+  assert.equal(heldIcon({ place: { page: 'Mira' }, view: view() }), undefined);
+  assert.equal(heldIcon({ place: undefined, view: view('🌲') }), undefined);
+});
+
+test("a tab draws the icon held only while it is on that page (#323)", () => {
+  const kept = { page: 'Mira', icon: '🌲' };
+  assert.equal(tabIcon(kept, { page: 'Mira' }), '🌲');
+  assert.equal(tabIcon(kept, { page: 'Mira', block: 'b' }), '🌲');
+  assert.equal(tabIcon(kept, { page: 'Atlas' }), undefined);
+  assert.equal(tabIcon(kept, undefined), undefined);
+  assert.equal(tabIcon(undefined, { page: 'Mira' }), undefined);
 });

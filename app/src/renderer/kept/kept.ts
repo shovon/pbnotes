@@ -9,6 +9,7 @@
 import type { BenchApi } from '../../shared/bench.ts';
 import { SIDEBAR_SLOTS } from '../../shared/sidebar.ts';
 import type { SidebarState } from '../../shared/sidebar.ts';
+import { ICON_SLOTS } from '../../shared/icons.ts';
 import type { Kept } from '../project/ProjectView.tsx';
 
 type Bench = Pick<BenchApi, 'get' | 'set'>;
@@ -59,6 +60,9 @@ export function keptOnBench<T>(
 export const titles: Check<string[]> = (raw) =>
   Array.isArray(raw) && raw.every((item) => typeof item === 'string') ? raw : undefined;
 
+/** A list of emoji: the same shape as a list of titles, checked the same way. */
+export const emoji: Check<string[]> = titles;
+
 /** Whether the sidebar, or its Recent section, is collapsed. */
 export const sidebarState: Check<SidebarState> = (raw) => {
   const collapsed = (raw as { collapsed?: unknown } | null)?.collapsed;
@@ -70,14 +74,17 @@ export function sidebarKept(bench: Bench, report: (error: unknown) => void) {
   const recent = keptOnBench(bench, SIDEBAR_SLOTS.recentPages, titles, report);
   const sidebar = keptOnBench(bench, SIDEBAR_SLOTS.sidebar, sidebarState, report);
   const section = keptOnBench(bench, SIDEBAR_SLOTS.recentSection, sidebarState, report);
+  const icons = keptOnBench(bench, ICON_SLOTS.recentEmoji, emoji, report);
   return {
     recentPages: recent.kept,
     sidebar: sidebar.kept,
     recentSection: section.kept,
+    recentEmoji: icons.kept,
     off: () => {
       recent.off();
       sidebar.off();
       section.off();
+      icons.off();
     },
   };
 }

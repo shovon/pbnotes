@@ -21,6 +21,7 @@ import { registerWindowIpc } from "./features/window/window-ipc";
 import { WINDOW_CHANNELS } from "../shared/window";
 import { benchFiles } from "./features/bench/bench-store";
 import { sidebarSlots } from "./features/sidebar/sidebar-slots";
+import { iconSlots } from "./features/icons/icon-slots/icon-slots";
 import { rendererSource } from "./renderer-source/renderer-source";
 import {
   mainWindowOptions,
@@ -211,10 +212,11 @@ app.on("ready", () => {
   // bench"), so no handle reaches more than one project. It is told the open
   // project by `currentProject`, not `requireProject`: it lives in
   // `userData`, so a project whose folder can't be reached still has its
-  // bench. The product declares its slots here: the sidebar's (#184).
+  // bench. The product declares its slots here: the sidebar's (#184), and
+  // the emoji picked lately for page icons (#323).
   const bench = createOpenBench(
     benchFiles(path.join(app.getPath("userData"), "bench")),
-    sidebarSlots,
+    new Map([...sidebarSlots, ...iconSlots]),
     () => projects.currentProject()?.id,
   );
   registerBenchIpc(bench);

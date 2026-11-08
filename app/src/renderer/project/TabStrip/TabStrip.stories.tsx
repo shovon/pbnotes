@@ -38,6 +38,23 @@ export const Several: Story = {
 };
 
 /**
+ * Pages with icons show them before their names (#323). A page whose icon
+ * this build can't draw (an image icon from a newer one) shows its name
+ * alone, as the journal does.
+ */
+export const WithIcons: Story = {
+  args: {
+    tabs: [
+      { id: 'a', label: 'Journal' },
+      { id: 'b', label: 'Reading list', icon: '📚' },
+      { id: 'c', label: 'Project Atlas', icon: '🗺️' },
+      { id: 'd', label: 'Shed', icon: 'image:3f2a' },
+    ],
+    active: 'b',
+  },
+};
+
+/**
  * A name too long for its tab is cut short; the full name is its tooltip.
  * The tab is no wider for it than the short one beside it.
  */
