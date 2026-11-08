@@ -337,7 +337,7 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
       <button
         type="button"
         data-reveal
-        className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
+        className="inline-flex cursor-pointer items-center gap-1 rounded-md py-0.5 text-muted hover:text-fg focus-visible:text-fg"
         onClick={() => start(draft(), 'key')}
       >
         <Icon of={TableProperties} />

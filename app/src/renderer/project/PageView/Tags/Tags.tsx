@@ -202,7 +202,7 @@ export default function Tags({ tags, findTags, onAdd, onRemove }: Props) {
         <button
           type="button"
           data-reveal
-          className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
+          className="inline-flex cursor-pointer items-center gap-1 rounded-md py-0.5 not-first:ml-1.5 text-muted hover:text-fg focus-visible:text-fg"
           onClick={() => setOpen(true)}
         >
           <Icon of={Tag} />
