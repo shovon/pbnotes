@@ -220,14 +220,14 @@ export default function App({ projects: api, graph, bench, closeWindow, onTab, n
         {/* Where the open project puts its sidebar toggle: first, before the
             picker. A portal adds to the end of what it is handed, so the
             project is handed this rather than the header. */}
-        {/* While the sidebar is open, the toggle and picker take at least
-            the sidebar's width, so what the page adds after them (the way
-            back) starts past its edge rather than over it. A long project
-            name pushes it further, never under. */}
-        {/* Never wider than that either (#303), sidebar showing or not: a
-            long project name is cut short rather than pushed into the tabs,
-            and the picker shows it whole when pointed at. */}
-        <div className="flex max-w-[calc(var(--spacing-sidebar)-env(titlebar-area-x,5rem))] min-w-0 shrink-0 items-center [:root:has([data-sidebar])_&]:min-w-[calc(var(--spacing-sidebar)-env(titlebar-area-x,5rem))]">
+        {/* The toggle and picker take the sidebar's width, sidebar showing
+            or not, whatever the project is called: the picker is the same
+            width for every project rather than jumping with its name, and
+            what the page adds after them (the way back) starts past the
+            sidebar's edge and stays put. A long project name is cut short
+            rather than pushed into the tabs (#303), and the picker shows it
+            whole when pointed at. */}
+        <div className="flex w-[calc(var(--spacing-sidebar)-env(titlebar-area-x,5rem))] min-w-0 shrink-0 items-center">
           <div id="titlebar-start" className="contents" />
           {project && (
             <ProjectPicker
