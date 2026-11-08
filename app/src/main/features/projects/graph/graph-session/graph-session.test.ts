@@ -244,6 +244,23 @@ test("tag writes are recorded in order with the block writes around them", async
   assert.deepEqual(seen.showing[0].taggedBy, ["Atlas"]);
 });
 
+test("icon writes are recorded in order with the block writes around them (#322)", async () => {
+  const { view, hold } = ledger();
+  const { graph } = session(view);
+  const release = hold();
+  const writes = [
+    graph.run({ type: "addBlock", id: "a1", title: "Mira", text: "hi" }),
+    graph.run({ type: "setIcon", title: "Mira", icon: "🌲" }),
+    graph.run({ type: "setIcon", title: "Atlas", icon: "🗺️" }),
+    graph.run({ type: "removeIcon", title: "atlas" }),
+    graph.run({ type: "setIcon", title: "mira", icon: "🌊" }),
+  ];
+  release();
+  await Promise.all(writes);
+  assert.equal((await graph.view({ page: "Mira" }, TODAY)).showing[0].icon, "🌊");
+  assert.equal((await graph.view({ page: "Atlas" }, TODAY)).showing[0].icon, undefined);
+});
+
 test("a refused rename writes nothing and does not hold up the writes behind it", async () => {
   const { view } = ledger();
   const { graph } = session(view);
@@ -339,6 +356,7 @@ const held = (graph: Graph) => ({
   properties: graph.properties,
   tags: graph.tags,
   aliases: graph.aliases,
+  icons: graph.icons,
 });
 
 /** Ids for the blocks the tests write. */
@@ -347,8 +365,8 @@ const B = "b1";
 const C = "c1";
 
 /**
- * `Foo` with `a1` holding `b1` under it and `c1` after it, a property, a tag
- * and an alias-free page `Bar`: something every command can change.
+ * `Foo` with `a1` holding `b1` under it and `c1` after it, a property, a tag,
+ * an icon and an alias-free page `Bar`: something every command can change.
  */
 async function written() {
   const it = ledger();
@@ -360,6 +378,7 @@ async function written() {
     { type: "addBlock", id: C, title: "Foo", text: "C", after: A },
     { type: "setProperty", title: "Foo", key: "Owner", value: "Mira" },
     { type: "addTag", title: "Foo", tag: "Work" },
+    { type: "setIcon", title: "Foo", icon: "🌲" },
     { type: "addBlock", id: "d1", title: "Bar", text: "D" },
   ] as const) {
     await graph.run(command);
@@ -388,6 +407,8 @@ test("every command is undone to the graph before it, and redone to the graph af
     { type: "renameProperty", title: "Foo", from: "Owner", to: "Author" },
     { type: "addTag", title: "Foo", tag: "Home" },
     { type: "removeTag", title: "Foo", tag: "Work" },
+    { type: "setIcon", title: "Foo", icon: "🌊" },
+    { type: "removeIcon", title: "Foo" },
     { type: "deletePage", title: "Foo" },
   ] as const;
   for (const command of commands) {

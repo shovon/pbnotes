@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blockCreated, blockEdited, pageDeleted, graphFold, propertySet, tagAdded } from "@pbnotes/graph";
+import { blockCreated, blockEdited, iconSet, pageDeleted, graphFold, propertySet, tagAdded } from "@pbnotes/graph";
 import type { Graph } from "@pbnotes/graph";
 import { CUT_BLOCKS, CUTS, DAYS, getView } from "./place-view.ts";
 
@@ -122,6 +122,25 @@ test("every page in the view carries its tags and what tags it, except under a z
   const zoomed = getView(view, { page: TODAY, block: "b1" }, TOMORROW);
   assert.deepEqual(zoomed.showing[0].tags, []);
   assert.deepEqual(zoomed.showing[0].taggedBy, []);
+});
+
+test("every page in the view carries its icon in every mode, and none when it has none (#322)", () => {
+  const view = folded(
+    blockCreated(TODAY, "a day", undefined, "b1"),
+    iconSet(TODAY, "☀️"),
+    iconSet("Mira", "🌲"),
+  );
+  const journal = getView(view, undefined, TOMORROW);
+  assert.deepEqual(
+    journal.showing.map((shown) => [shown.page.title, shown.icon]),
+    [
+      [TOMORROW, undefined],
+      [TODAY, "☀️"],
+    ],
+  );
+  assert.equal("icon" in journal.showing[0], false, "absent, not undefined");
+  assert.equal(getView(view, { page: "mira" }, TOMORROW).showing[0].icon, "🌲");
+  assert.equal(getView(view, { page: TODAY, block: "b1" }, TOMORROW).showing[0].icon, "☀️");
 });
 
 /** A day `n` days before `TODAY`, as the journal names it. */

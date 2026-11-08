@@ -6,6 +6,7 @@ import type { BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { TagState } from "../tags/tags.ts";
 import type { AliasState } from "../aliases/aliases.ts";
+import type { IconState } from "../icons/icons.ts";
 import { hasContent } from "./deletes.ts";
 import type { PagesEvent } from "../events/pages/slice.ts";
 import { pageDeleted } from "../events/pages/deleted/deleted.ts";
@@ -17,7 +18,7 @@ import { pageDeleted } from "../events/pages/deleted/deleted.ts";
  * event. `GraphView` is one.
  */
 export type DeletesView = {
-  readonly state: BlockState & PropertyState & TagState & AliasState;
+  readonly state: BlockState & PropertyState & TagState & AliasState & IconState;
   /** Resolves once the event is durable and folded into `state`. */
   dispatch(v: number, type: PagesEvent["type"], payload: unknown): Promise<unknown>;
 };

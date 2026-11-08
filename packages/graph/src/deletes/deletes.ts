@@ -2,8 +2,8 @@
  * Deleting a page: the state a delete keeps, and the reads around it. The
  * event is in `events/pages/`, and the command is `commands.ts` (#238).
  *
- * Where the block, property, tag and alias folds meet, because a page delete
- * empties all four. One event for the whole page, so a crash or a sync still
+ * Where the block, property, tag, alias and icon folds meet, because a page
+ * delete empties all five. One event for the whole page, so a crash or a sync still
  * arriving can never leave it half deleted. Nothing leaves the disk: the
  * event records that the user was done with the page.
  *
@@ -22,6 +22,7 @@ import type { BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
 import type { TagState } from "../tags/tags.ts";
 import type { AliasState } from "../aliases/aliases.ts";
+import type { IconState } from "../icons/icons.ts";
 
 /**
  * How many times each page has been deleted, by `canonicalize`. A window on a
@@ -31,13 +32,13 @@ export type DeleteState = {
   readonly deletions: ImmutableMap<number>;
 };
 
-/** What a delete folds over: the blocks, properties, tags and aliases it empties. */
-export type Holds = BlockState & PropertyState & TagState & AliasState & DeleteState;
+/** What a delete folds over: the blocks, properties, tags, aliases and icon it empties. */
+export type Holds = BlockState & PropertyState & TagState & AliasState & IconState & DeleteState;
 
 /** `define` and `slice` for the delete event. */
 export const DELETE = over<Holds>();
 
-/** That the user was done with `page`: its blocks, its properties and its tags. */
+/** That the user was done with `page`: its blocks, its properties, its tags and its icon. */
 export type PageDeleted = { page: string };
 
 
@@ -51,7 +52,7 @@ export function getDeletions(state: DeleteState, page: string): number {
 
 /** Whether a delete of `page` would change anything: something is on it. */
 export function hasContent(
-  state: BlockState & PropertyState & TagState & AliasState,
+  state: BlockState & PropertyState & TagState & AliasState & IconState,
   page: string,
 ): boolean {
   const key = canonicalize(page);
@@ -59,7 +60,8 @@ export function hasContent(
     forest.rootsOf(state.forest, key).length > 0 ||
     (map.get(state.properties, key)?.size ?? 0) > 0 ||
     (map.get(state.tags, key)?.size ?? 0) > 0 ||
-    (map.get(state.aliases, key)?.size ?? 0) > 0
+    (map.get(state.aliases, key)?.size ?? 0) > 0 ||
+    map.has(state.icons, key)
   );
 }
 
