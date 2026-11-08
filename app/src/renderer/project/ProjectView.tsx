@@ -46,6 +46,7 @@ export type ProjectViewGraph = PageViewGraph &
     | 'view'
     | 'locate'
     | 'renamed'
+    | 'icons'
     | 'find'
     | 'pages'
     | 'addImage'
@@ -365,13 +366,43 @@ export default function ProjectView({
     setRecent((recent) => (recent.loaded ? { ...recent, list: visit(recent.list, page) } : recent));
   }, [place?.page]);
 
+  /**
+   * The icon of each page in Recent (#331), by its title there. Asked again
+   * whenever the list changes and whenever the fold moves, since an icon can
+   * change in another window or on another machine; an answer to an older
+   * ask is dropped. A failure keeps what was drawn: the tab's own fetch
+   * already says when the project cannot be reached.
+   */
+  const [recentPageIcons, setRecentPageIcons] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const iconAsks = useRef(0);
+  const askIcons = useRef(() => undefined as void);
+  askIcons.current = () => {
+    const ask = ++iconAsks.current;
+    const titles = recent.list;
+    if (titles.length === 0) return setRecentPageIcons(new Map());
+    void graph.icons(titles).then(
+      (found) => {
+        if (ask === iconAsks.current) setRecentPageIcons(new Map(found));
+      },
+      (): void => undefined,
+    );
+  };
+  useEffect(() => {
+    if (recent.loaded) askIcons.current();
+  }, [recent.loaded, recent.list]);
+
   // Once Recent has loaded, since it is kept: a page in it may have been
   // renamed while the app was closed. And on every change after that.
   useEffect(() => {
     if (recent.loaded) followRenames.current();
   }, [recent.loaded]);
   useEffect(() => {
-    const off = graph.onChanged(() => followRenames.current());
+    const off = graph.onChanged(() => {
+      followRenames.current();
+      askIcons.current();
+    });
     // A stubbed bridge — Storybook's — answers with something that is not an
     // unsubscribe, and a cleanup that is not a function throws.
     return () => {
@@ -494,6 +525,7 @@ export default function ProjectView({
       {(!collapsed || peek.peeking) && (
         <Sidebar
           recent={recent.list}
+          icons={recentPageIcons}
           showing={place?.page}
           browsing={browsing}
           onJournal={() => step(home)}

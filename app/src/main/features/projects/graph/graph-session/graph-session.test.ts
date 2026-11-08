@@ -277,6 +277,19 @@ test("a refused rename writes nothing and does not hold up the writes behind it"
   ]);
 });
 
+test("icons answers the icon of the page each title opens, in the order asked, for those with one (#331)", async () => {
+  const { view } = ledger();
+  const { graph } = session(view);
+  await graph.run({ type: "setIcon", title: "Mira", icon: "🌲" });
+  await graph.run({ type: "setIcon", title: "__proto__", icon: "📦" });
+  await graph.run({ type: "addBlock", id: "a1", title: "Atlas", text: "no icon" });
+  assert.deepEqual(await graph.icons(["Atlas", "mira", "Nowhere", "__proto__"]), [
+    ["mira", "🌲"],
+    ["__proto__", "📦"],
+  ]);
+  assert.deepEqual(await graph.icons([]), []);
+});
+
 test("find lists the matching titles, then the matching blocks with their page", async () => {
   const { view } = ledger();
   const { graph } = session(view);

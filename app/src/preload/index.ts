@@ -49,6 +49,7 @@ const graph: GraphApi = {
   },
   locate: (blockId) => ipcRenderer.invoke(GRAPH_CHANNELS.locate, blockId),
   renamed: (names) => ipcRenderer.invoke(GRAPH_CHANNELS.renamed, names),
+  icons: (titles) => ipcRenderer.invoke(GRAPH_CHANNELS.icons, titles),
   search: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.search, query),
   find: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.find, query),
   pages: () => ipcRenderer.invoke(GRAPH_CHANNELS.pages),

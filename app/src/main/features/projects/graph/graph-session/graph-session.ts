@@ -23,6 +23,7 @@ import {
   listPages,
   locateBlock,
   getRenamed,
+  getIcon,
   moveBlock,
   moveBlocks,
   outdentBlock,
@@ -201,6 +202,13 @@ export function createGraphSession(
     locate: async (blockId: string) =>
       locateBlock((await open.require()).state, blockId),
     renamed: async (names: readonly string[]) => getRenamed((await open.require()).state, names),
+    icons: async (titles: readonly string[]): Promise<[string, string][]> => {
+      const { state } = await open.require();
+      return titles.flatMap((title): [string, string][] => {
+        const icon = getIcon(state, title);
+        return icon === undefined ? [] : [[title, icon]];
+      });
+    },
     search: async (query: string): Promise<PageMatch[]> =>
       searchNames((await open.require()).state, query),
     find: async (query: string): Promise<Matches> => {
