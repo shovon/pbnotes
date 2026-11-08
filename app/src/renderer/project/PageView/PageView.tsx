@@ -1,5 +1,5 @@
 import { Fragment, useContext, useEffect, useRef, useState } from 'react';
-import { locate, predict, predictProperties, predictTags } from '@pbnotes/graph';
+import { locate, predict, predictIcon, predictProperties, predictTags } from '@pbnotes/graph';
 import type { Block as BlockType, Page, Property } from '@pbnotes/graph';
 import type { GraphApi } from '../../../shared/graph';
 import type { Act } from '../../ui';
@@ -10,6 +10,7 @@ import Properties from './Properties/Properties';
 import type { Write } from './Properties/rows';
 import Tags from './Tags/Tags';
 import Title from './Title/Title';
+import HeaderIcon from './HeaderIcon/HeaderIcon';
 import {
   add,
   addTag,
@@ -17,9 +18,11 @@ import {
   indent,
   outdent,
   remove,
+  removeIcon,
   removeProperty,
   removeTag,
   renameProperty,
+  setIcon,
   setProperty,
 } from './steps/steps';
 import type { Step, StepsGraph } from './steps/steps';
@@ -83,6 +86,12 @@ type Props = {
   tags?: string[];
   /** The pages that point to it. Left off, as `references` is, where none are drawn. */
   taggedBy?: string[];
+  /**
+   * Its icon as main last showed it (#323), null for none. Left off where
+   * none is drawn. Drawn only on the page's own view: not on a journal day
+   * (`linked`), under a zoom, or in a cut.
+   */
+  icon?: string | null;
   /**
    * Shown under another page as what links to it: a cut of this page — the
    * blocks that link, not all of them — decided in main and read again
@@ -148,6 +157,7 @@ export default function PageView({
   properties: sentProperties,
   tags: sentTags,
   taggedBy,
+  icon: sentIcon,
   reference = false,
   zoom,
   onZoom,
@@ -217,6 +227,8 @@ export default function PageView({
     sentProperties && predictProperties(sentProperties, sent.title, inFlight);
   /** Its tags as they are drawn, the same way. */
   const tags = sentTags && predictTags(sentTags, sent.title, inFlight);
+  /** Its icon as it is drawn, the same way. */
+  const icon = sentIcon === undefined ? undefined : predictIcon(sentIcon ?? undefined, sent.title, inFlight);
 
   /**
    * Tab or Shift+Tab on a block, as the step it is on `blocks`. Undefined at
@@ -570,6 +582,10 @@ export default function PageView({
   const tagPage = (tag: string) => act(() => write(addTag(graph, title, tag)));
   const untagPage = (tag: string) => act(() => write(removeTag(graph, title, tag)));
 
+  /** An emoji picked for the page's icon, and *Remove* (#323). */
+  const iconPage = (emoji: string) => act(() => write(setIcon(graph, title, emoji)));
+  const unIconPage = () => act(() => write(removeIcon(graph, title)));
+
   /** The box for a block that does not exist yet. */
   const newBlockEditor = (
     <BlockEditor
@@ -714,9 +730,10 @@ export default function PageView({
 
   return (
     <>
-      {/* The header: the title, and on a page's own view its tags and
+      {/* The header: the title, and on a page's own view its icon, tags and
           properties. What is still empty (`data-bare`) sits on a line above
-          the title, the way Notion puts its "add" buttons: "Add tag" until
+          the title, the way Notion puts its "add" buttons: "Add icon" until
+          the page has an icon (which then sits large above that line), "Add tag" until
           the page has a tag, "Add property" until it has a property or a
           draft is open. What has something in it takes a line of its own
           under the title, tags above properties. An open input or draft
@@ -724,9 +741,9 @@ export default function PageView({
           where what it adds will be, and points at it there. Only the order changes, never the tree, so a draft or an open
           input is not remounted. Tab still goes title first.
 
-          What is marked `data-reveal` ("Add tag" and "Add property") is
-          hidden, so a new page is not two empty placeholders over its
-          title. Both show while the header is hovered or holds focus,
+          What is marked `data-reveal` ("Add icon", "Add tag" and "Add
+          property") is hidden, so a new page is not three empty placeholders
+          over its title. They show while the header is hovered or holds focus,
           "Add property" only while it is bare (above the title);
           pointing at the table lights neither that nor "Add tag". The
           table and its button show "Add property" too. While a tag is
@@ -734,7 +751,7 @@ export default function PageView({
           tag's.
           Hidden is opacity, not removal: they keep their room, and nothing
           moves as the pointer crosses the title. */}
-      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity [&_[data-line]:hover:not(:has(>section:not([data-bare]):hover)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare])>[data-reveal]]:opacity-100 [&_[data-line]:focus-within:not(:has(>section:not([data-bare]):focus-within)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare])>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:hover>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:focus-within>[data-reveal]]:opacity-100">
+      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity [&_[data-line]:hover:not(:has(>section:not([data-bare]):hover)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare],[data-icon])>[data-reveal]]:opacity-100 [&_[data-line]:focus-within:not(:has(>section:not([data-bare]):focus-within)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare],[data-icon])>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:hover>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:focus-within>[data-reveal]]:opacity-100">
         <div
           data-line
           className="flex flex-wrap items-baseline gap-x-3 [&>*]:min-w-0 [&>:not([data-bare])]:basis-full [&>[data-bare]]:-order-1 [&>[data-bare]]:mt-4 [&>[data-bare]]:mb-0 [&:has(>[data-bare])>:first-child]:mt-1"
@@ -788,6 +805,12 @@ export default function PageView({
                 title
               )}
             </h2>
+          )}
+
+          {/* The page's icon, large above the title, or "Add icon" first
+              in the line above it. Only on the page's own view. */}
+          {sentIcon !== undefined && !reference && !root && !linked && (
+            <HeaderIcon icon={icon} onSet={iconPage} onRemove={unIconPage} />
           )}
 
           {/* Above the title, or under it once there are some, above the

@@ -13,6 +13,8 @@ import {
   blockEdited,
   blockIndented,
   blockOutdented,
+  iconRemoved,
+  iconSet,
   indented,
   outdented,
   propertyRemoved,
@@ -20,11 +22,21 @@ import {
   tagAdded,
   tagRemoved,
 } from '@pbnotes/graph';
-import type { BatchEvent, Block, PageEvent, PropertyEvent, TagEvent } from '@pbnotes/graph';
+import type {
+  BatchEvent,
+  Block,
+  IconEvent,
+  PageEvent,
+  PropertyEvent,
+  TagEvent,
+} from '@pbnotes/graph';
 import type { Command } from '../../../../shared/graph';
 
 /** An event to draw, and the call that asks main to record it. */
-export type Step = [PageEvent | PropertyEvent | TagEvent | BatchEvent, () => Promise<unknown>];
+export type Step = [
+  PageEvent | PropertyEvent | TagEvent | IconEvent | BatchEvent,
+  () => Promise<unknown>,
+];
 
 /**
  * The one call the steps here make, for a view that hands them its bridge.
@@ -123,6 +135,16 @@ export function addTag(graph: StepsGraph, title: string, tag: string): Step {
 /** `title` no longer points to `tag`. */
 export function removeTag(graph: StepsGraph, title: string, tag: string): Step {
   return [tagRemoved(title, tag), () => graph.run({ type: 'removeTag', title, tag })];
+}
+
+/** `title`'s icon is now `icon` (#323). */
+export function setIcon(graph: StepsGraph, title: string, icon: string): Step {
+  return [iconSet(title, icon), () => graph.run({ type: 'setIcon', title, icon })];
+}
+
+/** `title` has no icon. */
+export function removeIcon(graph: StepsGraph, title: string): Step {
+  return [iconRemoved(title), () => graph.run({ type: 'removeIcon', title })];
 }
 
 /**

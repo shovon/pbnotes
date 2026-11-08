@@ -33,11 +33,22 @@ type Props = {
   onTab: (listener: (item: TabItem) => void) => () => void;
   /** The clock, passed on to the project that is open. */
   now: () => Date;
+  /** A number in [0, 1), as `Math.random` gives one, passed on to the project that is open. */
+  random: () => number;
   /** Whether this is macOS, passed on to the project that is open. */
   mac: boolean;
 };
 
-export default function App({ projects: api, graph, bench, closeWindow, onTab, now, mac }: Props) {
+export default function App({
+  projects: api,
+  graph,
+  bench,
+  closeWindow,
+  onTab,
+  now,
+  random,
+  mac,
+}: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
@@ -266,12 +277,14 @@ export default function App({ projects: api, graph, bench, closeWindow, onTab, n
                 act={act}
                 graph={graph}
                 now={now}
+                random={random}
                 mac={mac}
                 closeWindow={closeWindow}
                 onTab={onTab}
                 recentPages={kept.recentPages}
                 sidebar={kept.sidebar}
                 recentSection={kept.recentSection}
+                recentEmoji={kept.recentEmoji}
               />
             )
           ) : (

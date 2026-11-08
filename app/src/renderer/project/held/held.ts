@@ -27,3 +27,24 @@ export function keep(held: Held | null, on: Place | undefined, answer: Held): He
   }
   return answer;
 }
+
+/** A tab's page and its icon, as its last view showed them (#323). */
+export type HeldIcon = { page: string; icon: string };
+
+/**
+ * The icon `held` shows for its page, with the page it is for: none for the
+ * journal, or a page with no icon. Under a zoom it is still the page's.
+ */
+export function heldIcon(held: Held): HeldIcon | undefined {
+  const icon = held.view.showing[0]?.icon;
+  return held.place && icon !== undefined ? { page: held.place.page, icon } : undefined;
+}
+
+/**
+ * The icon to draw on a tab that is `on` a place: the one last held, while
+ * it is for the page the tab is on. Just after the tab moves, the old page's
+ * icon is not drawn beside the new page's name.
+ */
+export function tabIcon(kept: HeldIcon | undefined, on: Place | undefined): string | undefined {
+  return kept && on && kept.page === on.page ? kept.icon : undefined;
+}

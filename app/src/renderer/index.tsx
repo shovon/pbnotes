@@ -43,6 +43,7 @@ createRoot(container).render(
       closeWindow={own.close}
       onTab={own.onTab}
       now={() => new Date()}
+      random={Math.random}
       mac={mac}
     />
   </StrictMode>,

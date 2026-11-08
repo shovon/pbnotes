@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+// eslint-disable-next-line import/no-unresolved -- a package export, which the import plugin cannot follow
+import { expect, userEvent, within } from 'storybook/test';
 import type { Block, Page } from '@pbnotes/graph';
 import PageView from './PageView';
 import type { PageViewGraph } from './PageView';
@@ -124,6 +126,48 @@ export const TagsOnly: Story = {
     tags: ['People', 'Shed'],
     properties: [],
   },
+};
+
+/** A page with an icon (#323): large above the title. Clicking it opens
+    the picker, to change it or take it away. */
+export const WithIcon: Story = {
+  args: {
+    page: page('Shed', [block('19', 'Measure the second door before Friday')]),
+    icon: '🛖',
+    tags: ['Projects'],
+    properties: [],
+  },
+};
+
+/** A page with no icon: "Add icon" leads the line above the title, before
+    "Add tag" and "Add property", and shows only while the header is hovered
+    or holds focus, as they do. */
+export const WithoutIcon: Story = {
+  args: { page: page('Shed', []), icon: null, properties: [], tags: [] },
+};
+
+/** "Add icon" pressed: the picker opens under it, its search box focused.
+    The picker's own states are its stories (`EmojiPicker`). */
+export const PickingIcon: Story = {
+  args: { page: page('Shed', []), icon: null, properties: [], tags: [] },
+  decorators: [
+    (Story) => (
+      <div style={{ minHeight: '28rem' }}>
+        <Story />
+      </div>
+    ),
+  ],
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole('button', { name: 'Add icon' }));
+    await expect(await canvas.findByRole('combobox', { name: 'Search emoji' })).toHaveFocus();
+  },
+};
+
+/** An icon this build can't draw (an image icon from a newer one): no icon
+    shows, and "Add icon" is offered, whose picker can still remove it. */
+export const IconCannotDraw: Story = {
+  args: { page: page('Shed', []), icon: 'image:3f2a', properties: [], tags: [] },
 };
 
 /** A page other pages tag: they are listed under its blocks, above what

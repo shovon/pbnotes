@@ -28,11 +28,14 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
+import PageIcon from '../PageIcon/PageIcon';
 
 export type StripTab = {
   id: string;
   /** What the tab shows: a page's name, "Journal" or "All pages". */
   label: string;
+  /** The page's icon, drawn before its name when it can be (#323). */
+  icon?: string;
 };
 
 type Props = {
@@ -71,7 +74,7 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
         aria-label="Tabs"
         className="flex h-full min-w-0 items-stretch overflow-x-auto [scrollbar-width:none]"
       >
-        {tabs.map(({ id, label }) => {
+        {tabs.map(({ id, label, icon }) => {
           const on = id === active;
           return (
             <div
@@ -90,14 +93,15 @@ export default function TabStrip({ tabs, active, onSelect, onClose, onNew }: Pro
                 role="tab"
                 aria-selected={on}
                 title={label}
-                className="h-full min-w-0 flex-1 cursor-pointer truncate pr-0.5 pl-2.5 text-left"
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-0.5 pl-2.5 text-left"
                 onClick={() => onSelect(id)}
                 // A middle click closes, as in a browser.
                 onAuxClick={(event) => {
                   if (event.button === 1) closeFrom(event, id);
                 }}
               >
-                {label}
+                <PageIcon icon={icon} />
+                <span className="truncate">{label}</span>
               </button>
               <button
                 type="button"

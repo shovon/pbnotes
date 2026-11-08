@@ -8,6 +8,8 @@ import {
   blockEdited,
   blockIndented,
   blockOutdented,
+  iconRemoved,
+  iconSet,
   propertyRemoved,
   propertySet,
   tagAdded,
@@ -21,9 +23,11 @@ import {
   indent,
   outdent,
   remove,
+  removeIcon,
   removeProperty,
   removeTag,
   renameProperty,
+  setIcon,
   setProperty,
 } from './steps.ts';
 import type { Step } from './steps.ts';
@@ -70,6 +74,8 @@ test('each step draws the event main writes, and sends the write that records it
     [removeProperty(graph, 'Mira', 'Status'), propertyRemoved('Mira', 'Status'), { type: 'removeProperty', title: 'Mira', key: 'Status' }],
     [addTag(graph, 'Mira', 'Work'), tagAdded('Mira', 'Work'), { type: 'addTag', title: 'Mira', tag: 'Work' }],
     [removeTag(graph, 'Mira', 'Work'), tagRemoved('Mira', 'Work'), { type: 'removeTag', title: 'Mira', tag: 'Work' }],
+    [setIcon(graph, 'Mira', '🌲'), iconSet('Mira', '🌲'), { type: 'setIcon', title: 'Mira', icon: '🌲' }],
+    [removeIcon(graph, 'Mira'), iconRemoved('Mira'), { type: 'removeIcon', title: 'Mira' }],
   ];
   for (const [step, built, call] of cases) {
     graph.calls.length = 0;

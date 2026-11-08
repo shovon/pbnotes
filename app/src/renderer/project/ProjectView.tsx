@@ -21,7 +21,7 @@ import { shelve } from './Aside/stack/stack';
 import Tab from './Tab/Tab';
 import { NEW_TAB, held, left, renamedIn as renamedInTab, withField } from './Tab/state/state';
 import type { TabState } from './Tab/state/state';
-import type { Held } from './held/held';
+import type { Held, HeldIcon } from './held/held';
 import { today } from '@pbnotes/graph';
 import { activated, activeOf, closed, each, next, opened, openedBehind, previous, single, updated } from './tabs/tabs';
 import type { Tabs } from './tabs/tabs';
@@ -30,6 +30,9 @@ import { shown, whereFrom } from './opening/opening';
 import type { Keys, Where } from './opening/opening';
 import type { TabItem } from '../../shared/window';
 import { useKept } from '../kept/useKept';
+import { IconPicking } from './IconPicking/IconPicking';
+import { used } from './IconPicking/used/used';
+import { heldIcon, tabIcon } from './held/held';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -70,6 +73,8 @@ type Props = {
   graph: ProjectViewGraph;
   /** The clock, for which day a drop with no page lands on. */
   now: () => Date;
+  /** A number in [0, 1): what the icon picker's *Random* picks with (#323). */
+  random: () => number;
   /**
    * Whether this is macOS: Cmd+K opens the finder there and Cmd+\\ toggles
    * the sidebar, Ctrl elsewhere.
@@ -85,6 +90,8 @@ type Props = {
   sidebar: Kept<{ collapsed: boolean }>;
   /** Whether Recent is collapsed to its heading (#299). */
   recentSection: Kept<{ collapsed: boolean }>;
+  /** The emoji picked lately for page icons in this project, most recent first (#323). */
+  recentEmoji: Kept<string[]>;
 };
 
 /**
@@ -106,12 +113,14 @@ export default function ProjectView({
   act,
   graph,
   now,
+  random,
   mac,
   closeWindow,
   onTab,
   recentPages,
   sidebar,
   recentSection,
+  recentEmoji,
 }: Props) {
   /** Names a tab as it opens: only told apart, never read. */
   const count = useRef(1);
@@ -132,8 +141,27 @@ export default function ProjectView({
    * state: nothing is drawn from it until the tab mounts again.
    */
   const behind = useRef(new Map<string, { held: Held | null; scroll: number }>());
-  const remember = (id: string, held: Held) =>
+  const remember = (id: string, held: Held) => {
     behind.current.set(id, { held, scroll: behind.current.get(id)?.scroll ?? 0 });
+    noteIcon(id, held);
+  };
+  /**
+   * Each tab's page and its icon, from the view it last held (#323): what
+   * the tab strip draws beside each name. State, unlike `behind`, since the
+   * strip is drawn from it; set only when it changes, so a view that comes
+   * down again with the same icon draws nothing new.
+   */
+  const [tabIcons, setTabIcons] = useState<ReadonlyMap<string, HeldIcon>>(() => new Map());
+  const noteIcon = (id: string, held: Held) =>
+    setTabIcons((all) => {
+      const was = all.get(id);
+      const now = heldIcon(held);
+      if (was?.page === now?.page && was?.icon === now?.icon) return all;
+      const next = new Map(all);
+      if (now) next.set(id, now);
+      else next.delete(id);
+      return next;
+    });
   /**
    * How far the window was scrolled on the tab being left, kept for when it
    * is back, and what is being typed in it written first. A box takes blur
@@ -172,7 +200,9 @@ export default function ProjectView({
     const at = placeOf(start.trail.at(-1));
     graph.view(at, today(now())).then(
       (view) => {
-        if (!behind.current.has(id)) behind.current.set(id, { held: { place: at, view }, scroll: 0 });
+        if (behind.current.has(id)) return;
+        behind.current.set(id, { held: { place: at, view }, scroll: 0 });
+        noteIcon(id, { place: at, view });
       },
       // Not reached now, it is asked for again once shown.
       (): void => undefined,
@@ -379,6 +409,14 @@ export default function ProjectView({
     collapsed: false,
   });
 
+  /** The emoji picked lately for page icons, kept on the bench (#323), for every page view's picker. */
+  const [recentIcons, setRecentIcons] = useKept(recentEmoji, NO_EMOJI);
+  const iconPicking: IconPicking = {
+    recent: recentIcons,
+    used: (emoji) => setRecentIcons(used(recentIcons, emoji)),
+    random,
+  };
+
   /**
    * Undo (#247): the menu's Undo and Redo, and the browser's own undo from
    * any field, go to one dispatcher. The open field's history first, then
@@ -447,6 +485,7 @@ export default function ProjectView({
   }, [mac]);
 
   return (
+    <IconPicking.Provider value={iconPicking}>
     <OwnEdit.Provider value={fields?.ownEdit ?? noEdit}>
       {/* Outside the view, so a click in it is not taken for one on a link,
           and a paste into it is text rather than an image for the page. */}
@@ -518,7 +557,11 @@ export default function ProjectView({
               ←
             </button>
             <TabStrip
-              tabs={tabs.list.map((it) => ({ id: it.id, label: label(it.tab.trail.at(-1)) }))}
+              tabs={tabs.list.map((it) => ({
+                id: it.id,
+                label: label(it.tab.trail.at(-1)),
+                icon: tabIcon(tabIcons.get(it.id), placeOf(it.tab.trail.at(-1))),
+              }))}
               active={activeId}
               onSelect={showTab}
               onClose={closeTab}
@@ -545,8 +588,12 @@ export default function ProjectView({
         onDeleted={forgetPage}
       />
     </OwnEdit.Provider>
+    </IconPicking.Provider>
   );
 }
+
+/** Nothing picked lately: one list, so `useKept` is handed the same one each render. */
+const NO_EMOJI: readonly string[] = [];
 
 /** No watcher yet: a field's own edit is nothing to note. */
 const noEdit = (): void => undefined;
