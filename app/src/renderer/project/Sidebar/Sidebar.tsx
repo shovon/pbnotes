@@ -77,6 +77,9 @@ export default function Sidebar({
   const hover = { onPointerEnter, onPointerLeave };
   // Floating: above the page and its own raised bits, still under the header.
   const lift = floating ? "z-20 shadow-[6px_0_16px_-8px_rgb(0_0_0/0.25)]" : "z-10";
+  // Docked, the column is the title bar's colour, one piece with it; floating
+  // over the page, it keeps the page's.
+  const fill = floating ? "bg-bg" : "bg-bar";
   return (
     <>
       {/* The column's top, laid over the strip's backing (it comes later at
@@ -89,14 +92,14 @@ export default function Sidebar({
       <div
         aria-hidden
         {...hover}
-        className={`${floating ? "app-region-no-drag shadow-[6px_0_16px_-8px_rgb(0_0_0/0.25)]" : ""} fixed top-0 left-0 z-20 h-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar))+1px)] w-sidebar border-r border-line bg-bg`}
+        className={`${floating ? "app-region-no-drag shadow-[6px_0_16px_-8px_rgb(0_0_0/0.25)]" : ""} fixed top-0 left-0 z-20 h-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar))+1px)] w-sidebar border-r border-line ${fill}`}
       />
       <nav
         id="sidebar"
         aria-label="Sidebar"
         data-sidebar={floating ? undefined : true}
         {...hover}
-        className={`${lift} fixed top-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] bottom-0 left-0 w-sidebar overflow-y-auto border-r border-line bg-bg px-2 py-3`}
+        className={`${lift} fixed top-[calc(env(titlebar-area-y,0px)+env(titlebar-area-height,var(--spacing-titlebar)))] bottom-0 left-0 w-sidebar overflow-y-auto border-r border-line ${fill} px-2 py-3`}
       >
         <div className="flex flex-col gap-px">
           <button
