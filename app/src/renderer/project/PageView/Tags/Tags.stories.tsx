@@ -7,7 +7,7 @@ import Tags from './Tags';
  * The chip row on its own. Writes go nowhere, so a tag added or removed goes
  * back to the tags handed in: these are for the chips, the input and what it
  * offers. A tag is offered whichever of these titles contain what is typed.
- * On its own, nothing hides "+ Add tag": that is the page header's doing.
+ * On its own, nothing hides "Add tag": that is the page header's doing.
  */
 const titles = ['Work', 'Workshop', 'Reading', 'Home', 'Mira', 'Project Atlas'];
 
@@ -56,7 +56,7 @@ export const Adding: Story = {
   args: { tags: ['Work'] },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(canvas.getByRole('button', { name: '+ Add tag' }));
+    await userEvent.click(canvas.getByRole('button', { name: 'Add tag' }));
     await userEvent.type(canvas.getByRole('combobox', { name: 'Tag' }), 'wo');
   },
 };

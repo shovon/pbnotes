@@ -4,6 +4,8 @@ import { canonicalize } from '@pbnotes/graph';
 import type { Property } from '@pbnotes/graph';
 import { commit, draft, editable, keyless, shown, suggested } from './rows';
 import type { Open, Write } from './rows';
+import { TableProperties } from 'lucide-react';
+import Icon from '../../../Icon/Icon';
 
 type Props = {
   /** The rows as drawn: main's, with this view's writes in flight over them. */
@@ -36,7 +38,7 @@ const input = 'bg-transparent outline-none placeholder:text-muted';
  * open row is keyed by the key it was opened on, so it stays mounted, caret
  * and all, while new rows arrive around it, even one without it.
  *
- * "+ Add property" is a button under the table, drawn like "+ Add tag", and
+ * "Add property" is a button under the table, drawn like "Add tag", and
  * marked `data-reveal` the same way. With
  * no rows and none open there is no table, and the section is marked
  * `data-bare` for a holder that sets it beside something else while there is
@@ -308,7 +310,7 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
   const at = open?.from && canonicalize(open.from.key);
   const drawn = shown(rows, open);
 
-  /** Nothing in the table: the button alone, drawn like "+ Add tag". */
+  /** Nothing in the table: the button alone, drawn like "Add tag". */
   const bare = drawn.length === 0 && !open;
 
   return (
@@ -335,10 +337,11 @@ export default function Properties({ rows, findKeys, onCommit, onRemove }: Props
       <button
         type="button"
         data-reveal
-        className="cursor-pointer rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
+        className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
         onClick={() => start(draft(), 'key')}
       >
-        + Add property
+        <Icon of={TableProperties} />
+        Add property
       </button>
     </section>
   );

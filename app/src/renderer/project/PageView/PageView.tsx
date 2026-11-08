@@ -716,21 +716,21 @@ export default function PageView({
     <>
       {/* The header: the title, and on a page's own view its tags and
           properties. What is still empty (`data-bare`) sits on a line above
-          the title, the way Notion puts its "add" buttons: "+ Add tag" until
-          the page has a tag, "+ Add property" until it has a property or a
+          the title, the way Notion puts its "add" buttons: "Add tag" until
+          the page has a tag, "Add property" until it has a property or a
           draft is open. What has something in it takes a line of its own
           under the title, tags above properties. The first tag moves its
           row, input and all, under the title on the Enter that adds it.
           Only the order changes, never the tree, so a draft or an open
           input is not remounted. Tab still goes title first.
 
-          What is marked `data-reveal` ("+ Add tag" and "+ Add property") is
+          What is marked `data-reveal` ("Add tag" and "Add property") is
           hidden, so a new page is not two empty placeholders over its
           title. Both show while the header is hovered or holds focus,
-          "+ Add property" only while it is bare (above the title);
-          pointing at the table lights neither that nor "+ Add tag". The
-          table and its button show "+ Add property" too. While a tag is
-          being typed, "+ Add property" stays hidden: the header is the
+          "Add property" only while it is bare (above the title);
+          pointing at the table lights neither that nor "Add tag". The
+          table and its button show "Add property" too. While a tag is
+          being typed, "Add property" stays hidden: the header is the
           tag's.
           Hidden is opacity, not removal: they keep their room, and nothing
           moves as the pointer crosses the title. */}

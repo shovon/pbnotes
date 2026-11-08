@@ -38,7 +38,7 @@ const byKey = (a: Property, b: Property): number => {
   return x < y ? -1 : x > y ? 1 : 0;
 };
 
-/** A draft opened on nothing: what "+ Add property" and Enter open. */
+/** A draft opened on nothing: what "Add property" and Enter open. */
 export const draft = (): Open => ({ key: '', value: '' });
 
 /**

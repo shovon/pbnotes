@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { FocusEvent, KeyboardEvent } from 'react';
 import { canonicalize } from '@pbnotes/graph';
 import { adding, offered } from './adding/adding';
+import { Tag } from 'lucide-react';
+import Icon from '../../../Icon/Icon';
 
 type Props = {
   /** The tags as drawn: main's, with this view's writes in flight over them. */
@@ -18,7 +20,7 @@ type Props = {
  * A row of tags as chips, each a link to its page, and an input to add one:
  * the tags of whatever it is handed, which it never names.
  *
- * "+ Add tag" is marked `data-reveal`: whoever holds the row may hide it
+ * "Add tag" is marked `data-reveal`: whoever holds the row may hide it
  * until wanted, as `PageView` does until its header is hovered or focused.
  * The open input is not marked, so it stays shown until it closes.
  *
@@ -200,10 +202,11 @@ export default function Tags({ tags, findTags, onAdd, onRemove }: Props) {
         <button
           type="button"
           data-reveal
-          className="cursor-pointer rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
+          className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-muted hover:text-fg focus-visible:text-fg"
           onClick={() => setOpen(true)}
         >
-          + Add tag
+          <Icon of={Tag} />
+          Add tag
         </button>
       )}
     </div>
