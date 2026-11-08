@@ -49,11 +49,11 @@ type Props = {
 };
 
 const entry =
-  "block w-full cursor-pointer truncate rounded-md px-2 py-1 text-left text-sm hover:bg-line";
-const current = "bg-line font-medium";
+  "block w-full cursor-pointer truncate rounded-md px-2 py-1 text-left text-sm hover:bg-line/50";
+const current = "bg-line/50 font-medium";
 /** A fixed entry: an icon, then its label, which is cut short if need be. */
 const place =
-  "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-line";
+  "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-line/50";
 
 export default function Sidebar({
   recent,
@@ -115,7 +115,7 @@ export default function Sidebar({
         <h2 className="mt-4 mb-1">
           <button
             type="button"
-            className="flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-left text-xs font-semibold tracking-wide text-muted uppercase hover:bg-line"
+            className="flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-left text-xs font-semibold tracking-wide text-muted uppercase hover:bg-line/50"
             aria-expanded={!recentCollapsed}
             aria-controls="sidebar-recent"
             onClick={onToggleRecent}
