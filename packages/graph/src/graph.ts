@@ -442,6 +442,8 @@ export type PageMatch = {
   title: string;
   /** The page it opens, as it shows: `title` itself unless it resolves elsewhere. */
   opens: string;
+  /** The icon of the page it opens (#329), as written; absent for none. */
+  icon?: string;
 };
 
 /**
@@ -481,10 +483,11 @@ function offered(state: Graph): Map<string, string> {
  */
 export function searchNames(state: Graph, query: string, limit = 10): PageMatch[] {
   const names = resolver(state);
-  return search(offered(state).values(), query, limit).map((title) => ({
-    title,
-    opens: names.title(title),
-  }));
+  return search(offered(state).values(), query, limit).map((title) => {
+    const opens = names.title(title);
+    const icon = iconOf(state, opens);
+    return { title, opens, ...(icon === undefined ? {} : { icon }) };
+  });
 }
 
 /** `searchNames`, the titles alone. */
@@ -504,12 +507,14 @@ export type PageListing = {
   taggedBy: number;
   /** When it last changed, in ms since the epoch; undefined if nothing ever did. */
   edited?: number;
+  /** Its icon (#329), as written; absent for none. */
+  icon?: string;
 };
 
 /**
  * Every page, as `searchPages` counts one, journal days included, each once
  * in the spelling it shows, A to Z. With what is on it, what links to it,
- * what tags it and when it last changed.
+ * what tags it, when it last changed and its icon.
  *
  * A name that opens another page (an alias in effect, a date name with no
  * page of its own) is not a row: its links and tags count for the page it
@@ -523,12 +528,14 @@ export function listPages(state: Graph): PageListing[] {
   return [...keys]
     .map((key) => {
       const edited = getKey(state.edited, key);
+      const icon = iconOf(state, key);
       return {
         title: titleOf(state, key),
         blocks: countBlocks(state, key),
         references: links.get(key) ?? 0,
         taggedBy: tagged.get(key) ?? 0,
         ...(edited === undefined ? {} : { edited }),
+        ...(icon === undefined ? {} : { icon }),
       };
     })
     .sort((a, b) => a.title.localeCompare(b.title));

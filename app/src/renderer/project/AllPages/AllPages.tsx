@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PageListing } from '@pbnotes/graph';
+import { FileText } from 'lucide-react';
+import PageIcon from '../PageIcon/PageIcon';
 import type { GraphApi } from '../../../shared/graph';
 import { sorted, toggle } from './sort/sort';
 import type { Column, Sort } from './sort/sort';
 import type { Keys } from '../opening/opening';
 
 /**
- * Every page in the project, as a table (#200): its title, how many blocks are
+ * Every page in the project, as a table (#200): its title, after its icon
+ * (#329, `file-text` for a page with none, as the sidebar has it), how many blocks are
  * on it, how many blocks link to it, and when it last changed. A header
  * sorts by its column; a title opens the page the way a link does.
  *
@@ -122,12 +125,18 @@ export default function AllPages({ graph, sort, onSort, onOpen, onError }: Props
                     type="button"
                     // Truncated to one line; the whole title on hover.
                     title={page.title}
-                    className={`block max-w-full cursor-pointer truncate text-left hover:underline ${
+                    className={`group flex max-w-full cursor-pointer items-center gap-2 text-left ${
                       page.blocks === 0 ? 'text-muted' : 'text-accent'
                     }`}
                     onClick={(event) => onOpen(page.title, event)}
                   >
-                    {page.title}
+                    <PageIcon
+                      icon={page.icon}
+                      fallback={FileText}
+                      className="inline-flex w-4 justify-center text-sm"
+                    />
+                    {/* Underlined alone, so the line never runs under the icon. */}
+                    <span className="min-w-0 truncate group-hover:underline">{page.title}</span>
                   </button>
                 </td>
                 <td className="py-1.5 pl-4 text-right tabular-nums">{page.blocks}</td>

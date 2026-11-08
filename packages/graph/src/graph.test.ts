@@ -45,6 +45,7 @@ import {
   tagAdded,
   tagRemoved,
   propertySet,
+  searchNames,
   searchPages,
   setProperty,
   today,
@@ -429,6 +430,23 @@ test("listPages carries when a page last changed, when it ever did", () => {
     { title: "Mira", blocks: 1, references: 0, taggedBy: 0, edited: Date.parse(at) },
     { title: "Oslo", blocks: 0, references: 1, taggedBy: 0 },
   ]);
+});
+
+test("listPages and searchNames carry the icon of the page each opens (#329)", () => {
+  const state = [
+    blockCreated("Mira", "about [[Oslo]]", undefined, "m"),
+    iconSet("Mira", "🌲"),
+    aliasAdded("Mira", "M"),
+  ].reduce(graphFold.reduce, graphFold.initial);
+  assert.deepEqual(
+    listPages(state).map(({ title, icon }) => [title, icon]),
+    [["Mira", "🌲"], ["Oslo", undefined]],
+  );
+  assert.deepEqual(searchNames(state, "m"), [
+    { title: "M", opens: "Mira", icon: "🌲" },
+    { title: "Mira", opens: "Mira", icon: "🌲" },
+  ]);
+  assert.deepEqual(searchNames(state, "oslo"), [{ title: "Oslo", opens: "Oslo" }], "no icon, no field");
 });
 
 test("inCode is true in code spans, fences of either kind and math, and nowhere else", () => {
