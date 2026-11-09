@@ -32,6 +32,12 @@ export type Gesture<P> = {
    * that scrolls on its own, or null (or left out) for the window.
    */
   scroller?(press: P, at: Point): Element | null;
+  /**
+   * Which way it scrolls: down and up (`y`, the default), or along (`x`),
+   * near the scroller's left and right edges, as a strip of tabs does
+   * (#338). Along, the window never scrolls: only a scroller handed in.
+   */
+  axis?: 'x' | 'y';
 };
 
 /** How close to the top or bottom edge of what scrolls it starts to scroll. */
@@ -62,9 +68,18 @@ export function watchGesture<P>(on: Gesture<P>): () => void {
     frame = 0;
     if (!held?.active) return;
     const scroller = on.scroller?.(held.press, pointer) ?? null;
-    const { top, bottom } = scroller?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
-    const near = nearEdge(pointer.y, top, bottom);
-    if (near !== 0) (scroller ?? window).scrollBy(0, Math.round(near / 2));
+    let near = 0;
+    if (on.axis === 'x') {
+      if (scroller) {
+        const { left, right } = scroller.getBoundingClientRect();
+        near = nearEdge(pointer.x, left, right);
+        if (near !== 0) scroller.scrollBy(Math.round(near / 2), 0);
+      }
+    } else {
+      const { top, bottom } = scroller?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
+      near = nearEdge(pointer.y, top, bottom);
+      if (near !== 0) (scroller ?? window).scrollBy(0, Math.round(near / 2));
+    }
     on.move(held.press, pointer);
     // Near an edge the page keeps scrolling while the pointer holds still.
     if (near !== 0) frame = requestAnimationFrame(tick);

@@ -85,6 +85,11 @@ export function createFetcher({ view, where, onAnswer, onError, start = null }: 
         }
         const next = keep(held, where(), { place: at, view: answer });
         if (next === held || !next) return;
+        // The very view already drawn, read again: nothing to draw. Shown
+        // again, a tab draws the view it left at once (#303) and asks again;
+        // drawing the same answer a second time is a whole page's render
+        // for nothing, just as a drag from the tab begins (#338).
+        if (held && sameView(held, next)) return;
         held = next;
         onAnswer(next);
       },
@@ -120,4 +125,18 @@ export function createFetcher({ view, where, onAnswer, onError, start = null }: 
       ask();
     },
   };
+}
+
+/**
+ * Whether `a` and `b` show the same: one place, read at one fold version
+ * (which holds every change up to it and none after), loaded as far, with
+ * the same pages in the same order. The pages are for the journal, whose
+ * top is the window's today: a new day shows a new page at one version.
+ */
+export function sameView(a: Held, b: Held): boolean {
+  if (!samePlace(a.place, b.place) || a.view.version !== b.view.version) return false;
+  if ((a.view.list?.through ?? null) !== (b.view.list?.through ?? null)) return false;
+  const titles = (held: Held) => held.view.showing.map((it) => it.page.title);
+  const [x, y] = [titles(a), titles(b)];
+  return x.length === y.length && x.every((title, at) => title === y[at]);
 }

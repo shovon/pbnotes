@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GraphApi, Undone } from '../../shared/graph';
 import type { Act } from '../ui';
@@ -23,7 +23,7 @@ import { NEW_TAB, held, left, renamedIn as renamedInTab, withField } from './Tab
 import type { TabState } from './Tab/state/state';
 import type { Held, HeldIcon } from './held/held';
 import { today } from '@pbnotes/graph';
-import { activated, activeOf, closed, each, next, opened, openedBehind, previous, single, updated } from './tabs/tabs';
+import { activated, activeOf, closed, each, moved, next, opened, openedBehind, previous, single, updated } from './tabs/tabs';
 import type { Tabs } from './tabs/tabs';
 import TabStrip from './TabStrip/TabStrip';
 import { shown, whereFrom } from './opening/opening';
@@ -33,6 +33,7 @@ import { useKept } from '../kept/useKept';
 import { IconPicking } from './IconPicking/IconPicking';
 import { used } from './IconPicking/used/used';
 import { heldIcon, tabIcon } from './held/held';
+import { useStable } from '../stable';
 
 /**
  * The part of the bridge a project calls: what it calls itself, and what each
@@ -110,6 +111,12 @@ type Props = {
  * remounts this view (`App` keys it by project), so every tab closes and
  * the project opens with one, on the journal, without anyone being told.
  */
+/**
+ * What a tab leaves behind when another is drawn: the view it drew, how far
+ * the window was scrolled on it, and the day that view was read on.
+ */
+type Behind = { held: Held | null; scroll: number; day?: string };
+
 export default function ProjectView({
   act,
   graph,
@@ -141,9 +148,18 @@ export default function ProjectView({
    * window was scrolled, which is the window's and not the tab's. Not
    * state: nothing is drawn from it until the tab mounts again.
    */
-  const behind = useRef(new Map<string, { held: Held | null; scroll: number }>());
+  const behind = useRef(new Map<string, Behind>());
+  /**
+   * The newest fold version main has said it reached (`graph:changed`), for
+   * telling whether a view a tab left behind can still be what it shows.
+   */
+  const heardVersion = useRef(0);
   const remember = (id: string, held: Held) => {
-    behind.current.set(id, { held, scroll: behind.current.get(id)?.scroll ?? 0 });
+    behind.current.set(id, {
+      held,
+      scroll: behind.current.get(id)?.scroll ?? 0,
+      day: today(now()),
+    });
     noteIcon(id, held);
   };
   /**
@@ -173,8 +189,10 @@ export default function ProjectView({
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     leaveScroll();
   };
-  const leaveScroll = () =>
-    behind.current.set(activeId, { held: behind.current.get(activeId)?.held ?? null, scroll: window.scrollY });
+  const leaveScroll = () => {
+    const was = behind.current.get(activeId);
+    behind.current.set(activeId, { held: was?.held ?? null, scroll: window.scrollY, day: was?.day });
+  };
   const showTab = (id: string) => {
     if (id === activeId) return;
     leave();
@@ -202,7 +220,7 @@ export default function ProjectView({
     graph.view(at, today(now())).then(
       (view) => {
         if (behind.current.has(id)) return;
-        behind.current.set(id, { held: { place: at, view }, scroll: 0 });
+        behind.current.set(id, { held: { place: at, view }, scroll: 0, day: today(now()) });
         noteIcon(id, { place: at, view });
       },
       // Not reached now, it is asked for again once shown.
@@ -399,7 +417,8 @@ export default function ProjectView({
     if (recent.loaded) followRenames.current();
   }, [recent.loaded]);
   useEffect(() => {
-    const off = graph.onChanged(() => {
+    const off = graph.onChanged((version) => {
+      heardVersion.current = Math.max(heardVersion.current, version);
       followRenames.current();
       askIcons.current();
     });
@@ -515,6 +534,37 @@ export default function ProjectView({
     return () => window.removeEventListener('keydown', onKey);
   }, [mac]);
 
+  /**
+   * What `Tab` is handed, the same from render to render while the same tab
+   * is shown, so the window drawing again (the finder, the sidebar, Recent,
+   * the strip) does not draw the whole tab again: `Tab` is memoized, and a
+   * new function each render would undo it. What steps the tab and keeps
+   * what it drew is bound to the tab it was made for, so a late answer or
+   * step reaches that one; what it left behind is read as it is shown.
+   */
+  const updateShown = useMemo(
+    () => (step: (tab: TabState) => TabState) => setTabs((all) => updated(all, activeId, step)),
+    [activeId],
+  );
+  const heldShown = useMemo(() => (held: Held) => remember(activeId, held), [activeId]);
+  // Read on the same day, since the journal's top is today: then the tab
+  // asks main nothing for it if it is as new as the newest change heard,
+  // which the tab checks itself as it mounts (`heard`), not here, since a
+  // change can land between this render and the tab listening for one. A
+  // long journal read again took main long enough to hold up the pointer
+  // (#338).
+  const resumeShown = useMemo(() => {
+    const it = behind.current.get(activeId);
+    if (!it) return null;
+    return { held: it.held, scroll: it.scroll, today: it.day === today(now()) };
+  }, [activeId]);
+  /** The newest version heard, as it is when asked. */
+  const heardNow = useStable(() => heardVersion.current);
+  const openStable = useStable(open);
+  const goToBlockStable = useStable(goToBlock);
+  const followRenameStable = useStable(followRename);
+  const forgetPageStable = useStable(forgetPage);
+
   return (
     <IconPicking.Provider value={iconPicking}>
     <OwnEdit.Provider value={fields?.ownEdit ?? noEdit}>
@@ -600,6 +650,7 @@ export default function ProjectView({
               onSelect={showTab}
               onClose={closeTab}
               onNew={() => openTab()}
+              onMove={(id, index) => setTabs((all) => moved(all, id, index))}
             />
           </div>,
           titlebar,
@@ -613,13 +664,14 @@ export default function ProjectView({
         now={now}
         mac={mac}
         tab={tab}
-        update={(step) => setTabs((all) => updated(all, activeId, step))}
-        resume={behind.current.get(activeId) ?? null}
-        onHeld={(held) => remember(activeId, held)}
-        onOpen={open}
-        onBlock={goToBlock}
-        onRenamed={followRename}
-        onDeleted={forgetPage}
+        update={updateShown}
+        resume={resumeShown}
+        heard={heardNow}
+        onHeld={heldShown}
+        onOpen={openStable}
+        onBlock={goToBlockStable}
+        onRenamed={followRenameStable}
+        onDeleted={forgetPageStable}
       />
     </OwnEdit.Provider>
     </IconPicking.Provider>

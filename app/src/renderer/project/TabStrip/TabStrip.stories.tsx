@@ -13,6 +13,7 @@ const meta = {
     onSelect: fn(),
     onClose: fn(),
     onNew: fn(),
+    onMove: fn(),
   },
 } satisfies Meta<typeof TabStrip>;
 
@@ -80,7 +81,8 @@ export const Many: Story = {
 };
 
 /**
- * Opening, closing and switching, held here as `ProjectView` holds them.
+ * Opening, closing, switching and dragging a tab along, held here as
+ * `ProjectView` holds them.
  * Open a few, then close them with their ×: the widths hold until the
  * pointer leaves the strip.
  */
@@ -105,6 +107,13 @@ export const Working: Story = {
           if (left.length === 0) return;
           setTabs(left);
           if (id === active) setActive(left[0].id);
+        }}
+        onMove={(id, index) => {
+          const moved = tabs.find((it) => it.id === id);
+          if (!moved) return;
+          const rest = tabs.filter((it) => it.id !== id);
+          rest.splice(index, 0, moved);
+          setTabs(rest);
         }}
       />
     );

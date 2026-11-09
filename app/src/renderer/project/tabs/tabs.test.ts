@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { activated, activeOf, closed, each, next, opened, openedBehind, previous, single, updated } from './tabs.ts';
+import { activated, activeOf, closed, each, moved, next, opened, openedBehind, previous, single, updated } from './tabs.ts';
 import type { Tabs } from './tabs.ts';
 import { NEW_TAB, left, renamedIn } from '../Tab/state/state.ts';
 
@@ -126,4 +126,32 @@ test('the last tab of a run closed, the next goes after the active one again (#3
   const run = openedBehind(three('a'), 'd', NEW_TAB);
   const tabs = openedBehind(closed(run, 'd') as Tabs, 'e', NEW_TAB);
   assert.deepEqual(ids(tabs), ['a', 'e', 'b', 'c']);
+});
+
+test('a tab moved goes to that place, and the rest keep their order (#338)', () => {
+  assert.deepEqual(ids(moved(three('a'), 'a', 2)), ['b', 'c', 'a']);
+  assert.deepEqual(ids(moved(three('a'), 'c', 0)), ['c', 'a', 'b']);
+  assert.deepEqual(ids(moved(three('a'), 'a', 1)), ['b', 'a', 'c']);
+});
+
+test('moving a tab never changes which is active (#338)', () => {
+  assert.equal(moved(three('b'), 'a', 2).active, 'b');
+  assert.equal(moved(three('b'), 'b', 0).active, 'b');
+});
+
+test('a move past either end stops there (#338)', () => {
+  assert.deepEqual(ids(moved(three('a'), 'b', 99)), ['a', 'c', 'b']);
+  assert.deepEqual(ids(moved(three('a'), 'b', -5)), ['b', 'a', 'c']);
+});
+
+test('a move to where it is, or of a tab not there, leaves the very same tabs (#338)', () => {
+  const tabs = three('a');
+  assert.equal(moved(tabs, 'b', 1), tabs);
+  assert.equal(moved(tabs, 'x', 0), tabs);
+});
+
+test('a move ends a run of tabs opened behind (#338)', () => {
+  const run = openedBehind(three('a'), 'd', NEW_TAB);
+  const tabs = openedBehind(moved(run, 'c', 0), 'e', NEW_TAB);
+  assert.deepEqual(ids(tabs), ['c', 'a', 'e', 'd', 'b']);
 });

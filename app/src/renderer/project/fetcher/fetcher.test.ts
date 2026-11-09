@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Place, PlaceView } from '../../../shared/graph.ts';
 import type { Held } from '../held/held.ts';
-import { createFetcher } from './fetcher.ts';
+import { createFetcher, sameView } from './fetcher.ts';
 
 /** A fetch the test answers by hand. */
 type Asked = {
@@ -281,4 +281,39 @@ test('shown again on another place than the view it left, it starts that place o
   fetcher.resumed();
   assert.equal(asked[0].through, undefined);
   await asked[0].answer(5);
+});
+
+test('shown again, an answer the same as the view it left is not drawn again (#338)', async () => {
+  const { fetcher, asked, answers } = setup(undefined, drawn(undefined, 4, '2026-10-01'));
+  fetcher.resumed();
+  await asked[0].answer(4, { through: '2026-10-01', next: 'older' });
+  assert.deepEqual(answers, []);
+});
+
+test('shown again, a newer answer is drawn (#338)', async () => {
+  const { fetcher, asked, answers } = setup(undefined, drawn(undefined, 4, '2026-10-01'));
+  fetcher.resumed();
+  await asked[0].answer(5, { through: '2026-10-01', next: 'older' });
+  assert.deepEqual(answers.map((it) => it.view.version), [5]);
+});
+
+/** A view of `titles` at `version`. */
+const of = (version: number, titles: string[], through?: string): Held => ({
+  place: undefined,
+  view: {
+    version,
+    showing: titles.map((title) => ({ page: { title } })) as unknown as PlaceView['showing'],
+    previews: [],
+    ...(through ? { list: { through, next: null } } : {}),
+  },
+});
+
+test('two views are the same at one version, one place, one list and the same pages', () => {
+  assert.equal(sameView(of(3, ['a', 'b'], 'd'), of(3, ['a', 'b'], 'd')), true);
+});
+
+test('a new version, a list loaded further, or a new day on top is not the same view', () => {
+  assert.equal(sameView(of(3, ['a']), of(4, ['a'])), false);
+  assert.equal(sameView(of(3, ['a'], 'd1'), of(3, ['a'], 'd2')), false);
+  assert.equal(sameView(of(3, ['a']), of(3, ['b', 'a'])), false);
 });
