@@ -7,7 +7,7 @@
   "main": "./src/graph.ts",
   "exports": "./src/graph.ts",
   "scripts": {
-    "test": "node --test '**/*.test.ts'",
+    "test": "node --test \"**/*.test.ts\"",
     "typecheck": "tsc"
   },
   "dependencies": {
