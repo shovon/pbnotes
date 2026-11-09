@@ -76,7 +76,7 @@ const createWindow = (windowState: WindowState) => {
 
   const mainWindow = new BrowserWindow({
     // Secure defaults first (isolation, sandbox, the preload), then the size.
-    ...mainWindowOptions({ preload: path.join(__dirname, "preload.js") }),
+    ...mainWindowOptions({ preload: path.join(__dirname, "preload.cjs") }),
     ...bounds,
     minWidth: MIN_SIZE.width,
     minHeight: MIN_SIZE.height,

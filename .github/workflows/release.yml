@@ -28,23 +28,17 @@ jobs:
             exit 1
           fi
 
-      # Node 24 and up: `npm run package` exits 0 without writing a bundle.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       # app and packages/* share the root lockfile.
       - run: npm ci
 
-      # A dry run makes the bundle and records what to upload, so the check
-      # below runs before anything reaches GitHub.
-      - name: Build for release
-        if: github.event_name == 'push'
-        run: npm run publish -w app -- --dry-run
-
+      # `make` records what it built, so the check below runs before anything
+      # reaches GitHub, and the publish step uploads exactly that.
       - name: Build
-        if: github.event_name != 'push'
         run: npm run make -w app
 
       # Forge has exited 0 without a bundle before; trust the files, not the code.
@@ -57,7 +51,7 @@ jobs:
 
       - name: Publish a draft Release
         if: github.event_name == 'push'
-        run: npm run publish -w app -- --from-dry-run
+        run: npm run release -w app -- --from-make
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
