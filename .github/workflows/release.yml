@@ -88,9 +88,13 @@ jobs:
 
       # One Squirrel installer per CPU: x64, which most Windows PCs are, and
       # arm64. The app has no native modules of its own (`node:sqlite` is
-      # Electron's), so one machine packages both.
+      # Electron's), so one machine packages both. One after the other:
+      # `--arch=x64,arm64` makes both at once, and their Squirrel steps
+      # collide over the same temporary .nupkg (EBUSY).
       - name: Build
-        run: npm run make -w app -- --arch=x64,arm64
+        run: |
+          npm run make -w app -- --arch=x64
+          npm run make -w app -- --arch=arm64
 
       # Both installers are called "Pb Notes-<version> Setup.exe", and one
       # Release cannot hold two files of one name, so each gets its CPU in its
