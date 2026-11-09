@@ -12,10 +12,10 @@ export default defineConfig({
       fileName: () => 'main.js',
       formats: ['cjs'],
     },
-    rollupOptions: {
+    rolldownOptions: {
       // `node:sqlite` is a prefix-only builtin, so it is absent from
       // `builtinModules` and from Forge's derived external list. Without an
-      // explicit entry Rollup tries to bundle it and the main build fails.
+      // explicit entry Rolldown tries to bundle it and the main build fails.
       external: [
         'electron',
         'node:sqlite',
