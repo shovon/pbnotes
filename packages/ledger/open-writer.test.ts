@@ -9,6 +9,14 @@ import { DEFAULT_CADENCE, encode, openOrCreate, openWriter, type Event, type Log
 
 const fast = { ...DEFAULT_CADENCE, everyMs: 20 };
 
+/**
+ * openWriter resumes a directory only where it reads a boot ID: macOS and
+ * Linux (multi-writer.md). Elsewhere every writer gets a random one, so the
+ * tests of resuming, and of the lock that guards it, have nothing to check.
+ */
+const resumes = process.platform === "darwin" || process.platform === "linux";
+const needsResume = !resumes && "openWriter never resumes without a boot ID, which only macOS and Linux have";
+
 const seg = (n: number) => `${String(n).padStart(16, "0")}.log`;
 const lines = async (dir: string, n: number) =>
   (await readFile(join(dir, seg(n)), "utf8")).trimEnd().split("\n").map((l) => JSON.parse(l.slice(9)) as LogEvent);
@@ -37,7 +45,7 @@ ${body}`;
   return { p, line, exited };
 }
 
-test("resumes one directory across runs: seq carries on, segments roll by size and day", async (t) => {
+test("resumes one directory across runs: seq carries on, segments roll by size and day", { skip: needsResume }, async (t) => {
   const dir = await fresh();
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() - 86_400_000 });
   const a = await openWriter(dir, "k");
@@ -66,7 +74,7 @@ test("resumes one directory across runs: seq carries on, segments roll by size a
   assert.equal((await lines(a.directory, 3))[0].seq, 6);
 });
 
-test("a second writer with the same key at once gets a random directory", async () => {
+test("a second writer with the same key at once gets a random directory", { skip: needsResume }, async () => {
   const dir = await fresh();
   const a = await openWriter(dir, "k");
   const b = await openWriter(dir, "k");
@@ -79,7 +87,7 @@ test("a second writer with the same key at once gets a random directory", async 
   assert.equal(c.directory, a.directory);
 });
 
-test("kill -9 releases the lock; a writer that never disposes exits on its own", { timeout: 10_000 }, async () => {
+test("kill -9 releases the lock; a writer that never disposes exits on its own", { timeout: 10_000, skip: needsResume }, async () => {
   const dir = await fresh();
   const held = child(dir, `const w = await openWriter(dir, "k"); await w.post(1, "t", "child"); console.log(w.directory); setInterval(() => {}, 1e6);`);
   const keyed = await held.line;
@@ -117,7 +125,7 @@ test("a torn or empty tail is left alone and the writer gets a random directory"
   assert.equal((await readFile(join(a.directory, seg(2)))).length, 0);
 });
 
-test("leaving an await using scope releases the lock, even when it throws", async () => {
+test("leaving an await using scope releases the lock, even when it throws", { skip: needsResume }, async () => {
   const dir = await fresh();
   let first = "";
   await assert.rejects(async () => {
@@ -129,7 +137,7 @@ test("leaving an await using scope releases the lock, even when it throws", asyn
   assert.equal(again.directory, first);
 });
 
-test("dispose waits for a post in flight, and a later post rejects", async () => {
+test("dispose waits for a post in flight, and a later post rejects", { skip: needsResume }, async () => {
   const dir = await fresh();
   const w = await openWriter(dir, "k");
   const inFlight = w.post(1, "t", "a");
@@ -143,7 +151,7 @@ test("dispose waits for a post in flight, and a later post rejects", async () =>
   assert.deepEqual((await lines(w.directory, 1)).map((e) => [e.seq, e.payload]), [[1, "a"], [2, "c"]]);
 });
 
-test("the boot ID is part of the directory name", async () => {
+test("the boot ID is part of the directory name", { skip: needsResume }, async () => {
   const dir = await fresh();
   const at = async (bootId: string) => {
     await using w = await openWriter(dir, "k", { bootId });
@@ -152,6 +160,18 @@ test("the boot ID is part of the directory name", async () => {
   const one = await at("boot-1");
   assert.notEqual(await at("boot-2"), one);
   assert.equal(await at("boot-1"), one);
+});
+
+test("without a boot ID, every writer gets a random directory", { skip: resumes && "macOS and Linux have a boot ID" }, async () => {
+  const dir = await fresh();
+  const at = async () => {
+    await using w = await openWriter(dir, "k");
+    await w.post(1, "t", "x");
+    return w.directory;
+  };
+  const one = await at();
+  assert.notEqual(await at(), one);
+  assert.deepEqual((await lines(one, 1)).map((e) => e.seq), [1]);
 });
 
 test("never creates a ledger", async () => {

@@ -68,13 +68,17 @@ async function journal(dir: string): Promise<string[]> {
 
 const writers = async (dir: string) => (await readdir(dir, { withFileTypes: true })).filter((d) => d.isDirectory());
 
+// Only macOS and Linux have a boot ID for openWriter to resume by; elsewhere
+// each run writes a directory of its own (multi-writer.md).
+const resumes = process.platform === "darwin" || process.platform === "linux";
+
 test("two runs in one boot land at the end of today, in one writer directory", async () => {
   const dir = await ledger();
   const first = await append(dir, "one");
   await append(dir, "two");
   assert.equal(first.stdout + first.stderr, "");
   assert.deepEqual(await journal(dir), ["one", "two"]);
-  assert.equal((await writers(dir)).length, 1);
+  assert.equal((await writers(dir)).length, resumes ? 1 : 2);
 });
 
 test("two runs at once both land", async () => {
