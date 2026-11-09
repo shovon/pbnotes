@@ -45,6 +45,7 @@ createRoot(container).render(
       now={() => new Date()}
       random={Math.random}
       mac={mac}
+      openMenu={own.menu}
     />
   </StrictMode>,
 );

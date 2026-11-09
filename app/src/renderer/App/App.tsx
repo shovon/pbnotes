@@ -7,6 +7,7 @@ import ProjectPicker from '../ProjectPicker/ProjectPicker';
 import ProjectView from '../project/ProjectView';
 import type { ProjectViewGraph } from '../project/ProjectView';
 import Welcome from '../Welcome/Welcome';
+import MenuButton from './MenuButton/MenuButton';
 import type { Act } from '../ui';
 import { humanize } from '../humanize/humanize';
 
@@ -35,8 +36,13 @@ type Props = {
   now: () => Date;
   /** A number in [0, 1), as `Math.random` gives one, passed on to the project that is open. */
   random: () => number;
-  /** Whether this is macOS, passed on to the project that is open. */
+  /**
+   * Whether this is macOS, passed on to the project that is open. Elsewhere
+   * the titlebar holds the ⋮ button, in place of a menu bar (#341).
+   */
   mac: boolean;
+  /** Opens the app's menu at a point in the window, from the ⋮ button (#341). */
+  openMenu: (at: { x: number; y: number }) => Promise<void>;
 };
 
 export default function App({
@@ -48,6 +54,7 @@ export default function App({
   now,
   random,
   mac,
+  openMenu,
 }: Props) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -249,6 +256,10 @@ export default function App({
             />
           )}
         </div>
+        {/* Windows and Linux have no menu bar (#341): the app's menu is
+            here, last in the strip, after what the open project portals in,
+            with a project open or not. */}
+        {!mac && <MenuButton openMenu={openMenu} />}
       </header>
 
       {/* While the sidebar is in the DOM (it is left out when collapsed),
