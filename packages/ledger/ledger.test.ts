@@ -226,7 +226,7 @@ test("status: stop at gaps and damage, heal when sync fills them", { timeout: 50
   assert.deepEqual(by.dup, { device: "dup", folded: 2, state: "ok" });
   assert.equal(by.z.state, "clockSuspect");
   assert.match(by.z.detail!, /^dated \d{4}-/);
-  assert.deepEqual(l.status.ignored.map((p) => p.slice(dir.length + 1)).sort(), ["gap/0000000000000001 (conflicted copy).log", "stray.log"]);
+  assert.deepEqual(l.status.ignored.map((p) => p.slice(dir.length + 1)).sort(), [join("gap", "0000000000000001 (conflicted copy).log"), "stray.log"]);
 
   // Sync catches up: the missing segment arrives, and segment 1 of "jump" finishes growing.
   await put(dir, "gap", 2, recs([ev("gap", 2, 20)]));
