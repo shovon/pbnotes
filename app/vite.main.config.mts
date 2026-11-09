@@ -8,8 +8,8 @@ export default defineConfig({
       entry: 'src/main/index.ts',
       // Forge writes every build into a single `.vite/build` directory, so the
       // main and preload entries — both `index.ts` — would otherwise collide
-      // on `index.js`. Name the outputs after their layer instead.
-      fileName: () => 'main.js',
+      // on `index.cjs`. Name the outputs after their layer instead.
+      fileName: () => 'main.cjs',
       formats: ['cjs'],
     },
     rolldownOptions: {

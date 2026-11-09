@@ -90,6 +90,7 @@
       "files": [
         "vite.*.config.ts",
         "vite.*.config.mts",
+        "forge.config.ts",
         ".storybook/main.ts"
       ],
       "rules": {

@@ -5,7 +5,7 @@ import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
-import { PublisherGithub } from '@electron-forge/publisher-github';
+import { PublisherGitHub } from '@electron-forge/publisher-github';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { execFileSync } from 'node:child_process';
@@ -61,7 +61,7 @@ const config: ForgeConfig = {
   ],
   // Drafts, so a Release is only public once someone has checked it (#67).
   publishers: [
-    new PublisherGithub({
+    new PublisherGitHub({
       repository: { owner: 'shovon', name: 'pbnotes' },
       draft: true,
     }),
