@@ -12,7 +12,10 @@ import {
 } from "electron";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import started from "electron-squirrel-startup";
+import { spawn } from "node:child_process";
+import { rmSync } from "node:fs";
+import { shortcutSteps, squirrelEvent } from "./features/squirrel/squirrel";
+import type { Step } from "./features/squirrel/squirrel";
 import { openDatabase } from "./db";
 import { appMenu } from "./features/menu/menu";
 import { createOpenBench } from "./features/bench/bench";
@@ -50,8 +53,46 @@ import {
 } from "./features/window-state/window-state";
 import type { WindowState } from "./features/window-state/window-state";
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (started) {
+// The ID Windows groups the app's windows, taskbar pins and shortcuts under.
+// Squirrel gives its own shortcuts `com.squirrel.<package id>.<exe>`, so the
+// app and the Start menu shortcut it writes say the same (#348).
+const APP_USER_MODEL_ID = "com.squirrel.pbnotes.pbnotes";
+if (process.platform === "win32") app.setAppUserModelId(APP_USER_MODEL_ID);
+
+// The Windows installer starts the app to make or remove its shortcuts on
+// install, update and uninstall, and waits for it to exit. Then the app opens
+// nothing (the `ready` handler below returns at once), runs the steps, and
+// quits. `Update.exe` is started on its own and never waited for: the
+// installer holds it until the app has exited (`features/squirrel/`). A step
+// that fails is skipped: a missing shortcut must not fail an install.
+const squirrel = process.platform === "win32" ? squirrelEvent(process.argv) : undefined;
+if (squirrel) {
+  const run = (step: Step) => {
+    if (step.kind === "update") spawn(step.exe, step.args, { detached: true, stdio: "ignore" }).unref();
+    else if (step.kind === "unlink") rmSync(step.path, { force: true });
+    else {
+      const written = shell.writeShortcutLink(step.path, "create", {
+        target: step.target,
+        icon: step.icon,
+        iconIndex: 0,
+        appUserModelId: step.appUserModelId,
+      });
+      if (!written) throw new Error(`Could not write ${step.path}`);
+    }
+  };
+  const steps = shortcutSteps(squirrel, {
+    exe: process.execPath,
+    startMenu: path.join(app.getPath("appData"), "Microsoft", "Windows", "Start Menu", "Programs"),
+    name: app.getName(),
+    appUserModelId: APP_USER_MODEL_ID,
+  });
+  for (const step of steps) {
+    try {
+      run(step);
+    } catch (error) {
+      console.error(error);
+    }
+  }
   app.quit();
 }
 
@@ -158,6 +199,9 @@ const createWindow = (windowState: WindowState) => {
 // Some APIs can only be used once Electron is ready, so everything is built
 // here, and the handlers that need what was built are attached here too.
 app.on("ready", () => {
+  // Started by the installer for its shortcuts, above: no window, no database.
+  if (squirrel) return;
+
   // The app's own menu (#247): Electron's default, but with Undo and Redo
   // telling the focused window, which decides whether the open field or
   // main takes the step. The default's would call the browser's undo. The
