@@ -97,6 +97,21 @@ export function previous(tabs: Tabs): Tabs {
   return along(tabs, -1);
 }
 
+/**
+ * The tab `id` moved to `index` in the order the strip shows (#338),
+ * between the first place and the last. Which tab is active does not
+ * change, and a run of tabs opened behind is over: the next goes right
+ * after the active one again. The very same tabs when it does not move.
+ */
+export function moved(tabs: Tabs, id: string, index: number): Tabs {
+  const from = tabs.list.findIndex((it) => it.id === id);
+  const to = Math.max(0, Math.min(index, tabs.list.length - 1));
+  if (from === -1 || from === to) return tabs;
+  const list = tabs.list.filter((it) => it.id !== id);
+  list.splice(to, 0, tabs.list[from]);
+  return { list, active: tabs.active };
+}
+
 /** The tab `id` stepped by `step`. A tab closed since is left closed. */
 export function updated(tabs: Tabs, id: string, step: (tab: TabState) => TabState): Tabs {
   let changed = false;

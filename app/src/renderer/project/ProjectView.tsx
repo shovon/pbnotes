@@ -23,7 +23,7 @@ import { NEW_TAB, held, left, renamedIn as renamedInTab, withField } from './Tab
 import type { TabState } from './Tab/state/state';
 import type { Held, HeldIcon } from './held/held';
 import { today } from '@pbnotes/graph';
-import { activated, activeOf, closed, each, next, opened, openedBehind, previous, single, updated } from './tabs/tabs';
+import { activated, activeOf, closed, each, moved, next, opened, openedBehind, previous, single, updated } from './tabs/tabs';
 import type { Tabs } from './tabs/tabs';
 import TabStrip from './TabStrip/TabStrip';
 import { shown, whereFrom } from './opening/opening';
@@ -600,6 +600,7 @@ export default function ProjectView({
               onSelect={showTab}
               onClose={closeTab}
               onNew={() => openTab()}
+              onMove={(id, index) => setTabs((all) => moved(all, id, index))}
             />
           </div>,
           titlebar,
