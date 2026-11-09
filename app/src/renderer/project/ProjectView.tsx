@@ -547,17 +547,19 @@ export default function ProjectView({
     [activeId],
   );
   const heldShown = useMemo(() => (held: Held) => remember(activeId, held), [activeId]);
-  // Current when nothing can have changed since it was drawn: as new as the
-  // newest change heard, and read on the same day, since the journal's top
-  // is today. Then the tab draws it and asks main nothing: a long journal
-  // read again took main long enough to hold up the pointer (#338).
+  // Read on the same day, since the journal's top is today: then the tab
+  // asks main nothing for it if it is as new as the newest change heard,
+  // which the tab checks itself as it mounts (`heard`), not here, since a
+  // change can land between this render and the tab listening for one. A
+  // long journal read again took main long enough to hold up the pointer
+  // (#338).
   const resumeShown = useMemo(() => {
     const it = behind.current.get(activeId);
     if (!it) return null;
-    const current =
-      it.held !== null && it.held.view.version >= heardVersion.current && it.day === today(now());
-    return { held: it.held, scroll: it.scroll, current };
+    return { held: it.held, scroll: it.scroll, today: it.day === today(now()) };
   }, [activeId]);
+  /** The newest version heard, as it is when asked. */
+  const heardNow = useStable(() => heardVersion.current);
   const openStable = useStable(open);
   const goToBlockStable = useStable(goToBlock);
   const followRenameStable = useStable(followRename);
@@ -664,6 +666,7 @@ export default function ProjectView({
         tab={tab}
         update={updateShown}
         resume={resumeShown}
+        heard={heardNow}
         onHeld={heldShown}
         onOpen={openStable}
         onBlock={goToBlockStable}

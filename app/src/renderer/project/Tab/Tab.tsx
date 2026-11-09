@@ -96,13 +96,15 @@ type Props = {
   resume: {
     held: Held | null;
     scroll: number;
-    /**
-     * That nothing can have changed since `held` was drawn: it is as new as
-     * the newest change heard, and was read today. Then it is drawn and
-     * main is asked nothing.
-     */
-    current?: boolean;
+    /** That `held` was read today, as the journal's top is now. */
+    today?: boolean;
   } | null;
+  /**
+   * The newest fold version the window has heard of, as it is when asked:
+   * a view left behind at least as new, and from today, is drawn as it is,
+   * and main asked nothing for it.
+   */
+  heard: () => number;
   /** Each view the tab draws, for the window to keep while it is not drawn. */
   onHeld: (held: Held) => void;
 };
@@ -135,6 +137,7 @@ function Tab({
   onRenamed,
   onDeleted,
   resume,
+  heard,
   onHeld,
 }: Props) {
   const { trail, sort, aside, asideWidth, target } = tab;
@@ -253,7 +256,11 @@ function Tab({
     // main asked nothing. A long journal read again holds main up long
     // enough to hold up the pointer, as a drag begins (#338). A change heard
     // from now on asks as ever (`heard`).
-    if (resume?.current && resume.held && samePlace(resume.held.place, place)) return;
+    // As new as the newest change heard, read here, as the tab mounts: this
+    // effect and the one listening for changes run in one go, so no change
+    // can land between the reading and the listening and be missed.
+    const held = resume?.held;
+    if (resume?.today && held && samePlace(held.place, place) && held.view.version >= heard()) return;
     fetcher.resumed();
   }, [place?.page, place?.block]);
 
