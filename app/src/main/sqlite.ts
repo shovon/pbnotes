@@ -15,17 +15,24 @@ export type Migrations = readonly string[];
  * Opens `file` and brings it up to `migrations`. No handle is kept here: the
  * caller owns what this returns, hands it to whatever needs it, and closes it.
  * `':memory:'` gives a test a fresh, migrated database.
+ *
+ * If it throws, the file is closed first: the caller never got a handle to
+ * close, and Windows will not delete a file that is still open.
  */
 export function openMigrated(file: string, migrations: Migrations): DatabaseSync {
   const db = new DatabaseSync(file);
+  try {
+    // WAL keeps reads from blocking writes and survives a hard kill far
+    // better than the default rollback journal.
+    db.exec("PRAGMA journal_mode = WAL");
+    db.exec("PRAGMA foreign_keys = ON");
 
-  // WAL keeps reads from blocking writes and survives a hard kill far better
-  // than the default rollback journal.
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA foreign_keys = ON");
-
-  migrate(db, migrations);
-  return db;
+    migrate(db, migrations);
+    return db;
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 }
 
 function migrate(database: DatabaseSync, migrations: Migrations): void {
