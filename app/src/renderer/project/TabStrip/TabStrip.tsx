@@ -124,7 +124,9 @@ export default function TabStrip({ tabs, active: shown, onSelect, onClose, onNew
   const active = pressed ?? shown;
   /** Shows `id` on a press: marked here at once, its page drawn when React gets to it. */
   const press = (id: string) => {
-    if (id === shown) return;
+    // Shown, or on its way: a click on the tab pressed a moment ago asks for
+    // it again, and asking outside a transition would draw its page at once.
+    if (id === shown || id === pressed) return;
     setPressed(id);
     startTransition(() => onSelect(id));
   };
@@ -356,7 +358,10 @@ export default function TabStrip({ tabs, active: shown, onSelect, onClose, onNew
                   const plain = !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
                   if (event.button === 0 && plain) press(id);
                 }}
-                onClick={() => onSelect(id)}
+                // A click selects the same way, so one already on its way from
+                // the press is not asked for again (a Cmd or Shift click,
+                // which the press passed by, still selects here).
+                onClick={() => press(id)}
                 // A middle click closes, as in a browser.
                 onAuxClick={(event) => {
                   if (event.button === 1) closeFrom(event, id);

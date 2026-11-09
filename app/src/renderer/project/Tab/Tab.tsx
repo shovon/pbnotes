@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { locate, canonicalize, today } from '@pbnotes/graph';
 import type { Block } from '@pbnotes/graph';
@@ -93,7 +93,16 @@ type Props = {
    * it never was: the view it drew, to draw again at once and to tell the
    * next answer against, and how far the window was scrolled.
    */
-  resume: { held: Held | null; scroll: number } | null;
+  resume: {
+    held: Held | null;
+    scroll: number;
+    /**
+     * That nothing can have changed since `held` was drawn: it is as new as
+     * the newest change heard, and was read today. Then it is drawn and
+     * main is asked nothing.
+     */
+    current?: boolean;
+  } | null;
   /** Each view the tab draws, for the window to keep while it is not drawn. */
   onHeld: (held: Held) => void;
 };
@@ -114,7 +123,7 @@ type Props = {
  * ponytail: the whole history renders at once. Add windowing when someone has
  * enough years in one project for that to show.
  */
-export default function Tab({
+function Tab({
   act,
   graph,
   now,
@@ -239,8 +248,13 @@ export default function Tab({
   useEffect(() => {
     const moved = askedFor.current !== null && !samePlace(askedFor.current.at, place);
     askedFor.current = { at: place };
-    if (moved) fetcher.moved();
-    else fetcher.resumed();
+    if (moved) return fetcher.moved();
+    // Shown again with a view nothing can have changed since: drawn, and
+    // main asked nothing. A long journal read again holds main up long
+    // enough to hold up the pointer, as a drag begins (#338). A change heard
+    // from now on asks as ever (`heard`).
+    if (resume?.current && resume.held && samePlace(resume.held.place, place)) return;
+    fetcher.resumed();
   }, [place?.page, place?.block]);
 
   /**
@@ -1309,3 +1323,11 @@ export default function Tab({
   );
 }
 
+/**
+ * Drawn again only when what it is handed changes: the tab's own state, or
+ * the bridge. The window around it draws far more often (the finder, the
+ * sidebar, Recent, the strip), and a long journal drawn again for each of
+ * those was most of what they cost. `ProjectView` hands it the same
+ * functions from render to render for this.
+ */
+export default memo(Tab);

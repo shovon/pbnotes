@@ -23,6 +23,7 @@ import { completeLink, linkQuery } from './linkQuery/linkQuery';
 import type { LinkQuery } from './linkQuery/linkQuery';
 import { extendsBy, selectsAll } from '../selection/shortcut/shortcut';
 import type { FromBox } from '../selection/Selecting';
+import { createParsed } from './parsed/parsed';
 
 /** `data-*` attributes a view puts on a block, for whatever reads the screen. */
 type Data = Record<`data-${string}`, string>;
@@ -99,6 +100,17 @@ const quoted = {
  * carries — the same hook the dot has. One whose block is gone is still a
  * link: the click is what says so.
  */
+/**
+ * What a preview renders to, by its text (`parsed/`). `Markdown` is called
+ * as the function it is, with no hooks of its own, so its answer can be
+ * kept and handed to any number of trees; what it holds that reads the
+ * page as it is now (`BlockRef`, `Image`) still renders each time.
+ */
+const parsedPreview = createParsed(
+  (text) => Markdown({ remarkPlugins, rehypePlugins, components: quoted, children: text }),
+  2000,
+);
+
 function BlockRef({ 'data-block-ref': id, children }: RefProps) {
   const preview = useContext(Previews).get(id ?? '');
   return (
@@ -108,22 +120,26 @@ function BlockRef({ 'data-block-ref': id, children }: RefProps) {
       className={preview === null ? 'block-ref broken' : 'block-ref'}
     >
       {children ??
-        (preview ? (
-          <Markdown
-            remarkPlugins={remarkPlugins}
-            rehypePlugins={rehypePlugins}
-            components={quoted}
-          >
-            {preview}
-          </Markdown>
-        ) : (
-          id
-        ))}
+        (preview ? parsedPreview(preview) : id)}
     </a>
   );
 }
 
 const components = { 'block-ref': BlockRef, img: Image } as Components;
+
+/**
+ * What a block's text renders to, by its text (`parsed/`), as previews are:
+ * parsed once for every block that ever shows it, not once per mount. A
+ * tab shown again mounts every block it draws, and a long journal parsed
+ * anew each time was most of what showing it cost. Each answer is a tree
+ * that reads the page as it is when drawn (a block ref's preview, an
+ * image), so keeping it keeps nothing stale. Not a handle on anything:
+ * only what the same text always gives.
+ */
+const parsedBlock = createParsed(
+  (text) => Markdown({ remarkPlugins, rehypePlugins, components, children: text }),
+  5000,
+);
 
 /**
  * One block in its two states. Neither reaches main: the page decides what a
@@ -216,23 +232,14 @@ export function Block({
   onMenu?: () => void;
 }) {
   /**
-   * Parsed once per text, not once per render. `Markdown` parses in render,
-   * and every write re-renders the whole stack more than once — so without
-   * this, a journal of a few thousand blocks pays for every one of them, and
-   * every formula in them, on each keystroke that lands.
+   * Parsed once per text, not once per render, nor once per mount
+   * (`parsedBlock`). `Markdown` parses in render, and every write re-renders
+   * the whole stack more than once, and a tab shown again mounts it anew —
+   * so without this, a journal of a few thousand blocks pays for every one
+   * of them, and every formula in them, on each keystroke that lands and
+   * each time it is shown.
    */
-  const rendered = useMemo(
-    () => (
-      <Markdown
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        components={components}
-      >
-        {text}
-      </Markdown>
-    ),
-    [text],
-  );
+  const rendered = useMemo(() => parsedBlock(text), [text]);
 
   const box = (
     <div
