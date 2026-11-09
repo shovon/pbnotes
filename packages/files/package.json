@@ -10,7 +10,7 @@
     "./images": "./images.ts"
   },
   "scripts": {
-    "test": "node --test '*.test.ts'"
+    "test": "node --test \"*.test.ts\""
   },
   "license": "MIT"
 }

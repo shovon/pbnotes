@@ -7,7 +7,7 @@
   "main": "./src/logseq.ts",
   "exports": "./src/logseq.ts",
   "scripts": {
-    "test": "node --test 'src/**/*.test.ts'",
+    "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc"
   },
   "dependencies": {
