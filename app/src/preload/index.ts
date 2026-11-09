@@ -82,6 +82,7 @@ const window: WindowApi = {
       ipcRenderer.off(WINDOW_CHANNELS.tab, heard);
     };
   },
+  menu: (at) => ipcRenderer.invoke(WINDOW_CHANNELS.menu, at),
 };
 
 // Only this explicit surface crosses the context bridge; the renderer never

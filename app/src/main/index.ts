@@ -90,7 +90,9 @@ const createWindow = (windowState: WindowState) => {
     // `titleBarOverlay` is what gives Windows and Linux their controls back,
     // painted in the top strip's own colours so they sit in it rather than
     // on it. macOS draws its traffic lights on whatever is there.
-    titleBarStyle: "hiddenInset",
+    // `hiddenInset` is macOS's alone: Windows ignores it and keeps its own
+    // title bar, so there it is `hidden` (#341).
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "hidden",
     titleBarOverlay: colors.titleBarOverlay,
     backgroundColor: colors.backgroundColor,
   });
@@ -105,6 +107,13 @@ const createWindow = (windowState: WindowState) => {
   };
   nativeTheme.on("updated", followTheme);
   mainWindow.once("closed", () => nativeTheme.off("updated", followTheme));
+
+  // Windows and Linux would draw the menu as a bar of its own above the
+  // page, under the strip the tabs and window controls share. The titlebar's
+  // ⋮ button opens it instead (#341). Hidden, not removed, so its shortcuts
+  // still work, and not auto-hidden, so Alt does not bring the bar back:
+  // Alt opens the ⋮ menu instead. macOS keeps its menu in the menu bar.
+  if (process.platform !== "darwin") mainWindow.setMenuBarVisibility(false);
 
   if (maximized) mainWindow.maximize();
   mainWindow.once("ready-to-show", () => mainWindow.show());
@@ -153,16 +162,15 @@ app.on("ready", () => {
   // telling the focused window, which decides whether the open field or
   // main takes the step. The default's would call the browser's undo. The
   // tab items (#304) tell the focused window too.
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate(
-      appMenu(
-        process.platform === "darwin",
-        (way) => BrowserWindow.getFocusedWindow()?.webContents.send(GRAPH_CHANNELS.take, way),
-        // The tab items (#304) the same way: the window holds its tabs.
-        (item) => BrowserWindow.getFocusedWindow()?.webContents.send(WINDOW_CHANNELS.tab, item),
-      ),
-    ),
+  const menu = appMenu(
+    process.platform === "darwin",
+    (way) => BrowserWindow.getFocusedWindow()?.webContents.send(GRAPH_CHANNELS.take, way),
+    // The tab items (#304) the same way: the window holds its tabs.
+    (item) => BrowserWindow.getFocusedWindow()?.webContents.send(WINDOW_CHANNELS.tab, item),
   );
+  // Set even where the menu bar is hidden (#341): the shortcuts are the
+  // application menu's, and a window with none has no Ctrl+T or Ctrl+Z.
+  Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
   const db = openDatabase(path.join(app.getPath("userData"), "notes.db"));
   // The displays attached now: `screen` is only usable once the app is ready.
   const windowState = createWindowState(
@@ -220,8 +228,10 @@ app.on("ready", () => {
     () => projects.currentProject()?.id,
   );
   registerBenchIpc(bench);
-  // A window closing itself, as its last tab closes (#303).
-  registerWindowIpc();
+  // A window closing itself, as its last tab closes (#303), and the app's
+  // menu opened from the titlebar's ⋮ button (#341): a second copy of the
+  // same template, since the application menu is the menu bar's own.
+  registerWindowIpc(Menu.buildFromTemplate(menu));
 
   // The graph is handed its view of what is open, and the images beside it,
   // and never ask what that is. This is the one place that says it is the
