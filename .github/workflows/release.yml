@@ -1,7 +1,12 @@
-# A pushed vX.Y.Z tag becomes a draft GitHub Release with the macOS build
-# attached; someone publishes it by hand after checking it (#68). Started by
-# hand instead, it builds without publishing and keeps the bundle as a run
-# artifact, to test the workflow without cutting a tag.
+# A pushed vX.Y.Z tag becomes a draft GitHub Release with the macOS build and
+# the Windows installers attached; someone publishes it by hand after checking
+# it (#68, #348). Started by hand instead, it builds without publishing and
+# keeps each platform's files as a run artifact, to test the workflow without
+# cutting a tag.
+#
+# Each platform builds in a job of its own and hands its files on as an
+# artifact. One last job makes the draft from all of them, so two jobs never
+# race to make it.
 name: Release
 
 on:
@@ -36,37 +41,98 @@ jobs:
       # app and packages/* share the root lockfile.
       - run: npm ci
 
-      # `make` records what it built, so the check below runs before anything
-      # reaches GitHub, and the publish step uploads exactly that.
       - name: Build
         run: npm run make -w app
 
-      # Forge has exited 0 without a bundle before; trust the files, not the code.
-      - name: Bundle exists
+      # Forge has exited 0 without a bundle before; trust the files, not the
+      # code. The DMG is the download people expect; the ZIP is what
+      # auto-update would consume later (#67).
+      - name: Collect the bundles
         run: |
-          find app/out/make -name '*.dmg' -o -name '*.zip' | grep . || {
-            echo "::error::No .dmg or .zip under app/out/make"
+          mkdir dist
+          find app/out/make \( -name '*.dmg' -o -name '*.zip' \) -exec cp {} dist/ \;
+          ls dist/*.dmg dist/*.zip || {
+            echo "::error::No .dmg and .zip under app/out/make"
             exit 1
           }
 
-      - name: Publish a draft Release
-        if: github.event_name == 'push'
-        run: npm run release -w app -- --from-make
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Release notes
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          notes=$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$GITHUB_REF_NAME" --jq .body)
-          gh release edit "$GITHUB_REF_NAME" --notes "$notes
-
-          The app is not signed with a Developer ID yet, so macOS will refuse to open it the first time. See [how to allow it to open](https://github.com/$GITHUB_REPOSITORY#install)."
-
       - uses: actions/upload-artifact@v4
-        if: github.event_name != 'push'
         with:
           name: pbnotes-macos
-          path: app/out/make
+          path: dist/
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag matches app version
+        if: github.event_name == 'push'
+        run: |
+          version=$(node -p "require('./app/package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match app/package.json version $version"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # One Squirrel installer per CPU: x64, which most Windows PCs are, and
+      # arm64. The app has no native modules of its own (`node:sqlite` is
+      # Electron's), so one machine packages both.
+      - name: Build
+        run: npm run make -w app -- --arch=x64,arm64
+
+      # Both installers are called "Pb Notes-<version> Setup.exe", and one
+      # Release cannot hold two files of one name, so each gets its CPU in its
+      # name. Only the installers: Squirrel's .nupkg and RELEASES are for
+      # auto-update, which there is none of yet (#67).
+      - name: Collect the installers
+        run: |
+          version=$(node -p "require('./app/package.json').version")
+          mkdir dist
+          for arch in x64 arm64; do
+            setup="app/out/make/squirrel.windows/$arch/Pb Notes-$version Setup.exe"
+            [ -f "$setup" ] || {
+              echo "::error::No installer for $arch at $setup"
+              exit 1
+            }
+            cp "$setup" "dist/Pb Notes-$version-$arch-Setup.exe"
+          done
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pbnotes-windows
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push'
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pbnotes-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish a draft Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          notes=$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$GITHUB_REF_NAME" --jq .body)
+          gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag --title "$GITHUB_REF_NAME" --notes "$notes
+
+          The app is not signed yet, so macOS and Windows both warn the first time it opens. See [how to allow it to open](https://github.com/$GITHUB_REPOSITORY#install)."

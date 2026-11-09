@@ -5,7 +5,6 @@ import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
-import { PublisherGitHub } from '@electron-forge/publisher-github';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { execFileSync } from 'node:child_process';
@@ -59,13 +58,8 @@ const config: ForgeConfig = {
     new MakerRpm({ options: { icon: 'assets/icon.png' } }),
     new MakerDeb({ options: { icon: 'assets/icon.png' } }),
   ],
-  // Drafts, so a Release is only public once someone has checked it (#67).
-  publishers: [
-    new PublisherGitHub({
-      repository: { owner: 'shovon', name: 'pbnotes' },
-      draft: true,
-    }),
-  ],
+  // No publishers: `release.yml` makes the draft Release from every
+  // platform's build at once (#348), so Forge publishes nothing itself.
   plugins: [
     new VitePlugin({
       // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
