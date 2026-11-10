@@ -157,7 +157,15 @@ const createWindow = (windowState: WindowState) => {
   if (process.platform !== "darwin") mainWindow.setMenuBarVisibility(false);
 
   if (maximized) mainWindow.maximize();
-  mainWindow.once("ready-to-show", () => mainWindow.show());
+  // Shown once it has painted. Wayland never paints a window that is not
+  // shown yet, so there `ready-to-show` never comes and the window would
+  // stay hidden for good: the page having loaded shows it too, whichever
+  // is first. The background colour above keeps that from flashing.
+  const show = () => {
+    if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+  };
+  mainWindow.once("ready-to-show", show);
+  mainWindow.webContents.once("did-finish-load", show);
   windowState.trackWindowState(mainWindow);
 
   const source = rendererSource(
