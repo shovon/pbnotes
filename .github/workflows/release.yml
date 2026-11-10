@@ -204,9 +204,71 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  arch:
+    # Pacman packages for Arch and Omarchy (#361), for both CPUs, made from
+    # the linux jobs' .deb files: the PKGBUILD only unpacks a .deb, and makepkg
+    # uses a source file that is already in place. Both are built on x64, in
+    # the official Arch image, which is x86_64 only; telling makepkg the
+    # target CPU (CARCH) gives the same aarch64 package an ARM machine would.
+    # Only the x64 one can be installed and started here.
+    needs: linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pbnotes-linux-*
+          path: debs
+          merge-multiple: true
+
+      # The sandbox needs unprivileged user namespaces, as the .rpm's test
+      # does: Arch allows them, the runner's Ubuntu kernel and Docker don't.
+      - name: Build and smoke-test the Arch packages
+        run: |
+          version=$(node -p "require('./app/package.json').version")
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          mkdir dist
+          docker run --rm -e version="$version" \
+            --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+            -v "$PWD:/w:ro" -v "$PWD/dist:/out" archlinux:base-devel bash -euc '
+              pacman -Syu --noconfirm --needed namcap xorg-server-xvfb xorg-xwininfo
+              useradd -m builder
+              # The PKGBUILD reads ../package.json and ../../LICENSE.
+              repo=/home/builder/repo
+              mkdir -p "$repo/app"
+              cp -r /w/app/arch /w/app/package.json "$repo/app/"
+              cp /w/LICENSE "$repo/"
+              pkg="$repo/app/arch"
+              cp "/w/debs/pbnotes_${version}_amd64.deb" "$pkg/pbnotes-$version-x86_64.deb"
+              cp "/w/debs/pbnotes_${version}_arm64.deb" "$pkg/pbnotes-$version-aarch64.deb"
+              sed "s/^CARCH=.*/CARCH=\"aarch64\"/" /etc/makepkg.conf > /etc/makepkg-aarch64.conf
+              chown -R builder "$repo"
+              cd "$pkg"
+              pacman -S --noconfirm --needed $(source PKGBUILD && echo "${depends[@]}")
+              runuser -u builder -- makepkg --noconfirm
+              runuser -u builder -- makepkg --noconfirm --config /etc/makepkg-aarch64.conf
+              x64=$(echo pbnotes-bin-*-x86_64.pkg.tar.*)
+              arm64=$(echo pbnotes-bin-*-aarch64.pkg.tar.*)
+              [ -f "$x64" ] && [ -f "$arm64" ]
+              # namcap marks errors with " E: ".
+              namcap PKGBUILD "$x64" | tee namcap.log
+              if grep -q " E: " namcap.log; then exit 1; fi
+              pacman -U --noconfirm "$x64"
+              runuser -u builder -- /w/app/scripts/smoke-launch.sh pbnotes
+              cp "$x64" "$arm64" /out/
+            '
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pbnotes-arch
+          path: dist/
+          if-no-files-found: error
+
   release:
     if: github.event_name == 'push'
-    needs: [macos, windows, linux]
+    needs: [macos, windows, linux, arch]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

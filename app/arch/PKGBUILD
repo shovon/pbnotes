@@ -1,0 +1,45 @@
+# Maintainer: Sal Rahman <hey.to.sal@gmail.com>
+#
+# A pacman package of Pb Notes for Arch, Omarchy among them (#361),
+# repackaged from the .deb on the GitHub Release. It isn't on the AUR. The
+# release workflow builds it for both CPUs and attaches both packages to the
+# Release; `makepkg -si` here, in a checkout of a release's tag, builds the
+# same thing from that Release's .deb.
+
+pkgname=pbnotes-bin
+_pkgname=pbnotes
+# The app's own version, so a checkout of a release tag builds that release.
+pkgver=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' ../package.json)
+pkgrel=1
+pkgdesc='Local-first knowledge sharing and management, safe for many writers.'
+arch=('x86_64' 'aarch64')
+url='https://github.com/shovon/pbnotes'
+license=('MIT')
+# What Electron links against directly, less what every Arch system has
+# (glibc, gcc-libs, systemd-libs). xdg-utils opens links and folders.
+depends=(
+  'alsa-lib' 'at-spi2-core' 'cairo' 'dbus' 'expat' 'glib2' 'gtk3' 'libcups'
+  'libx11' 'libxcb' 'libxcomposite' 'libxdamage' 'libxext' 'libxfixes'
+  'libxkbcommon' 'libxrandr' 'mesa' 'nspr' 'nss' 'pango' 'xdg-utils'
+)
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+# Electron ships stripped, and has no debug symbols to split off.
+options=('!strip' '!debug')
+source_x86_64=("$_pkgname-$pkgver-x86_64.deb::$url/releases/download/v$pkgver/${_pkgname}_${pkgver}_amd64.deb")
+source_aarch64=("$_pkgname-$pkgver-aarch64.deb::$url/releases/download/v$pkgver/${_pkgname}_${pkgver}_arm64.deb")
+# No checksums: they'd change with every release, and the files come over
+# HTTPS from the same Release page a .deb would be downloaded from by hand.
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+  # -p keeps chrome-sandbox setuid, as the .deb has it and as Arch's own
+  # chromium ships it. Arch allows the user-namespace sandbox, but a kernel
+  # that doesn't (linux-hardened) needs this one. Debian's lintian overrides
+  # and copyright file have no use here.
+  bsdtar -xpf data.tar.* -C "$pkgdir" \
+    --exclude './usr/share/lintian' --exclude './usr/share/doc'
+  # The .deb holds Electron's license, not the app's.
+  install -Dm644 "$startdir/../../LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
