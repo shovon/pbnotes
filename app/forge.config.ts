@@ -8,11 +8,17 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { execFileSync } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { MakerAppImage } from '@reforged/maker-appimage';
+import { chmodSync, copyFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 const linuxPackage = {
   icon: 'assets/icon.png',
+  // The makers' own templates set StartupWMClass to the display name, "Pb
+  // Notes". The window's class is "pbnotes" (`desktopName` in package.json),
+  // and a desktop or dock matches a window to its entry by that class, or by
+  // the entry's file name, pbnotes.desktop.
+  desktopTemplate: 'linux/desktop.ejs',
   genericName: 'Notes',
   categories: ['Office' as const],
   homepage: 'https://github.com/shovon/pbnotes',
@@ -39,11 +45,21 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   hooks: {
-    // Ad-hoc sign the whole bundle before the makers zip it up. The packager
-    // renames and edits the app after Electron's own signature, so without this
-    // Apple Silicon refuses to open it as "damaged" (#68). The Developer ID
-    // follow-up replaces this with `osxSign`.
     postPackage: async (_config, { platform, outputPaths }) => {
+      // The AppImage starts through a script that drops the sandbox where the
+      // system blocks it (#357). The makers share one packaged app, so the
+      // other Linux packages carry it too, unused.
+      if (platform === 'linux') {
+        for (const dir of outputPaths) {
+          copyFileSync('appimage/pbnotes-appimage', path.join(dir, 'pbnotes-appimage'));
+          chmodSync(path.join(dir, 'pbnotes-appimage'), 0o755);
+        }
+        return;
+      }
+      // Ad-hoc sign the whole bundle before the makers zip it up. The packager
+      // renames and edits the app after Electron's own signature, so without
+      // this Apple Silicon refuses to open it as "damaged" (#68). The
+      // Developer ID follow-up replaces this with `osxSign`.
       if (platform !== 'darwin') return;
       for (const dir of outputPaths) {
         for (const app of readdirSync(dir).filter((f) => f.endsWith('.app'))) {
@@ -66,6 +82,23 @@ const config: ForgeConfig = {
     // GNOME;GTK;Utility, and `genericName` the app's own name again.
     new MakerRpm({ options: linuxPackage }),
     new MakerDeb({ options: linuxPackage }),
+    new MakerAppImage({
+      options: {
+        icon: linuxPackage.icon,
+        genericName: linuxPackage.genericName,
+        categories: linuxPackage.categories,
+        // What AppRun starts: see appimage/pbnotes-appimage.
+        bin: 'pbnotes-appimage',
+        // pbnotes.desktop, as the other packages name it and as matches the
+        // window's class (`desktopName` in package.json). Otherwise
+        // "Pb Notes.desktop".
+        desktopName: 'pbnotes',
+        // The maker would take AppImage's moving `continuous` build. This one
+        // is a fixed release, and needs no libfuse2. It's the CPU of the
+        // machine building: Linux builds each CPU on its own runner (#356).
+        runtime: `https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-${process.arch === 'arm64' ? 'aarch64' : 'x86_64'}`,
+      },
+    }),
   ],
   // No publishers: `release.yml` makes the draft Release from every
   // platform's build at once (#348), so Forge publishes nothing itself.

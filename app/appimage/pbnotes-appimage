@@ -1,0 +1,30 @@
+#!/bin/sh
+# Starts Pb Notes from the AppImage, which runs this as AppRun (#357).
+#
+# Chromium's sandbox needs either a setuid chrome-sandbox or unprivileged user
+# namespaces. An AppImage runs from a mount that ignores setuid, so here it is
+# namespaces or nothing. Where the system blocks those, Electron would crash
+# before the app's own code runs, so the app is started without the sandbox
+# there instead, and with it everywhere else. Blocked means one of:
+#
+# - Ubuntu 23.10 and later, which keep them from apps with no AppArmor profile
+#   of their own.
+# - Older Debian and hardened kernels, which turn them off.
+# - A limit of none at all.
+#
+# The .deb, .rpm and Arch package carry this file too, unused: they start the
+# app directly, with their setuid chrome-sandbox.
+
+here=$(dirname "$(readlink -f "$0")")
+
+setting() {
+  cat "/proc/sys/$1" 2>/dev/null
+}
+
+if [ "$(setting kernel/apparmor_restrict_unprivileged_userns)" = 1 ] ||
+  [ "$(setting kernel/unprivileged_userns_clone)" = 0 ] ||
+  [ "$(setting user/max_user_namespaces)" = 0 ]; then
+  exec "$here/pbnotes" --no-sandbox "$@"
+fi
+
+exec "$here/pbnotes" "$@"

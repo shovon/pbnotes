@@ -4,7 +4,7 @@ Electron + React + TypeScript, built with Electron Forge and Vite.
 
 ## Naming
 
-The app's display name is **Pb Notes**: `productName`, the window title, and anything else a user reads. Its identifier is `pbnotes`: the package `name`, the executable, the `window.pbnotes` bridge, the `pbnotes-image://` scheme, the repo, and the `userData` directory, which `src/main/index.ts` pins so that it does not follow the display name.
+The app's display name is **Pb Notes**: `productName`, the window title, and anything else a user reads. Its identifier is `pbnotes`: the package `name`, the executable, the Linux desktop entry (`pbnotes.desktop`) and the window class that matches it to the window (`desktopName`), the `window.pbnotes` bridge, the `pbnotes-image://` scheme, the repo, and the `userData` directory, which `src/main/index.ts` pins so that it does not follow the display name.
 
 ## Positioning
 

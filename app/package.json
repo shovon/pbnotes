@@ -1,6 +1,7 @@
 {
   "name": "pbnotes",
   "productName": "Pb Notes",
+  "desktopName": "pbnotes.desktop",
   "version": "0.6.2",
   "description": "Local-first knowledge sharing and management, safe for many writers.",
   "main": ".vite/build/main.cjs",
@@ -31,6 +32,7 @@
     "@electron-forge/plugin-fuses": "^8.0.1",
     "@electron-forge/plugin-vite": "^8.0.1",
     "@electron/fuses": "^2.1.3",
+    "@reforged/maker-appimage": "^6.0.0",
     "@storybook/addon-a11y": "^10.6.6",
     "@storybook/addon-docs": "^10.6.6",
     "@storybook/addon-mcp": "^10.6.6",
