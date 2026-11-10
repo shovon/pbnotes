@@ -27,7 +27,11 @@ Text is last-writer-wins per block: if two machines edit the same block before s
 
 ## Install
 
-macOS only for now. Download the `.dmg` from the [latest release](https://github.com/shovon/pbnotes/releases/latest), open it and drag Pb Notes to Applications.
+Download from the [latest release](https://github.com/shovon/pbnotes/releases/latest). The app is not signed yet, so macOS and Windows each warn about it the first time it opens; the steps below get past that, once.
+
+### macOS
+
+Download the `.dmg`, open it and drag Pb Notes to Applications.
 
 The app is not yet signed with an Apple Developer ID, so macOS will not open it the first time. To allow it, once:
 
@@ -40,6 +44,21 @@ If macOS instead says Pb Notes "is damaged and can't be opened", run this in Ter
 ```sh
 xattr -dr com.apple.quarantine "/Applications/Pb Notes.app"
 ```
+
+### Windows
+
+Download the installer for your PC:
+
+- **`…-x64-Setup.exe`** for most PCs, with an Intel or AMD processor.
+- **`…-arm64-Setup.exe`** for a PC with an ARM processor, such as a Snapdragon.
+
+Not sure which? Settings → System → About shows it under **System type**.
+
+Double-click the installer. It installs Pb Notes for your user only, with no admin rights needed, opens it, and adds it to the Start menu and the desktop.
+
+The app is not yet signed, so the first time Windows shows "Windows protected your PC". Click **More info**, then **Run anyway**.
+
+To uninstall, go to Settings → Apps → Installed apps, find Pb Notes and choose **Uninstall**. Your notes stay where they are: they live in the folders you picked, not in the app.
 
 ## Development
 
