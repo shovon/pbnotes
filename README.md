@@ -27,7 +27,7 @@ Text is last-writer-wins per block: if two machines edit the same block before s
 
 ## Install
 
-Download from the [latest release](https://github.com/shovon/pbnotes/releases/latest). The app is not signed yet, so macOS and Windows each warn about it the first time it opens; the steps below get past that, once.
+Download from the [latest release](https://github.com/shovon/pbnotes/releases/latest). Pb Notes is early: for now it's released only as files on GitHub, not through any app store or package repository, and it doesn't update itself. The app is not signed yet, so macOS and Windows each warn about it the first time it opens; the steps below get past that, once.
 
 ### macOS
 
@@ -89,13 +89,15 @@ To uninstall, run `sudo apt remove pbnotes` or `sudo dnf remove pbnotes`. Your n
 
 #### Arch Linux and Omarchy
 
-Pb Notes is on the AUR as `pbnotes-bin`, for Intel, AMD and ARM. Install it with your AUR helper:
+Pb Notes isn't on the AUR. The repo has a recipe (`PKGBUILD`) that turns the release's `.deb` into a pacman package, for Intel, AMD and ARM. Build and install it from the release's tag, putting the latest release's version in place of `0.7.0`:
 
 ```sh
-yay -S pbnotes-bin
+git clone --depth 1 --branch v0.7.0 https://github.com/shovon/pbnotes
+cd pbnotes/app/arch
+makepkg -si
 ```
 
-Unlike the packages above, this one keeps up to date: `yay -Syu` installs each new version along with the rest of your system. To uninstall, run `sudo pacman -R pbnotes-bin`.
+`makepkg` downloads the `.deb` from that release on GitHub, and pacman then installs it like any other package. To update, do the same with the newer release's version. To uninstall, run `sudo pacman -R pbnotes-bin`.
 
 ## Development
 

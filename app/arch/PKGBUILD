@@ -1,13 +1,13 @@
 # Maintainer: Sal Rahman <hey.to.sal@gmail.com>
 #
-# Pb Notes on the AUR (#361), repackaged from the .deb on the GitHub Release.
-# Edit this copy, never the AUR's: when a Release is published,
-# .github/workflows/aur.yml sets pkgver, fills in the checksums from that
-# Release's files (update.sh) and pushes the result to the AUR.
+# A pacman package of Pb Notes for Arch, Omarchy among them (#361),
+# repackaged from the .deb on the GitHub Release. It isn't on the AUR: build
+# it from a release tag's checkout with `makepkg -si`, here in app/arch.
 
 pkgname=pbnotes-bin
 _pkgname=pbnotes
-pkgver=0.6.2
+# The app's own version, so a checkout of a release tag builds that release.
+pkgver=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' ../package.json)
 pkgrel=1
 pkgdesc='Local-first knowledge sharing and management, safe for many writers.'
 arch=('x86_64' 'aarch64')
@@ -24,11 +24,10 @@ provides=("$_pkgname")
 conflicts=("$_pkgname")
 # Electron ships stripped, and has no debug symbols to split off.
 options=('!strip' '!debug')
-# The .deb holds Electron's license, not the app's.
-source=("LICENSE-$pkgver::https://raw.githubusercontent.com/shovon/pbnotes/v$pkgver/LICENSE")
 source_x86_64=("$_pkgname-$pkgver-x86_64.deb::$url/releases/download/v$pkgver/${_pkgname}_${pkgver}_amd64.deb")
 source_aarch64=("$_pkgname-$pkgver-aarch64.deb::$url/releases/download/v$pkgver/${_pkgname}_${pkgver}_arm64.deb")
-sha256sums=('SKIP')
+# No checksums: they'd change with every release, and the files come over
+# HTTPS from the same Release page a .deb would be downloaded from by hand.
 sha256sums_x86_64=('SKIP')
 sha256sums_aarch64=('SKIP')
 
@@ -39,5 +38,6 @@ package() {
   # and copyright file have no use here.
   bsdtar -xpf data.tar.* -C "$pkgdir" \
     --exclude './usr/share/lintian' --exclude './usr/share/doc'
-  install -Dm644 "LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  # The .deb holds Electron's license, not the app's.
+  install -Dm644 "$startdir/../../LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
