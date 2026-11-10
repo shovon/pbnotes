@@ -89,15 +89,20 @@ To uninstall, run `sudo apt remove pbnotes` or `sudo dnf remove pbnotes`. Your n
 
 #### Arch Linux and Omarchy
 
-Pb Notes isn't on the AUR. The repo has a recipe (`PKGBUILD`) that turns the release's `.deb` into a pacman package, for Intel, AMD and ARM. Build and install it from the release's tag, putting the latest release's version in place of `0.7.0`:
+Download the pacman package for your processor:
+
+- **`pbnotes-bin-…-x86_64.pkg.tar.zst`** for Intel or AMD.
+- **`pbnotes-bin-…-aarch64.pkg.tar.zst`** for ARM.
+
+Install it from the folder you downloaded it to:
 
 ```sh
-git clone --depth 1 --branch v0.7.0 https://github.com/shovon/pbnotes
-cd pbnotes/app/arch
-makepkg -si
+sudo pacman -U ./pbnotes-bin-*.pkg.tar.zst
 ```
 
-`makepkg` downloads the `.deb` from that release on GitHub, and pacman then installs it like any other package. To update, do the same with the newer release's version. To uninstall, run `sudo pacman -R pbnotes-bin`.
+Pb Notes then shows up in your app launcher. It isn't on the AUR, so `yay -Syu` won't update it: to get a new version, download and install it the same way. To uninstall, run `sudo pacman -R pbnotes-bin`.
+
+The package is made from the `.deb` by the recipe in [`app/arch/PKGBUILD`](app/arch/PKGBUILD). To build it yourself instead, run `makepkg -si` there, in a checkout of the release's tag.
 
 ## Development
 
