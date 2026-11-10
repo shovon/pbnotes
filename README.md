@@ -87,6 +87,16 @@ Pb Notes then shows up among your apps. Neither package updates itself yet: to g
 
 To uninstall, run `sudo apt remove pbnotes` or `sudo dnf remove pbnotes`. Your notes stay where they are: they live in the folders you picked, not in the app.
 
+#### Arch Linux and Omarchy
+
+Pb Notes is on the AUR as `pbnotes-bin`, for Intel, AMD and ARM. Install it with your AUR helper:
+
+```sh
+yay -S pbnotes-bin
+```
+
+Unlike the packages above, this one keeps up to date: `yay -Syu` installs each new version along with the rest of your system. To uninstall, run `sudo pacman -R pbnotes-bin`.
+
 ## Development
 
 The repo is an npm workspace: `app/` and the packages under `packages/`. Install once, at the root:

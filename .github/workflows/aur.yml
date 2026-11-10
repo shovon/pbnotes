@@ -1,0 +1,83 @@
+# Publishing a Release updates pbnotes-bin on the AUR to its version (#361).
+# Releases start as drafts and are published by hand (#68), so this waits for
+# that rather than for the tag: the AUR package downloads the Release's .deb
+# files, which aren't public until then.
+#
+# If it fails, the Release is out regardless: start it again by hand with the
+# version.
+name: AUR
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish, such as 0.7.0. Its Release must be published.
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: version
+        env:
+          VERSION: ${{ inputs.version || github.event.release.tag_name }}
+        run: echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git openssh pacman-contrib
+
+      # makepkg won't run as root, and the container runs as root.
+      - name: Update the PKGBUILD
+        run: |
+          useradd -m builder
+          cp -r app/aur /home/builder/pkg
+          chown -R builder /home/builder/pkg
+          runuser -u builder -- /home/builder/pkg/update.sh "${{ steps.version.outputs.version }}"
+
+      # The host key is checked against the Ed25519 fingerprint the AUR lists
+      # on its home page, so a key it sends is never trusted on sight. Kept
+      # out of ~/.ssh: in a container job, HOME isn't where ssh looks.
+      - name: Set up SSH
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          [ -n "$AUR_SSH_KEY" ] || {
+            echo "::error::The AUR_SSH_KEY secret is not set"
+            exit 1
+          }
+          ssh_dir="$RUNNER_TEMP/ssh"
+          mkdir -m 700 "$ssh_dir"
+          printf '%s\n' "$AUR_SSH_KEY" > "$ssh_dir/key"
+          chmod 600 "$ssh_dir/key"
+          ssh-keyscan -t ed25519 aur.archlinux.org > "$ssh_dir/known_hosts"
+          fingerprint=$(ssh-keygen -lf "$ssh_dir/known_hosts" | awk '{print $2}')
+          [ "$fingerprint" = "SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4" ] || {
+            echo "::error::aur.archlinux.org sent a host key with fingerprint $fingerprint, not the one it lists"
+            exit 1
+          }
+          echo "GIT_SSH_COMMAND=ssh -i $ssh_dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$ssh_dir/known_hosts -o StrictHostKeyChecking=yes" >> "$GITHUB_ENV"
+
+      - name: Push to the AUR
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git clone ssh://aur@aur.archlinux.org/pbnotes-bin.git aur
+          cp /home/builder/pkg/PKGBUILD /home/builder/pkg/.SRCINFO aur/
+          cd aur
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "pbnotes-bin is already at $VERSION"
+            exit 0
+          fi
+          git -c user.name="Sal Rahman" -c user.email="hey.to.sal@gmail.com" commit -m "Update to $VERSION"
+          git push origin HEAD:master
