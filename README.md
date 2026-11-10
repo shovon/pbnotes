@@ -60,6 +60,33 @@ The app is not yet signed, so the first time Windows shows "Windows protected yo
 
 To uninstall, go to Settings → Apps → Installed apps, find Pb Notes and choose **Uninstall**. Your notes stay where they are: they live in the folders you picked, not in the app.
 
+### Linux
+
+Download the package for your distribution and your PC's processor:
+
+| Distribution | Intel or AMD | ARM |
+| --- | --- | --- |
+| Debian, Ubuntu, Linux Mint, Pop!_OS | `pbnotes_…_amd64.deb` | `pbnotes_…_arm64.deb` |
+| Fedora, RHEL, openSUSE | `pbnotes-…x86_64.rpm` | `pbnotes-…arm64.rpm` |
+
+Not sure which processor? `uname -m` prints `x86_64` for Intel or AMD, and `aarch64` for ARM.
+
+Install it from the folder you downloaded it to. On Debian or Ubuntu:
+
+```sh
+sudo apt install ./pbnotes_*.deb
+```
+
+On Fedora or RHEL (on openSUSE, `sudo zypper install` instead):
+
+```sh
+sudo dnf install ./pbnotes-*.rpm
+```
+
+Pb Notes then shows up among your apps. Neither package updates itself yet: to get a new version, download and install it the same way.
+
+To uninstall, run `sudo apt remove pbnotes` or `sudo dnf remove pbnotes`. Your notes stay where they are: they live in the folders you picked, not in the app.
+
 ## Development
 
 The repo is an npm workspace: `app/` and the packages under `packages/`. Install once, at the root:

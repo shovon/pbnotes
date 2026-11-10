@@ -1,6 +1,6 @@
-# A pushed vX.Y.Z tag becomes a draft GitHub Release with the macOS build and
-# the Windows installers attached; someone publishes it by hand after checking
-# it (#68, #348). Started by hand instead, it builds without publishing and
+# A pushed vX.Y.Z tag becomes a draft GitHub Release with the macOS build, the
+# Windows installers and the Linux packages attached; someone publishes it by
+# hand after checking it (#68, #348, #356). Started by hand instead, it builds without publishing and
 # keeps each platform's files as a run artifact, to test the workflow without
 # cutting a tag.
 #
@@ -120,9 +120,93 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  linux:
+    # Each CPU builds on a runner of its own rather than cross-building, so
+    # each runner can install and start what it built (#356). Both on 24.04,
+    # whose AppArmor limits on sandboxes are the ones Ubuntu users have.
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag matches app version
+        if: github.event_name == 'push'
+        run: |
+          version=$(node -p "require('./app/package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match app/package.json version $version"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # The RPM maker runs `rpmbuild`; the runner has dpkg and fakeroot for
+      # the .deb already.
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      - name: Build
+        run: npm run make -w app
+
+      # The makers already put the CPU in each name, the way each distro
+      # spells it: pbnotes_<version>_amd64.deb, pbnotes-<version>-1.x86_64.rpm.
+      - name: Collect the packages
+        run: |
+          shopt -s nullglob
+          debs=(app/out/make/deb/*/*.deb)
+          rpms=(app/out/make/rpm/*/*.rpm)
+          [ ${#debs[@]} -eq 1 ] && [ ${#rpms[@]} -eq 1 ] || {
+            echo "::error::Expected one .deb and one .rpm under app/out/make, found: ${debs[*]} ${rpms[*]}"
+            exit 1
+          }
+          mkdir dist
+          cp "${debs[0]}" "${rpms[0]}" dist/
+          ls -l dist
+
+      # Installed the way a user would, then started on a virtual screen. The
+      # app's code is the same on both CPUs; this is for packaging mistakes.
+      - name: Smoke-test the .deb
+        run: |
+          sudo apt-get install -y xvfb x11-utils ./dist/*.deb
+          app/scripts/smoke-launch.sh pbnotes
+
+      # In a Fedora container, as a user who isn't root: Electron won't run as
+      # root without --no-sandbox. The .rpm's sandbox relies on unprivileged
+      # user namespaces, which Fedora allows; the runner's Ubuntu kernel and
+      # Docker's defaults don't, so both are lifted for the container.
+      - name: Smoke-test the .rpm
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          docker run --rm \
+            --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+            -v "$PWD:/w:ro" fedora:latest bash -euc '
+              dnf install -y /w/dist/*.rpm xorg-x11-server-Xvfb xwininfo util-linux
+              useradd -m tester
+              runuser -u tester -- /w/app/scripts/smoke-launch.sh pbnotes
+            '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pbnotes-linux-${{ matrix.arch }}
+          path: dist/
+          if-no-files-found: error
+
   release:
     if: github.event_name == 'push'
-    needs: [macos, windows]
+    needs: [macos, windows, linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
