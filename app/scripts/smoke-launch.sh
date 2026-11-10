@@ -57,17 +57,22 @@ env -u WAYLAND_DISPLAY \
   setsid "$@" >"$tmp/app.log" 2>&1 &
 app=$!
 
-# The window's title is "Pb Notes" and its class "pbnotes".
+# The window's title is "Pb Notes", and its class "pbnotes", which is how a
+# desktop matches it to pbnotes.desktop and shows its icon in the dock (#357).
+# xwininfo lists it as: 0x… "Pb Notes": ("<instance>" "<class>") …
 shown=
 for _ in $(seq 60); do
   kill -0 "$app" 2>/dev/null || fail "Pb Notes exited before its window showed"
-  if DISPLAY=":$(cat "$tmp/display")" xwininfo -root -tree | grep -Eq '"Pb Notes"|"pbnotes"'; then
+  windows=$(DISPLAY=":$(cat "$tmp/display")" xwininfo -root -tree)
+  if echo "$windows" | grep -q '"Pb Notes": ('; then
     shown=1
     break
   fi
   sleep 1
 done
 [ -n "$shown" ] || fail "No Pb Notes window after 60 seconds"
+echo "$windows" | grep -q '"Pb Notes": (.* "pbnotes")' ||
+  fail "The Pb Notes window's class isn't \"pbnotes\": $(echo "$windows" | grep '"Pb Notes": (')"
 
 sleep 5
 kill -0 "$app" 2>/dev/null || fail "Pb Notes exited within 5 seconds of showing its window"

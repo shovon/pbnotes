@@ -103,7 +103,7 @@ chmod +x Pb.Notes-*.AppImage
 
 Or, in your file manager, open the file's properties, allow it to run as a program, and double-click it.
 
-It doesn't add itself to your app launcher, and it doesn't update itself: to get a new version, download the new AppImage. To remove it, delete the file.
+It doesn't add itself to your app launcher, so your dock may show it with a generic icon, and it doesn't update itself: to get a new version, download the new AppImage. To remove it, delete the file. A tool such as Gear Lever can add it to your launcher, with its icon.
 
 If it says FUSE is missing, install `fuse3` (on Debian or Ubuntu, `sudo apt install fuse3`), or start it with `--appimage-extract-and-run`.
 

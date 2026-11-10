@@ -14,6 +14,11 @@ import path from 'node:path';
 
 const linuxPackage = {
   icon: 'assets/icon.png',
+  // The makers' own templates set StartupWMClass to the display name, "Pb
+  // Notes". The window's class is "pbnotes" (`desktopName` in package.json),
+  // and a desktop or dock matches a window to its entry by that class, or by
+  // the entry's file name, pbnotes.desktop.
+  desktopTemplate: 'linux/desktop.ejs',
   genericName: 'Notes',
   categories: ['Office' as const],
   homepage: 'https://github.com/shovon/pbnotes',
@@ -84,8 +89,8 @@ const config: ForgeConfig = {
         categories: linuxPackage.categories,
         // What AppRun starts: see appimage/pbnotes-appimage.
         bin: 'pbnotes-appimage',
-        // Named as the other packages name it, and as the window's Wayland
-        // app ID, which Electron takes from the package name. Otherwise
+        // pbnotes.desktop, as the other packages name it and as matches the
+        // window's class (`desktopName` in package.json). Otherwise
         // "Pb Notes.desktop".
         desktopName: 'pbnotes',
         // The maker would take AppImage's moving `continuous` build. This one

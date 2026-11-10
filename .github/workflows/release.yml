@@ -184,6 +184,8 @@ jobs:
       - name: Smoke-test the .deb
         run: |
           sudo apt-get install -y xvfb x11-utils ./dist/*.deb
+          cat /usr/share/applications/pbnotes.desktop
+          grep -qx 'StartupWMClass=pbnotes' /usr/share/applications/pbnotes.desktop
           app/scripts/smoke-launch.sh pbnotes
 
       # Run as a user would run it, so it mounts itself with FUSE. Twice: with
