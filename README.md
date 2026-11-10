@@ -87,6 +87,28 @@ Pb Notes then shows up among your apps. Neither package updates itself yet: to g
 
 To uninstall, run `sudo apt remove pbnotes` or `sudo dnf remove pbnotes`. Your notes stay where they are: they live in the folders you picked, not in the app.
 
+#### AppImage, for any distribution
+
+The AppImage runs on most distributions without installing anything. Download the one for your processor:
+
+- **`Pb.Notes-…-x64.AppImage`** for Intel or AMD.
+- **`Pb.Notes-…-arm64.AppImage`** for ARM.
+
+Allow it to run, then start it, from a terminal in the folder you downloaded it to:
+
+```sh
+chmod +x Pb.Notes-*.AppImage
+./Pb.Notes-*.AppImage
+```
+
+Or, in your file manager, open the file's properties, allow it to run as a program, and double-click it.
+
+It doesn't add itself to your app launcher, and it doesn't update itself: to get a new version, download the new AppImage. To remove it, delete the file.
+
+If it says FUSE is missing, install `fuse3` (on Debian or Ubuntu, `sudo apt install fuse3`), or start it with `--appimage-extract-and-run`.
+
+On Ubuntu 23.10 and later, the AppImage starts without Chromium's sandbox, which keeps web content from reaching the rest of your system: Ubuntu blocks the sandbox for apps like it. The `.deb` keeps the sandbox, so on Ubuntu, prefer the `.deb`.
+
 #### Arch Linux and Omarchy
 
 Download the pacman package for your processor:

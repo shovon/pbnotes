@@ -151,29 +151,32 @@ jobs:
 
       - run: npm ci
 
-      # The RPM maker runs `rpmbuild`; the runner has dpkg and fakeroot for
-      # the .deb already.
+      # The RPM maker runs `rpmbuild`, and the AppImage maker `mksquashfs`;
+      # the runner has dpkg and fakeroot for the .deb already.
       - name: Install packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y rpm
+          sudo apt-get install -y rpm squashfs-tools
 
       - name: Build
         run: npm run make -w app
 
-      # The makers already put the CPU in each name, the way each distro
-      # spells it: pbnotes_<version>_amd64.deb, pbnotes-<version>-1.x86_64.rpm.
+      # The makers already put the CPU in each name: the .deb and .rpm the way
+      # each distro spells it (pbnotes_<version>_amd64.deb,
+      # pbnotes-<version>-1.x86_64.rpm), the AppImage as the Windows installers
+      # do ("Pb Notes-<version>-x64.AppImage").
       - name: Collect the packages
         run: |
           shopt -s nullglob
           debs=(app/out/make/deb/*/*.deb)
           rpms=(app/out/make/rpm/*/*.rpm)
-          [ ${#debs[@]} -eq 1 ] && [ ${#rpms[@]} -eq 1 ] || {
-            echo "::error::Expected one .deb and one .rpm under app/out/make, found: ${debs[*]} ${rpms[*]}"
+          appimages=(app/out/make/AppImage/*/*.AppImage)
+          [ ${#debs[@]} -eq 1 ] && [ ${#rpms[@]} -eq 1 ] && [ ${#appimages[@]} -eq 1 ] || {
+            echo "::error::Expected one .deb, one .rpm and one AppImage under app/out/make, found: ${debs[*]} ${rpms[*]} ${appimages[*]}"
             exit 1
           }
           mkdir dist
-          cp "${debs[0]}" "${rpms[0]}" dist/
+          cp "${debs[0]}" "${rpms[0]}" "${appimages[0]}" dist/
           ls -l dist
 
       # Installed the way a user would, then started on a virtual screen. The
@@ -182,6 +185,20 @@ jobs:
         run: |
           sudo apt-get install -y xvfb x11-utils ./dist/*.deb
           app/scripts/smoke-launch.sh pbnotes
+
+      # Run as a user would run it, so it mounts itself with FUSE. Twice: with
+      # Ubuntu's block on unprivileged user namespaces, where it can only start
+      # if its launch script drops the sandbox, and without it, where it keeps
+      # the sandbox (#357).
+      - name: Smoke-test the AppImage
+        run: |
+          sudo apt-get install -y fuse3
+          appimage=$(echo dist/*.AppImage)
+          chmod +x "$appimage"
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+          app/scripts/smoke-launch.sh "$appimage"
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          app/scripts/smoke-launch.sh "$appimage"
 
       # In a Fedora container, as a user who isn't root: Electron won't run as
       # root without --no-sandbox. The .rpm's sandbox relies on unprivileged
