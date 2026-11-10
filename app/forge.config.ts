@@ -11,6 +11,13 @@ import { execFileSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
+const linuxPackage = {
+  icon: 'assets/icon.png',
+  genericName: 'Notes',
+  categories: ['Office' as const],
+  homepage: 'https://github.com/shovon/pbnotes',
+};
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
@@ -55,8 +62,10 @@ const config: ForgeConfig = {
     // consume later (#67).
     new MakerDMG({ icon: 'assets/icon.icns' }),
     new MakerZIP({}, ['darwin']),
-    new MakerRpm({ options: { icon: 'assets/icon.png' } }),
-    new MakerDeb({ options: { icon: 'assets/icon.png' } }),
+    // Both write the same .desktop entry. `categories` would otherwise be
+    // GNOME;GTK;Utility, and `genericName` the app's own name again.
+    new MakerRpm({ options: linuxPackage }),
+    new MakerDeb({ options: linuxPackage }),
   ],
   // No publishers: `release.yml` makes the draft Release from every
   // platform's build at once (#348), so Forge publishes nothing itself.
