@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { BenchApi } from '../../shared/bench';
+import type { SidebarApi } from '../../shared/sidebar';
 import type { TabItem } from '../../shared/window';
 import type { Project, ProjectsApi } from '../../shared/projects';
 import { sidebarKept } from '../kept/kept';
@@ -25,6 +26,8 @@ type Props = {
    * each mounted project gets its own `Kept` values over it (`kept/`).
    */
   bench: Pick<BenchApi, 'get' | 'set'>;
+  /** Opens a Recent entry's menu (#366), passed on to the project that is open. */
+  recentMenu: SidebarApi['recentMenu'];
   /** Closes this window, passed on to the project that is open: its last tab closing (#303). */
   closeWindow: () => Promise<void>;
   /**
@@ -49,6 +52,7 @@ export default function App({
   projects: api,
   graph,
   bench,
+  recentMenu,
   closeWindow,
   onTab,
   now,
@@ -296,6 +300,7 @@ export default function App({
                 sidebar={kept.sidebar}
                 recentSection={kept.recentSection}
                 recentEmoji={kept.recentEmoji}
+                recentMenu={recentMenu}
               />
             )
           ) : (

@@ -10,6 +10,8 @@ import { BENCH_CHANNELS } from '../shared/bench';
 import type { BenchApi } from '../shared/bench';
 import { WINDOW_CHANNELS } from '../shared/window';
 import type { TabItem, WindowApi } from '../shared/window';
+import { SIDEBAR_CHANNELS } from '../shared/sidebar';
+import type { SidebarApi } from '../shared/sidebar';
 
 const projects: ProjectsApi = {
   list: () => ipcRenderer.invoke(PROJECT_CHANNELS.list),
@@ -72,6 +74,10 @@ const bench: BenchApi = {
   set: (slot, value) => ipcRenderer.invoke(BENCH_CHANNELS.set, slot, value),
 };
 
+const sidebar: SidebarApi = {
+  recentMenu: (at) => ipcRenderer.invoke(SIDEBAR_CHANNELS.recentMenu, at),
+};
+
 const window: WindowApi = {
   close: () => ipcRenderer.invoke(WINDOW_CHANNELS.close),
   // The item alone, as `graph.onTake` hands on the way alone.
@@ -87,4 +93,4 @@ const window: WindowApi = {
 
 // Only this explicit surface crosses the context bridge; the renderer never
 // sees `ipcRenderer` itself.
-contextBridge.exposeInMainWorld('pbnotes', { projects, graph, bench, window });
+contextBridge.exposeInMainWorld('pbnotes', { projects, graph, bench, sidebar, window });
