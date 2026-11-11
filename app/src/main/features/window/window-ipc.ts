@@ -1,7 +1,7 @@
 import { BrowserWindow, ipcMain } from "electron";
 import type { Menu } from "electron";
 import { WINDOW_CHANNELS } from "../../../shared/window";
-import { readPoint } from "../projects/graph/page-menu/page-menu";
+import { readPoint } from "../../ipc";
 
 /**
  * The window channels, each something only Electron can do, so they stay
