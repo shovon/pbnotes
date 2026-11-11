@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download Pb Notes</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<meta name="description" content="Download Pb Notes for macOS, Windows and Linux.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="logo.svg" alt="">Pb Notes</a>
+  </div>
+</nav>
+
+<!-- New release: update the version in the heading and in every link below. -->
+<main class="wrap">
+  <header class="hero">
+    <h1>Download Pb Notes</h1>
+    <p class="lede">Version 0.6.3 · <a href="https://github.com/shovon/pbnotes/releases/tag/v0.6.3">Release notes</a> · <a href="https://github.com/shovon/pbnotes/releases">All releases</a></p>
+  </header>
+
+  <div class="prose" style="margin: 0 auto; max-width: 760px; padding-bottom: 96px;">
+    <section class="os" id="macos">
+      <h2>macOS</h2>
+      <p class="note">Apple Silicon (M1 and later).</p>
+      <ul class="files">
+        <li><div class="what"><b>Disk image (.dmg)</b><span>Apple Silicon · 128 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/Pb.Notes-0.6.3-arm64.dmg">Download</a></li>
+        <li><div class="what"><b>Zip archive</b><span>Apple Silicon · 129 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/Pb.Notes-darwin-arm64-0.6.3.zip">Download</a></li>
+      </ul>
+    </section>
+
+    <section class="os" id="windows">
+      <h2>Windows</h2>
+      <p class="note">Most PCs need x64. Pick ARM64 for Windows on ARM, such as Snapdragon laptops.</p>
+      <ul class="files">
+        <li><div class="what"><b>Installer (.exe)</b><span>x64 · 154 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/Pb.Notes-0.6.3-x64-Setup.exe">Download</a></li>
+        <li><div class="what"><b>Installer (.exe)</b><span>ARM64 · 153 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/Pb.Notes-0.6.3-arm64-Setup.exe">Download</a></li>
+      </ul>
+    </section>
+
+    <section class="os" id="linux">
+      <h2>Linux</h2>
+      <p class="note">AppImage runs on most distributions. Otherwise, pick your distribution's package.</p>
+      <ul class="files">
+        <li><div class="what"><b>AppImage</b><span>x86_64 · 126 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/Pb.Notes-0.6.3-x64.AppImage">Download</a></li>
+        <li><div class="what"><b>AppImage</b><span>ARM64 · 128 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/Pb.Notes-0.6.3-arm64.AppImage">Download</a></li>
+        <li><div class="what"><b>Debian / Ubuntu (.deb)</b><span>x86_64 · 92 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/pbnotes_0.6.3_amd64.deb">Download</a></li>
+        <li><div class="what"><b>Debian / Ubuntu (.deb)</b><span>ARM64 · 87 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/pbnotes_0.6.3_arm64.deb">Download</a></li>
+        <li><div class="what"><b>Fedora / openSUSE (.rpm)</b><span>x86_64 · 101 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/pbnotes-0.6.3-1.x86_64.rpm">Download</a></li>
+        <li><div class="what"><b>Fedora / openSUSE (.rpm)</b><span>ARM64 · 96 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/pbnotes-0.6.3-1.arm64.rpm">Download</a></li>
+        <li><div class="what"><b>Arch Linux (.pkg.tar.zst)</b><span>x86_64 · 118 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/pbnotes-bin-0.6.3-1-x86_64.pkg.tar.zst">Download</a></li>
+        <li><div class="what"><b>Arch Linux (.pkg.tar.zst)</b><span>ARM64 · 120 MB</span></div><a class="btn" href="https://github.com/shovon/pbnotes/releases/download/v0.6.3/pbnotes-bin-0.6.3-1-aarch64.pkg.tar.zst">Download</a></li>
+      </ul>
+    </section>
+  </div>
+</main>
+
+<footer>Pb Notes</footer>
+
+<script>
+  // Tag the visitor's OS section and move it to the top.
+  const p = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
+  const id = p.includes('mac') ? 'macos' : p.includes('win') ? 'windows' : p.includes('linux') ? 'linux' : null;
+  const mine = id && document.getElementById(id);
+  if (mine) { mine.classList.add('here'); mine.parentNode.prepend(mine); }
+</script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pb Notes</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<meta name="description" content="Pb Notes: a block-based notebook for thinking on paper. Daily journal, backlinks, pages that exist the moment you link them.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="logo.svg" alt="">Pb Notes</a>
+    <a class="btn dl" href="download.html">Download</a>
+  </div>
+</nav>
+
+<main class="wrap">
+  <header class="hero">
+    <h1>Don't write to communicate.<br>Write to understand.</h1>
+    <p class="lede">Pb Notes is a notebook made of blocks. Jot the idea down, link it to a theme, and keep going. The structure shows up on its own.</p>
+    <a class="btn dl" href="download.html">Download Pb Notes</a>
+    <img class="shot" src="hero.png" alt="Pb Notes journal view: dated entries with nested blocks linking to pages like [[Tern]] and [[Beta 0.9]]">
+  </header>
+
+  <section>
+    <div class="prose">
+      <blockquote>Thinking on paper, like algebra.</blockquote>
+      <p>You could solve an equation in your head in one big swoop. It's faster to push symbols around on paper, one step at a time. Ideas work the same way.</p>
+      <p>Write a paragraph, and the bad ideas fall apart while the good ones firm up. Most of those paragraphs are small: a block here, a block there. Over time they share themes. In Pb Notes, a theme is just a page, and tagging a block with it is just a link.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pages are just ideas.</h2>
+    <div class="pair">
+      <div>
+        <h3>Link first</h3>
+        <p>Type <code>[[Linear transformation]]</code> and keep writing. The page exists now. You don't need to create it, file it, or fill it in. Come back to it whenever you like.</p>
+        <img src="linking.png" alt="A journal entry linking to many pages, with math rendered inline">
+      </div>
+      <div>
+        <h3>Backlinks</h3>
+        <p>Open a page and you'll see every block that links to it. Tags and properties are pages too, so they work the same way.</p>
+        <img src="backlinks.png" alt="The Basis page showing a Linear Algebra tag and one linked reference">
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What's inside</h2>
+    <ul class="features">
+      <li><b>Daily journal</b><span>Open the app and today's page is waiting.</span></li>
+      <li><b>Everything is a block</b><span>Pages hold blocks. Blocks hold blocks.</span></li>
+      <li><b>Block references</b><span>Blocks can point at other blocks, or at pages.</span></li>
+      <li><b>Backlinks</b><span>Every page lists everything that links to it.</span></li>
+      <li><b>Tags are pages</b><span>So are properties. One idea, one place.</span></li>
+      <li><b>Tabs</b><span>Keep several pages open, like a browser.</span></li>
+      <li><b>Sidebar preview</b><span>Peek at a page on the right without losing your place.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="prose">
+      <h2>Built on a ledger</h2>
+      <p>Under the hood, Pb Notes stores every edit as an entry in a ledger, not as a rewritten file. Two edits to the same page at the same time almost never conflict.</p>
+      <p>Compare that to Markdown files, where two writers to one page means a merge conflict, or Logseq's single SQLite database for the whole graph.</p>
+    </div>
+  </section>
+
+  <section id="download" class="cta">
+    <h2>Start writing to understand.</h2>
+    <a class="btn dl" href="download.html">Download Pb Notes</a>
+  </section>
+</main>
+
+<footer>Pb Notes</footer>
+
+<script>
+  // Label buttons with the visitor's OS and jump to that section of the download page.
+  const p = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
+  const os = p.includes('mac') ? 'macOS' : p.includes('win') ? 'Windows' : p.includes('linux') ? 'Linux' : null;
+  if (os) document.querySelectorAll('.dl').forEach(a => {
+    a.href = 'download.html#' + os.toLowerCase();
+    if (a.textContent !== 'Download') a.textContent = 'Download for ' + os;
+  });
+</script>
+</body>
+</html>
