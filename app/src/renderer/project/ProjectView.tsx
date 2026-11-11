@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GraphApi, Undone } from '../../shared/graph';
+import type { SidebarApi } from '../../shared/sidebar';
 import type { Act } from '../ui';
 import type { PageViewGraph } from './PageView/PageView';
 import { back, browse, go, home, label, placeOf, ALL_PAGES } from './trail/trail';
@@ -94,6 +95,8 @@ type Props = {
   recentSection: Kept<{ collapsed: boolean }>;
   /** The emoji picked lately for page icons in this project, most recent first (#323). */
   recentEmoji: Kept<string[]>;
+  /** Opens a Recent entry's menu (#366), which main draws. */
+  recentMenu: SidebarApi['recentMenu'];
 };
 
 /**
@@ -129,6 +132,7 @@ export default function ProjectView({
   sidebar,
   recentSection,
   recentEmoji,
+  recentMenu,
 }: Props) {
   /** Names a tab as it opens: only told apart, never read. */
   const count = useRef(1);
@@ -385,6 +389,19 @@ export default function ProjectView({
   }, [place?.page]);
 
   /**
+   * A Recent entry's menu (#366). Remove takes the entry off the list and
+   * nothing else: the page, the tabs and the trail stay as they are, and
+   * the list is saved as every change to it is. The page on screen can be
+   * taken off too; it comes back the next time the window lands on a page,
+   * as any page opened does.
+   */
+  const openRecentMenu = (page: string, at: { x: number; y: number }) =>
+    act(async () => {
+      if ((await recentMenu(at)) !== 'remove') return;
+      setRecent((recent) => ({ ...recent, list: forget(recent.list, page) }));
+    });
+
+  /**
    * The icon of each page in Recent (#331), by its title there. Asked again
    * whenever the list changes and whenever the fold moves, since an icon can
    * change in another window or on another machine; an answer to an older
@@ -581,6 +598,7 @@ export default function ProjectView({
           onJournal={() => step(home)}
           onAllPages={() => step(browse)}
           onOpen={openWith}
+          onRecentMenu={openRecentMenu}
           recentCollapsed={recentCollapsed}
           onToggleRecent={() => setRecentSection({ collapsed: !recentCollapsed })}
           floating={collapsed}

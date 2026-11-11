@@ -12,6 +12,7 @@ const meta = {
     onJournal: fn(),
     onAllPages: fn(),
     onOpen: fn(),
+    onRecentMenu: fn(),
     recentCollapsed: false,
     onToggleRecent: fn(),
   },

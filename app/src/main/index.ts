@@ -21,6 +21,7 @@ import { appMenu } from "./features/menu/menu";
 import { createOpenBench } from "./features/bench/bench";
 import { registerBenchIpc } from "./features/bench/bench-ipc";
 import { registerWindowIpc } from "./features/window/window-ipc";
+import { registerSidebarIpc } from "./features/sidebar/sidebar-ipc";
 import { WINDOW_CHANNELS } from "../shared/window";
 import { benchFiles } from "./features/bench/bench-store";
 import { sidebarSlots } from "./features/sidebar/sidebar-slots";
@@ -284,6 +285,8 @@ app.on("ready", () => {
   // menu opened from the titlebar's ⋮ button (#341): a second copy of the
   // same template, since the application menu is the menu bar's own.
   registerWindowIpc(Menu.buildFromTemplate(menu));
+  // A Recent entry's menu (#366): drawn here, done by the window.
+  registerSidebarIpc();
 
   // The graph is handed its view of what is open, and the images beside it,
   // and never ask what that is. This is the one place that says it is the

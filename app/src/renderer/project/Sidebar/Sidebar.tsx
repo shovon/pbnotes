@@ -24,6 +24,10 @@ import type { Keys } from "../opening/opening";
  * the docked sidebar and the floating one are not the same element and must
  * agree; collapsed, the list is still in the DOM, hidden, so the heading's
  * `aria-controls` always names something.
+ *
+ * Each Recent entry has a menu (#366), on right-click or the keyboard's
+ * menu key. It is native, so this only says which entry and where; what
+ * was picked is `ProjectView`'s to do.
  */
 type Props = {
   /** Titles, newest first. */
@@ -44,6 +48,11 @@ type Props = {
    * opens: here, beside (#287) or in a new tab (#309, `opening/`).
    */
   onOpen: (page: string, keys: Keys) => void;
+  /**
+   * A recent page was right-clicked, or its menu asked for from the
+   * keyboard (#366), with where the menu should open, in window pixels.
+   */
+  onRecentMenu: (page: string, at: { x: number; y: number }) => void;
   /** Whether Recent shows only its heading. */
   recentCollapsed: boolean;
   /** The Recent heading was clicked. */
@@ -67,6 +76,7 @@ export default function Sidebar({
   onJournal,
   onAllPages,
   onOpen,
+  onRecentMenu,
   recentCollapsed,
   onToggleRecent,
   floating = false,
@@ -154,6 +164,21 @@ export default function Sidebar({
                       // Truncated to one line; the whole title on hover.
                       title={page}
                       onClick={(event) => onOpen(page, event)}
+                      // The browser's own menu never shows. From the
+                      // keyboard (the menu key, Shift+F10) there is no
+                      // pointer, and the event says 0, 0: the menu opens
+                      // under the entry instead.
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        const pointer = event.clientX !== 0 || event.clientY !== 0;
+                        const rect = event.currentTarget.getBoundingClientRect();
+                        onRecentMenu(
+                          page,
+                          pointer
+                            ? { x: event.clientX, y: event.clientY }
+                            : { x: rect.left, y: rect.bottom },
+                        );
+                      }}
                     >
                       {/* An emoji in the 16px slot a Lucide icon takes, so
                           every title lines up. */}
