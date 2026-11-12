@@ -24,6 +24,8 @@ import type { LinkQuery } from './linkQuery/linkQuery';
 import { extendsBy, selectsAll } from '../selection/shortcut/shortcut';
 import type { FromBox } from '../selection/Selecting';
 import { createParsed } from './parsed/parsed';
+import { checked, labelled, readTask, withMarker } from './task/task';
+import type { Marker } from './task/task';
 
 /** `data-*` attributes a view puts on a block, for whatever reads the screen. */
 type Data = Record<`data-${string}`, string>;
@@ -201,6 +203,56 @@ export const blockFocus =
   'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent';
 
 /**
+ * A task's checkbox and label in front of its text (#376), the marker itself
+ * not shown. Done is a checked box, no label and the text struck through;
+ * to do and doing are an empty box and the marker as a label, which
+ * swaps the two when clicked. A click on either never reaches the block, so
+ * it does not open the box; links in the text are left to work as ever.
+ *
+ * The controls sit in a row one line tall, so they stay beside the first
+ * line however many the text runs to.
+ */
+function Task({
+  marker,
+  onMark,
+  children,
+}: {
+  marker: Marker;
+  onMark: (marker: Marker) => void;
+  children: ReactNode;
+}) {
+  const done = marker === 'DONE';
+  return (
+    <div className="flex items-start gap-1.5">
+      <div className="flex h-[1.5em] shrink-0 items-center gap-1.5">
+        <input
+          type="checkbox"
+          checked={done}
+          aria-label="Done"
+          className={`size-3.5 cursor-pointer accent-accent ${blockFocus}`}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => onMark(checked(event.target.checked))}
+        />
+        {marker !== 'DONE' && (
+          <button
+            type="button"
+            title={marker === 'TODO' ? 'Mark as doing' : 'Mark as to do'}
+            className={`cursor-pointer rounded-sm text-xs font-semibold tracking-wide ${marker === 'DOING' ? 'text-accent' : 'text-muted'} ${blockFocus}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onMark(labelled(marker));
+            }}
+          >
+            {marker}
+          </button>
+        )}
+      </div>
+      <div className={`markdown min-w-0 flex-1 ${done ? 'line-through' : ''}`}>{children}</div>
+    </div>
+  );
+}
+
+/**
  * Not a <button>: Markdown emits block elements, and a button may not contain
  * them. A div with the button role keeps the click-to-edit affordance
  * reachable and announced.
@@ -212,6 +264,7 @@ export function Block({
   moving = false,
   data,
   onActivate,
+  onRewrite,
   onMenu,
 }: {
   /** Put on the element as `data-block-id`, so a view can scroll to it. */
@@ -226,6 +279,11 @@ export function Block({
   /** The offset the click landed on, when it could be worked out. */
   onActivate: (caret?: number) => void;
   /**
+   * The block's whole text, changed without opening it: a task's checkbox
+   * or label (#376). The page decides what writing it means.
+   */
+  onRewrite: (text: string) => void;
+  /**
    * A right-click on the dot, in place of the browser's menu. Without one
    * the right-click is left to whatever is listening above.
    */
@@ -239,14 +297,15 @@ export function Block({
    * of them, and every formula in them, on each keystroke that lands and
    * each time it is shown.
    */
-  const rendered = useMemo(() => parsedBlock(text), [text]);
+  const task = useMemo(() => readTask(text), [text]);
+  const rendered = useMemo(() => parsedBlock(task ? task.rest : text), [task, text]);
 
   const box = (
     <div
       {...(id ? {} : data)}
       data-block-id={id}
       aria-selected={selected || undefined}
-      className={`${blockBox} ${blockFocus} markdown cursor-text ${selected ? 'bg-accent/15' : ''} ${moving ? 'opacity-40' : ''}`}
+      className={`${blockBox} ${blockFocus} ${task ? '' : 'markdown'} cursor-text ${selected ? 'bg-accent/15' : ''} ${moving ? 'opacity-40' : ''}`}
       role="button"
       tabIndex={0}
       onClick={(event) => onActivate(sourceOffset(event, text))}
@@ -264,7 +323,13 @@ export function Block({
         }
       }}
     >
-      {rendered}
+      {task ? (
+        <Task marker={task.marker} onMark={(marker) => onRewrite(withMarker(text, marker))}>
+          {rendered}
+        </Task>
+      ) : (
+        rendered
+      )}
     </div>
   );
   if (!id) return box;
