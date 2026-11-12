@@ -18,7 +18,7 @@ import { humanize } from '../humanize/humanize';
  * project that is open.
  */
 type Props = {
-  projects: Pick<ProjectsApi, 'list' | 'current' | 'open' | 'pick'>;
+  projects: Pick<ProjectsApi, 'list' | 'current' | 'open' | 'pick' | 'pickerMenu'>;
   /** Only what the project that is open calls. */
   graph: ProjectViewGraph;
   /**
@@ -255,6 +255,7 @@ export default function App({
             <ProjectPicker
               projects={projects}
               projectId={project.id}
+              menu={api.pickerMenu}
               onSelect={openProject}
               onAdd={addProjects}
             />

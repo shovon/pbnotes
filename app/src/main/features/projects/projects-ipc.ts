@@ -1,9 +1,11 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
-import type { IpcMainInvokeEvent } from 'electron';
+import { BrowserWindow, Menu, dialog, ipcMain, shell } from 'electron';
+import type { IpcMainInvokeEvent, MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
-import { requireString, requireStringArray } from '../../ipc';
+import { readPoint, requireString, requireStringArray } from '../../ipc';
 import { PROJECT_CHANNELS } from '../../../shared/projects';
-import type { AddOutcome, PickResult } from '../../../shared/projects';
+import type { AddOutcome, PickerMenuPick, PickResult } from '../../../shared/projects';
+import { pickerRows } from './picker-menu/picker-menu';
+import type { PickerOptions, PickerRow } from './picker-menu/picker-menu';
 import type { ProjectsStore } from './projects-store';
 import type { OpenProject } from './open-project/open-project';
 
@@ -37,15 +39,40 @@ async function showDirectoryPicker(
   return result.canceled ? [] : result.filePaths;
 }
 
+/** One of the picker menu's rows as a native menu item, resolving with its pick. */
+function pickerItem(
+  row: PickerRow,
+  resolve: (pick: PickerMenuPick) => void,
+): MenuItemConstructorOptions {
+  switch (row.kind) {
+    case 'project':
+      return {
+        type: row.mark,
+        label: row.label,
+        sublabel: row.sublabel,
+        checked: row.checked,
+        click: () => resolve({ kind: 'open', id: row.id }),
+      };
+    case 'separator':
+      return { type: 'separator' };
+    case 'add':
+      return { label: row.label, click: () => resolve({ kind: 'add' }) };
+  }
+}
+
 /**
  * The `projects:*` channels: arguments checked as they arrive, then handed to
  * the registry, or to which project is open (`open-project.ts`) for the three
- * calls that can change that. What only Electron can do — the directory picker
- * and showing a folder — is here too.
+ * calls that can change that. What only Electron can do — the directory picker,
+ * showing a folder and the picker's menu — is here too.
+ *
+ * `picker` is what the picker's menu (#373) needs of the machine: where home
+ * is, and how the platform's menus look.
  */
 export function registerProjectIpc(
   store: ProjectsStore,
   openProject: Pick<OpenProject, 'currentProject' | 'open' | 'remove'>,
+  picker: PickerOptions,
 ): void {
   ipcMain.handle(PROJECT_CHANNELS.list, () => store.listProjects());
 
@@ -108,5 +135,22 @@ export function registerProjectIpc(
   ipcMain.handle(PROJECT_CHANNELS.reveal, (_event, id: unknown) => {
     const project = store.getProject(requireString(id, 'id'));
     if (project) shell.showItemInFolder(project.path);
+  });
+
+  // Settles the way the Recent menu's does (`sidebar-ipc.ts`): on the first
+  // of a `click` and the menu closing, with the close a moment late, since
+  // which of the two the platform reports first is not promised.
+  ipcMain.handle(PROJECT_CHANNELS.pickerMenu, (event, at: unknown, openId: unknown) => {
+    const point = readPoint(at);
+    const open = typeof openId === 'string' ? openId : null;
+    const window = parentWindow(event) ?? undefined;
+    return new Promise<PickerMenuPick | null>((resolve) => {
+      const rows = pickerRows(store.listProjects(), open, picker);
+      Menu.buildFromTemplate(rows.map((row) => pickerItem(row, resolve))).popup({
+        window,
+        ...point,
+        callback: () => setTimeout(() => resolve(null), 100),
+      });
+    });
   });
 }

@@ -54,7 +54,19 @@ export const PROJECT_CHANNELS = {
   relocate: 'projects:relocate',
   availability: 'projects:availability',
   reveal: 'projects:reveal',
+  /**
+   * Renderer to main: open the project picker's menu at a point in the
+   * window (#373). Answers with what was picked, or null when the menu
+   * closes without a pick.
+   */
+  pickerMenu: 'projects:picker-menu',
 } as const;
+
+/**
+ * What the project picker's menu answers with (#373): a project to open, or
+ * Open project…, which asks for a directory.
+ */
+export type PickerMenuPick = { kind: 'open'; id: string } | { kind: 'add' };
 
 /** The surface exposed on `window.pbnotes.projects` by the preload bridge. */
 export type ProjectsApi = {
@@ -80,4 +92,11 @@ export type ProjectsApi = {
   relocate(id: string): Promise<Project | null>;
   availability(ids: string[]): Promise<Record<string, Availability>>;
   reveal(id: string): Promise<void>;
+  /**
+   * Opens the project picker's menu with its top-left corner at `at`, in
+   * window pixels, with `openId` checked: every tracked project, the
+   * directory each lives in, and Open project…. Main draws it; the window
+   * does what was picked.
+   */
+  pickerMenu(at: { x: number; y: number }, openId: string): Promise<PickerMenuPick | null>;
 };

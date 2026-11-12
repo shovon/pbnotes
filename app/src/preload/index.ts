@@ -26,6 +26,7 @@ const projects: ProjectsApi = {
   relocate: (id) => ipcRenderer.invoke(PROJECT_CHANNELS.relocate, id),
   availability: (ids) => ipcRenderer.invoke(PROJECT_CHANNELS.availability, ids),
   reveal: (id) => ipcRenderer.invoke(PROJECT_CHANNELS.reveal, id),
+  pickerMenu: (at, openId) => ipcRenderer.invoke(PROJECT_CHANNELS.pickerMenu, at, openId),
 };
 
 const graph: GraphApi = {

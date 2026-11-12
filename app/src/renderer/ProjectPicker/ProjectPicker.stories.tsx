@@ -19,6 +19,9 @@ const meta = {
       project('b', 'Field notes', '/Volumes/archive/field-notes'),
     ],
     projectId: 'a',
+    // The menu is native and main draws it, so it is checked in the running
+    // app; here a click opens nothing.
+    menu: async () => null,
     onSelect: () => undefined,
     onAdd: () => undefined,
   },
