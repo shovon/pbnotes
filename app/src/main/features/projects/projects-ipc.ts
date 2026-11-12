@@ -47,7 +47,7 @@ function pickerItem(
   switch (row.kind) {
     case 'project':
       return {
-        type: 'radio',
+        type: row.mark,
         label: row.label,
         sublabel: row.sublabel,
         checked: row.checked,
@@ -67,7 +67,7 @@ function pickerItem(
  * showing a folder and the picker's menu — is here too.
  *
  * `picker` is what the picker's menu (#373) needs of the machine: where home
- * is, and whether the platform draws a sublabel.
+ * is, and how the platform's menus look.
  */
 export function registerProjectIpc(
   store: ProjectsStore,

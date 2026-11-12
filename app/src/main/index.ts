@@ -37,7 +37,7 @@ import {
   pathKeyOn,
 } from "./features/projects/projects-store";
 import { registerProjectIpc } from "./features/projects/projects-ipc";
-import { drawsSublabels } from "./features/projects/picker-menu/picker-menu";
+import { pickerLook } from "./features/projects/picker-menu/picker-menu";
 import { createOpenProject } from "./features/projects/open-project/open-project";
 import { createInFlight } from "./in-flight";
 import { createLedgers } from "./ledgers";
@@ -267,11 +267,12 @@ app.on("ready", () => {
       .settled()
       .then(() => ledgers.keepOnly(projects.currentProject()?.id));
   });
-  // The picker's menu (#373) shows each project's directory under its name
-  // where the platform draws a sublabel, and after a dash where it doesn't.
+  // The picker's menu (#373): on macOS, each project's directory under its
+  // name where a sublabel is drawn and after a dash where it isn't; elsewhere
+  // the name alone, marked with a checkmark rather than a radio bullet.
   registerProjectIpc(store, projects, {
     home: app.getPath("home"),
-    sublabels: drawsSublabels(process.platform, process.getSystemVersion()),
+    ...pickerLook(process.platform, process.getSystemVersion()),
   });
 
   // The bench: this machine's state that only means something to the
