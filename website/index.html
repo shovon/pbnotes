@@ -12,7 +12,10 @@
 <nav>
   <div class="wrap">
     <a class="brand" href="#"><img src="logo.svg" alt="">Pb Notes</a>
-    <a class="btn dl" href="download.html">Download</a>
+    <div class="end">
+      <a class="socials" href="socials.html">Socials</a>
+      <a class="btn dl" href="download.html">Download</a>
+    </div>
   </div>
 </nav>
 
@@ -21,6 +24,17 @@
     <h1>Don't write to communicate.<br>Write to understand.</h1>
     <p class="lede">Pb Notes is a notebook made of blocks. Jot the idea down, link it to a theme, and keep going. The structure shows up on its own.</p>
     <a class="btn dl" href="download.html">Download Pb Notes</a>
+    <div class="follow">
+      <p>Pb Notes is early. Follow along:</p>
+      <ul class="social">
+        <li><a href="https://github.com/shovon/pbnotes" rel="noopener" aria-label="Pb Notes on GitHub" title="GitHub"><svg aria-hidden="true"><use href="icons/github.svg#icon"/></svg></a></li>
+        <li><a href="https://discord.gg/qHTqUcr8ES" rel="noopener" aria-label="Pb Notes on Discord" title="Discord"><svg aria-hidden="true"><use href="icons/discord.svg#icon"/></svg></a></li>
+        <li><a href="https://mstdn.ca/@pbnotes" rel="me noopener" aria-label="Pb Notes on Mastodon" title="Mastodon"><svg aria-hidden="true"><use href="icons/mastodon.svg#icon"/></svg></a></li>
+        <li><a href="https://bsky.app/profile/pbnotes.app" rel="noopener" aria-label="Pb Notes on Bluesky" title="Bluesky"><svg aria-hidden="true"><use href="icons/bluesky.svg#icon"/></svg></a></li>
+        <li><a href="https://x.com/pbnotesapp" rel="noopener" aria-label="Pb Notes on X" title="X"><svg aria-hidden="true"><use href="icons/x.svg#icon"/></svg></a></li>
+        <li><a href="https://www.linkedin.com/company/pb-notes" rel="noopener" aria-label="Pb Notes on LinkedIn" title="LinkedIn"><svg aria-hidden="true"><use href="icons/linkedin.svg#icon"/></svg></a></li>
+      </ul>
+    </div>
     <img class="shot" src="hero.png" alt="Pb Notes journal view: dated entries with nested blocks linking to pages like [[Tern]] and [[Beta 0.9]]">
   </header>
 
@@ -75,8 +89,19 @@
   </section>
 </main>
 
-<footer>Pb Notes</footer>
+<footer>
+  <p>Pb Notes</p>
+  <ul class="social">
+    <li><a href="https://github.com/shovon/pbnotes" rel="noopener" aria-label="Pb Notes on GitHub" title="GitHub"><svg aria-hidden="true"><use href="icons/github.svg#icon"/></svg></a></li>
+    <li><a href="https://discord.gg/qHTqUcr8ES" rel="noopener" aria-label="Pb Notes on Discord" title="Discord"><svg aria-hidden="true"><use href="icons/discord.svg#icon"/></svg></a></li>
+    <li><a href="https://mstdn.ca/@pbnotes" rel="me noopener" aria-label="Pb Notes on Mastodon" title="Mastodon"><svg aria-hidden="true"><use href="icons/mastodon.svg#icon"/></svg></a></li>
+    <li><a href="https://bsky.app/profile/pbnotes.app" rel="noopener" aria-label="Pb Notes on Bluesky" title="Bluesky"><svg aria-hidden="true"><use href="icons/bluesky.svg#icon"/></svg></a></li>
+    <li><a href="https://x.com/pbnotesapp" rel="noopener" aria-label="Pb Notes on X" title="X"><svg aria-hidden="true"><use href="icons/x.svg#icon"/></svg></a></li>
+    <li><a href="https://www.linkedin.com/company/pb-notes" rel="noopener" aria-label="Pb Notes on LinkedIn" title="LinkedIn"><svg aria-hidden="true"><use href="icons/linkedin.svg#icon"/></svg></a></li>
+  </ul>
+</footer>
 
+<script src="site.js"></script>
 <script>
   // Label buttons with the visitor's OS and jump to that section of the download page.
   const p = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();

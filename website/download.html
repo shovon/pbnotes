@@ -12,6 +12,7 @@
 <nav>
   <div class="wrap">
     <a class="brand" href="index.html"><img src="logo.svg" alt="">Pb Notes</a>
+    <a class="socials" href="socials.html">Socials</a>
   </div>
 </nav>
 
@@ -58,8 +59,19 @@
   </div>
 </main>
 
-<footer>Pb Notes</footer>
+<footer>
+  <p>Pb Notes</p>
+  <ul class="social">
+    <li><a href="https://github.com/shovon/pbnotes" rel="noopener" aria-label="Pb Notes on GitHub" title="GitHub"><svg aria-hidden="true"><use href="icons/github.svg#icon"/></svg></a></li>
+    <li><a href="https://discord.gg/qHTqUcr8ES" rel="noopener" aria-label="Pb Notes on Discord" title="Discord"><svg aria-hidden="true"><use href="icons/discord.svg#icon"/></svg></a></li>
+    <li><a href="https://mstdn.ca/@pbnotes" rel="me noopener" aria-label="Pb Notes on Mastodon" title="Mastodon"><svg aria-hidden="true"><use href="icons/mastodon.svg#icon"/></svg></a></li>
+    <li><a href="https://bsky.app/profile/pbnotes.app" rel="noopener" aria-label="Pb Notes on Bluesky" title="Bluesky"><svg aria-hidden="true"><use href="icons/bluesky.svg#icon"/></svg></a></li>
+    <li><a href="https://x.com/pbnotesapp" rel="noopener" aria-label="Pb Notes on X" title="X"><svg aria-hidden="true"><use href="icons/x.svg#icon"/></svg></a></li>
+    <li><a href="https://www.linkedin.com/company/pb-notes" rel="noopener" aria-label="Pb Notes on LinkedIn" title="LinkedIn"><svg aria-hidden="true"><use href="icons/linkedin.svg#icon"/></svg></a></li>
+  </ul>
+</footer>
 
+<script src="site.js"></script>
 <script>
   // Tag the visitor's OS section and move it to the top.
   const p = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
