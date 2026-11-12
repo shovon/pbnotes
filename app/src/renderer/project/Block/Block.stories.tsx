@@ -1,9 +1,10 @@
+import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Block, Previews } from './Block';
 
 const meta = {
   component: Block,
-  args: { onActivate: () => undefined },
+  args: { onActivate: () => undefined, onRewrite: () => undefined },
   decorators: [
     // The page is the flex column the blocks are spaced by; a lone block
     // outside it sits flush against the frame and reads wider than it is.
@@ -40,6 +41,43 @@ export const Moving: Story = {
     text: 'Ordered the replacement hinge from [[Hardware Store]]. Two weeks, apparently.',
     moving: true,
   },
+};
+
+/** A task (#376): an empty box and the marker as a label, the marker
+    itself not shown. Click the box to mark it done, unchecking it to make it
+    to do again; click the label to swap to do and doing. Clicking either
+    leaves the block closed. */
+export const Task: Story = {
+  args: { text: 'TODO Call [[Mira]] about the hinge' },
+  render: function Render(args) {
+    const [text, setText] = useState(args.text);
+    return <Block {...args} text={text} onRewrite={setText} />;
+  },
+};
+
+/** Doing: the label in the accent colour. */
+export const Doing: Story = {
+  args: { text: 'DOING Sand the ==south== wall' },
+};
+
+/** Done: a checked box, no label, and the text struck through, links
+    included. The links still follow. */
+export const Done: Story = {
+  args: {
+    text: 'DONE Order the hinge from [[Hardware Store]], per ((hinge)) and [the survey](https://example.com)',
+  },
+};
+
+/** A task that runs to several lines keeps its box beside the first. */
+export const LongTask: Story = {
+  args: {
+    text: 'TODO Ordered the replacement hinge. Two weeks, apparently, which is long enough that the other one may go first.\nCheck the screws too',
+  },
+};
+
+/** Lookalikes that stay text: lower case, a longer word, not first. */
+export const NotTasks: Story = {
+  args: { text: 'todo later\nTODOs to sort\nbuy milk TODO' },
 };
 
 /** A single newline is a line break here, not a space — notes are written

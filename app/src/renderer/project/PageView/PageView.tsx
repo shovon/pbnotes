@@ -680,6 +680,9 @@ export default function PageView({
           setCaret(at);
           setEditingId(block.id);
         }}
+        onRewrite={(text) => {
+          if (text !== block.text) act(() => write(edit(graph, block.id, text)));
+        }}
         onMenu={() => openMenu(block)}
       />
     );
