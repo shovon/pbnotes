@@ -22,6 +22,25 @@ nav .wrap { display: flex; justify-content: space-between; align-items: center; 
 nav .brand { font-weight: 700; color: var(--fg); text-decoration: none; display: flex; align-items: center; gap: 10px; }
 nav .brand img { width: 32px; height: 32px; }
 nav .btn { padding: 8px 16px; font-size: .95rem; border-radius: 8px; }
+nav .end { display: flex; align-items: center; gap: 6px; }
+
+/* Socials: a link to socials.html, or (with JavaScript) a dropdown. Narrow screens only;
+   wider ones have the footer's icons in reach. */
+nav .socials {
+  display: none; align-items: center; gap: 6px; padding: 8px 10px; border: 0; border-radius: 8px;
+  background: none; color: var(--fg); font: inherit; font-size: .95rem; font-weight: 600; text-decoration: none; cursor: pointer;
+}
+nav .socials:hover, nav .socials[aria-expanded="true"] { background: var(--soft); }
+nav button.socials::after { content: ""; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); }
+@media (max-width: 640px) { nav .socials { display: inline-flex; } }
+.socials-menu {
+  position: absolute; top: calc(100% + 4px); right: 16px; min-width: 200px; margin: 0; padding: 6px; list-style: none;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+}
+.socials-menu a { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; color: var(--fg); text-decoration: none; }
+.socials-menu a:hover, .socials-menu a:focus-visible { background: var(--soft); }
+.socials-menu svg { width: 20px; height: 20px; fill: currentColor; color: var(--muted); }
+@media (min-width: 641px) { .socials-menu { display: none; } }
 
 .btn {
   display: inline-block; background: var(--link); color: #fff; text-decoration: none;
@@ -54,6 +73,20 @@ ul.features span { color: var(--muted); font-size: 0.95rem; }
 
 .cta { text-align: center; }
 footer { color: var(--muted); font-size: 0.9rem; text-align: center; padding: 32px 0 48px; border-top: 1px solid var(--line); }
+footer p { margin: 0 0 12px; }
+.follow { margin-top: 24px; color: var(--muted); font-size: .95rem; }
+.follow p { margin: 0 0 4px; }
+.social { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.social a { display: block; padding: 10px; border-radius: 8px; color: var(--muted); }
+.social a:hover, .social a:focus-visible { color: var(--fg); }
+.social svg { display: block; width: 22px; height: 22px; fill: currentColor; }
+
+/* Socials page (the no-JavaScript stand-in for the nav dropdown) */
+.places { list-style: none; padding: 0; margin: 0 auto 96px; max-width: 520px; border-top: 1px solid var(--line); }
+.places a { display: flex; align-items: center; gap: 16px; padding: 16px 4px; border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none; }
+.places a:hover b { color: var(--link); }
+.places svg { flex: none; width: 28px; height: 28px; fill: currentColor; }
+.places span { display: block; color: var(--muted); font-size: .9rem; }
 
 /* Download page */
 .os { scroll-margin-top: 80px; padding: 48px 0 0; }

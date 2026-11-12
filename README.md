@@ -126,6 +126,10 @@ Pb Notes then shows up in your app launcher. It isn't on the AUR, so `yay -Syu` 
 
 The package is made from the `.deb` by the recipe in [`app/arch/PKGBUILD`](app/arch/PKGBUILD). To build it yourself instead, run `makepkg -si` there, in a checkout of the release's tag.
 
+## Community
+
+[Discord](https://discord.gg/qHTqUcr8ES) · [Mastodon](https://mstdn.ca/@pbnotes) · [Bluesky](https://bsky.app/profile/pbnotes.app) · [X](https://x.com/pbnotesapp) · [LinkedIn](https://www.linkedin.com/company/pb-notes)
+
 ## Development
 
 The repo is an npm workspace: `app/` and the packages under `packages/`. Install once, at the root:
