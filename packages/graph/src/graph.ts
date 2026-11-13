@@ -162,7 +162,7 @@ export { countBlocks, countLinks } from "./blocks/queries.ts";
 export { inCode, read } from "./reading/reading.ts";
 export { spans } from "./spans/spans.ts";
 export type { Span } from "./spans/spans.ts";
-export { remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
+export { bareTag, remarkPlugins, remarkWikilink } from "./wikilink/wikilink.ts";
 
 /**
  * The graph: every page, by `canonicalize`: the blocks on it, its properties,
