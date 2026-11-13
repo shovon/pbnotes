@@ -11,10 +11,17 @@
  *
  * Pure, so the rules run under `node --test`; `PageView` holds the list.
  */
-import type { BatchEvent, IconEvent, PageEvent, PropertyEvent, TagEvent } from '@pbnotes/graph';
+import type {
+  AliasEvent,
+  BatchEvent,
+  IconEvent,
+  PageEvent,
+  PropertyEvent,
+  TagEvent,
+} from '@pbnotes/graph';
 
-/** Any event a page draws ahead of main: a block's, a property's or a tag's. */
-type Drawn = PageEvent | PropertyEvent | TagEvent | IconEvent | BatchEvent;
+/** Any event a page draws ahead of main: a block's, a property's, a tag's, an alias's or an icon's. */
+type Drawn = PageEvent | PropertyEvent | TagEvent | AliasEvent | IconEvent | BatchEvent;
 
 /** One write drawn ahead of main: its event, and the version its reply named. */
 export type Pending = { event: Drawn; version?: number };

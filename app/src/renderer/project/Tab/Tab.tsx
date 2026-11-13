@@ -1260,7 +1260,7 @@ function Tab({
           {browsing || tasking ? null : held === null ? (
             <p className="mt-1 text-sm text-muted">Loading…</p>
           ) : (
-            held.view.showing.map(({ page, references, links, properties, tags, taggedBy, icon }) => (
+            held.view.showing.map(({ page, references, links, properties, tags, aliases, taggedBy, icon }) => (
               // Keyed by the title, so a page is never handed another page's
               // editor state — the open box and the block id in it belong to
               // the page they were opened on. The element is only a name on
@@ -1276,6 +1276,8 @@ function Tab({
                   taggedBy={zoom ? undefined : taggedBy}
                   properties={properties}
                   tags={tags}
+                  aliases={aliases}
+                  asked={asked ?? undefined}
                   icon={icon ?? null}
                   zoom={zoom}
                   onZoom={(block) => step((trail) => rezoom(trail, block))}

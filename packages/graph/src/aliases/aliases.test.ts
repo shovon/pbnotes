@@ -12,7 +12,7 @@ import { getAliases, getEdited, graphFold, hasContent, pageDeleted } from "../gr
 import type { Graph } from "../graph.ts";
 import { aliasAdded } from "./added/added.ts";
 import { aliasRemoved } from "./removed/removed.ts";
-import { reduce } from "./slice.ts";
+import { predictAliases, reduce } from "./slice.ts";
 import { empty, has, keys } from "../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
@@ -79,4 +79,24 @@ test("an alias is something on its page: it counts as content, an edit, and a de
   const deleted = fold([pageDeleted("A")], state);
   assert.equal(has(deleted.aliases, "a"), false);
   assert.equal(hasContent(deleted, "a"), false);
+});
+
+test("predictAliases folds writes in flight over the aliases a page was sent", () => {
+  assert.deepEqual(
+    predictAliases(["JS", "Jay"], "JavaScript", [
+      aliasAdded("JavaScript", "ECMAScript"),
+      aliasRemoved("javascript", "jay"),
+      aliasAdded("JavaScript", "js"),
+    ]),
+    ["ECMAScript", "JS"],
+  );
+});
+
+test("predictAliases passes over other pages' writes, and folding twice changes nothing", () => {
+  const block = { type: `${NAMESPACE}block.edited`, payload: { id: "b", text: "x" } };
+  assert.deepEqual(predictAliases(["JS"], "JavaScript", [aliasAdded("Python", "Py"), block]), ["JS"]);
+  assert.deepEqual(predictAliases([], "JavaScript", [aliasRemoved("JavaScript", "JS")]), []);
+  const events = [aliasAdded("JavaScript", "ES"), aliasRemoved("JavaScript", "JS")];
+  const once = predictAliases(["JS"], "JavaScript", events);
+  assert.deepEqual(predictAliases(once, "JavaScript", events), once);
 });

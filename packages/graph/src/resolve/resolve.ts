@@ -51,7 +51,16 @@ export type Resolver = {
    * names if it is a day, and its aliases in effect. `key` first.
    */
   names(key: string): string[];
+  /**
+   * Which of the rules above decides what `name` opens, by number: 1 for a
+   * page of its own, through 6 for none. Rule 5 is only a claim from
+   * another page: a name only its own page claims is 6.
+   */
+  rule(name: string): Rule;
 };
+
+/** A rule of the order above, by its number. */
+export type Rule = 1 | 2 | 3 | 4 | 5 | 6;
 
 /** One resolver per state: states are never changed, only replaced. */
 const made = new WeakMap<Holds, Resolver>();
@@ -116,6 +125,14 @@ export function resolver(state: Holds): Resolver {
         ),
       ),
     ],
+    rule: (name) => {
+      const at = canonicalize(name);
+      if (own(at)) return 1;
+      if (dateOf(at) !== undefined) return 2;
+      if (DATE_PATTERN.test(at)) return 3;
+      if (map.has(state.aliases, at)) return 4;
+      return claimant(at) === undefined ? 6 : 5;
+    },
   };
   made.set(state, it);
   return it;

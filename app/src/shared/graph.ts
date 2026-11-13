@@ -14,7 +14,7 @@
  * records what the user did, and looking at a page is not something they did.
  */
 
-import type { Marker, Page, PageListing, PageMatch, Property } from '@pbnotes/graph';
+import type { HeldAlias, Inert, Marker, Page, PageListing, PageMatch, Property } from '@pbnotes/graph';
 import type { LogStatus } from './log';
 
 /**
@@ -87,6 +87,12 @@ export type PlaceView = {
     properties: Property[];
     /** The pages it points to, as `getTags` returns them. */
     tags: string[];
+    /**
+     * Every alias it holds (#383), in effect or not, as `getHeldAliases`
+     * returns them: each with why it is inert when it is. Empty under a zoom,
+     * as its tags are.
+     */
+    aliases: HeldAlias[];
     /** The pages that point to it, as `getTaggedBy` returns them. */
     taggedBy: string[];
     /**
@@ -199,6 +205,7 @@ export const GRAPH_CHANNELS = {
   renamed: 'graph:renamed',
   icons: 'graph:icons',
   search: 'graph:search',
+  aliasing: 'graph:aliasing',
   find: 'graph:find',
   pages: 'graph:pages',
   tasks: 'graph:tasks',
@@ -275,6 +282,13 @@ export type GraphApi = {
    * Cmd/Ctrl+K box (#28).
    */
   search(query: string): Promise<PageMatch[]>;
+  /**
+   * Why `alias` would not open the page `page` opens, were it added to that
+   * page (#383), or undefined when it would: what the alias input says while
+   * a name is typed. The answer can change under a sync, so it is a hint,
+   * never a check.
+   */
+  aliasing(page: string, alias: string): Promise<Inert | undefined>;
   /**
    * What the Cmd/Ctrl+K box lists for `query` (#28): the titles `search`
    * gives, then the blocks whose text contains it, each with the page it is
@@ -580,6 +594,19 @@ export type Command =
    * resolves with nothing written.
    */
   | { type: 'removeTag'; title: string; tag: string }
+  /**
+   * Appends an `alias.added` event (#383): `title` now answers to `alias`.
+   * An alias is a page title, so it arrives trimmed like one. Main refuses
+   * the page's own title and a `YYYY-MM-DD`, which no alias can take; an
+   * alias the page already has resolves with nothing written. One another
+   * rule keeps from opening the page is written all the same.
+   */
+  | { type: 'addAlias'; title: string; alias: string }
+  /**
+   * Appends an `alias.removed` event. Removing an alias the page does not
+   * have resolves with nothing written.
+   */
+  | { type: 'removeAlias'; title: string; alias: string }
   /**
    * Appends an `icon.set` event: `title`'s icon is now `icon`. Any string:
    * what it means is the window's to draw. Setting the icon the page already

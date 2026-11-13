@@ -244,6 +244,32 @@ test("tag writes are recorded in order with the block writes around them", async
   assert.deepEqual(seen.showing[0].taggedBy, ["Atlas"]);
 });
 
+test("alias writes are recorded, and the view holds each with why it is inert (#383)", async () => {
+  const { view } = ledger();
+  const { graph } = session(view);
+  await graph.run({ type: "addBlock", id: "a1", title: "JavaScript", text: "a language" });
+  await graph.run({ type: "addBlock", id: "b1", title: "ECMA", text: "a standards body" });
+  await graph.run({ type: "addAlias", title: "JavaScript", alias: "JS" });
+  await graph.run({ type: "addAlias", title: "JavaScript", alias: "ECMA" });
+  await graph.run({ type: "addAlias", title: "JavaScript", alias: "Jay" });
+  await graph.run({ type: "removeAlias", title: "javascript", alias: "jay" });
+  const seen = await graph.view({ page: "JS" }, TODAY);
+  assert.equal(seen.showing[0].page.title, "JavaScript");
+  assert.deepEqual(seen.showing[0].aliases, [{ alias: "ECMA", inert: { why: "own" } }, { alias: "JS" }]);
+  assert.deepEqual((await graph.view({ page: "JS", block: "a1" }, TODAY)).showing[0].aliases, []);
+  assert.deepEqual(await graph.aliasing("JavaScript", "ECMA"), { why: "own" });
+  assert.equal(await graph.aliasing("JavaScript", "ES6"), undefined);
+});
+
+test("an alias the page's own title or a date is refused, and writes nothing (#383)", async () => {
+  const { view } = ledger();
+  const { graph } = session(view);
+  const before = view.version;
+  await assert.rejects(graph.run({ type: "addAlias", title: "JavaScript", alias: "javascript" }));
+  await assert.rejects(graph.run({ type: "addAlias", title: "JavaScript", alias: "2024-11-04" }));
+  assert.equal(view.version, before);
+});
+
 test("icon writes are recorded in order with the block writes around them (#322)", async () => {
   const { view, hold } = ledger();
   const { graph } = session(view);
@@ -392,6 +418,7 @@ async function written() {
     { type: "setProperty", title: "Foo", key: "Owner", value: "Mira" },
     { type: "addTag", title: "Foo", tag: "Work" },
     { type: "setIcon", title: "Foo", icon: "🌲" },
+    { type: "addAlias", title: "Foo", alias: "F" },
     { type: "addBlock", id: "d1", title: "Bar", text: "D" },
   ] as const) {
     await graph.run(command);
@@ -422,6 +449,8 @@ test("every command is undone to the graph before it, and redone to the graph af
     { type: "removeTag", title: "Foo", tag: "Work" },
     { type: "setIcon", title: "Foo", icon: "🌊" },
     { type: "removeIcon", title: "Foo" },
+    { type: "addAlias", title: "Foo", alias: "Fu" },
+    { type: "removeAlias", title: "Foo", alias: "F" },
     { type: "deletePage", title: "Foo" },
   ] as const;
   for (const command of commands) {

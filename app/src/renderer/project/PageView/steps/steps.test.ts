@@ -2,6 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  aliasAdded,
+  aliasRemoved,
   batch,
   blockCreated,
   blockDeleted,
@@ -18,12 +20,14 @@ import {
 import type { Block } from '@pbnotes/graph';
 import {
   add,
+  addAlias,
   addTag,
   edit,
   indent,
   outdent,
   remove,
   removeIcon,
+  removeAlias,
   removeProperty,
   removeTag,
   renameProperty,
@@ -75,6 +79,8 @@ test('each step draws the event main writes, and sends the write that records it
     [removeProperty(graph, 'Mira', 'Status'), propertyRemoved('Mira', 'Status'), { type: 'removeProperty', title: 'Mira', key: 'Status' }],
     [addTag(graph, 'Mira', 'Work'), tagAdded('Mira', 'Work'), { type: 'addTag', title: 'Mira', tag: 'Work' }],
     [removeTag(graph, 'Mira', 'Work'), tagRemoved('Mira', 'Work'), { type: 'removeTag', title: 'Mira', tag: 'Work' }],
+    [addAlias(graph, 'Mira', 'M'), aliasAdded('Mira', 'M'), { type: 'addAlias', title: 'Mira', alias: 'M' }],
+    [removeAlias(graph, 'Mira', 'M'), aliasRemoved('Mira', 'M'), { type: 'removeAlias', title: 'Mira', alias: 'M' }],
     [setIcon(graph, 'Mira', '🌲'), iconSet('Mira', '🌲'), { type: 'setIcon', title: 'Mira', icon: '🌲' }],
     [removeIcon(graph, 'Mira'), iconRemoved('Mira'), { type: 'removeIcon', title: 'Mira' }],
   ];

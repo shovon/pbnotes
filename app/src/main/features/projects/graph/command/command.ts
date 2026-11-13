@@ -241,6 +241,17 @@ const CHECKERS: {
     title: requireTitle(own(raw, "title")),
     tag: requireTitle(own(raw, "tag")),
   }),
+  // An alias is a page title too (#383), checked as one for the same reason.
+  addAlias: (raw) => ({
+    type: "addAlias",
+    title: requireTitle(own(raw, "title")),
+    alias: requireTitle(own(raw, "alias")),
+  }),
+  removeAlias: (raw) => ({
+    type: "removeAlias",
+    title: requireTitle(own(raw, "title")),
+    alias: requireTitle(own(raw, "alias")),
+  }),
   // An icon is any string: what it means is the window's (#322).
   setIcon: (raw) => ({
     type: "setIcon",

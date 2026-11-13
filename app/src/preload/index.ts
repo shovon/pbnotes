@@ -54,6 +54,7 @@ const graph: GraphApi = {
   renamed: (names) => ipcRenderer.invoke(GRAPH_CHANNELS.renamed, names),
   icons: (titles) => ipcRenderer.invoke(GRAPH_CHANNELS.icons, titles),
   search: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.search, query),
+  aliasing: (page, alias) => ipcRenderer.invoke(GRAPH_CHANNELS.aliasing, page, alias),
   find: (query) => ipcRenderer.invoke(GRAPH_CHANNELS.find, query),
   pages: () => ipcRenderer.invoke(GRAPH_CHANNELS.pages),
   tasks: (filter, through) => ipcRenderer.invoke(GRAPH_CHANNELS.tasks, filter, through),
