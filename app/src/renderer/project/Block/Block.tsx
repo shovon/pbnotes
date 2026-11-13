@@ -373,13 +373,14 @@ function apply(box: HTMLTextAreaElement, edit: Edit): void {
 }
 
 /**
- * Where the `[[` at `offset` sits in the box, as the top and left of the line
- * below it: a textarea will not say where a character is, so a hidden copy of
- * it, styled the same and holding the text up to there, is measured instead.
- * Remeasured as the query grows, because a long one wraps the `[[` with it.
+ * Where the link's opening at `offset` sits in the box, `[[` or `#`, as the
+ * top and left of the line below it: a textarea will not say where a
+ * character is, so a hidden copy of it, styled the same and holding the text
+ * up to there, is measured instead. Remeasured as the query grows, because a
+ * long one wraps the opening with it.
  */
-function under(box: HTMLTextAreaElement, offset: number) {
-  return measure(box, offset, '[[', (mark) => ({
+function under(box: HTMLTextAreaElement, offset: number, opening: string) {
+  return measure(box, offset, opening, (mark) => ({
     top: mark.offsetTop + mark.offsetHeight,
     left: mark.offsetLeft,
   }));
@@ -519,7 +520,8 @@ export function BlockEditor({
   /** Put on the outermost element. */
   data?: Data;
   /**
-   * The titles to offer after `[[` for what is typed after it (#29), each
+   * The titles to offer after `[[` (#29) or `#` (#365) for what is typed
+   * after it, each
    * with the page it opens. Left off, nothing is offered.
    */
   findPages?: (query: string) => Promise<PageMatch[]>;
@@ -540,8 +542,9 @@ export function BlockEditor({
   );
 
   /**
-   * The `[[` being typed, the titles that match it and which one is picked.
-   * Escape closes the list for that one `[[` and leaves the text alone.
+   * The `[[` or `#` being typed, the titles that match it and which one is
+   * picked. Escape closes the list for that one link and leaves the text
+   * alone.
    */
   const [link, setLink] = useState<LinkQuery | null>(null);
   const [dismissed, setDismissed] = useState<number>();
@@ -577,7 +580,7 @@ export function BlockEditor({
       selectionStart === selectionEnd ? linkQuery(value, selectionEnd) : null;
     setLink(found);
     if (!found) setDismissed(undefined);
-    else setPoint(under(element, found.at));
+    else setPoint(under(element, found.at, found.form === 'tag' ? '#' : '[['));
   };
 
   const pick = (title: string) => {
@@ -586,6 +589,9 @@ export function BlockEditor({
     ownEdit(element);
     apply(element, completeLink(element.value, element.selectionEnd, shown, title));
     sync(element);
+    /* A bare tag picked leaves the caret still in it, `#Foo|`, which would
+       open the list again on what was just picked. */
+    if (shown.form === 'tag') setDismissed(shown.at);
   };
 
   /** The key that leaves the box for a selection, if this press is one. */
@@ -734,7 +740,7 @@ export function BlockEditor({
         }}
       />
       {open && (
-        /* Under the `[[` rather than the caret, so it holds still while the
+        /* Under the `[[` or `#` rather than the caret, so it holds still while the
            query is typed, and pulled back in when that is near the right edge.
            Mouse-down rather than click, and kept from taking focus: a blur
            would commit the block before the pick lands in it. */

@@ -63,10 +63,12 @@ export const Paragraphs: Story = {
   },
 };
 
-/** Type `[[` and the project's pages are offered under it, narrowed by what
-    follows: Up and Down to move, Enter, Tab or a click to pick, Escape to
-    leave the text as typed. Not offered inside backticks. An alias or a
-    date name shows the page it opens: try `coffee` or `sep`. */
+/** Type `[[` or `#` and the project's pages are offered under it, narrowed
+    by what follows: Up and Down to move, Enter, Tab or a click to pick,
+    Escape to leave the text as typed. Not offered inside backticks. After
+    `#`, a space or punctuation closes it, and a title with a space in it is
+    picked as `#[[The good coffee]]`. An alias or a date name shows the page
+    it opens: try `coffee` or `sep`. */
 export const Linking: Story = {
   args: {
     initial: 'Asked about the hinge, see ',
