@@ -5,6 +5,7 @@ import { locate } from '@pbnotes/graph';
 import type { Block } from '@pbnotes/graph';
 import {
   afterCancel,
+  afterContinue,
   afterDelete,
   afterRemove,
   movable,
@@ -86,18 +87,78 @@ test('deleting the zoomed root moves the zoom out to its parent, or to the page'
 
 test('backing out of a new box lands at the end of the block directly above it', () => {
   // A box beneath `a` renders below its whole subtree.
-  assert.deepEqual(afterCancel(page, 'a'), end('a2x'));
+  assert.deepEqual(afterCancel(page, { after: 'a' }), end('a2x'));
   // The box at the end of the page, and the one at the end of a zoom.
-  assert.deepEqual(afterCancel(page, undefined), end('b'));
-  assert.deepEqual(afterCancel(page, undefined, at('a')), end('a2x'));
+  assert.deepEqual(afterCancel(page, {}), end('b'));
+  assert.deepEqual(afterCancel(page, {}, at('a')), end('a2x'));
+});
+
+test('backing out of a first-child box lands at the end of the block it is under', () => {
+  assert.deepEqual(afterCancel(page, { under: 'a' }), end('a'));
+  assert.equal(afterCancel(page, { under: 'gone' }), null);
 });
 
 test('with nothing above it, a new box stays open', () => {
-  assert.equal(afterCancel([], undefined), null);
-  assert.equal(afterCancel(page, 'gone'), null);
+  assert.equal(afterCancel([], {}), null);
+  assert.equal(afterCancel(page, { after: 'gone' }), null);
+});
+
+// Enter at the end of a block that exists.
+
+test('Enter on a block with children opens the box as its first child', () => {
+  assert.deepEqual(afterContinue(at('a')), { under: 'a' });
+  assert.deepEqual(afterContinue(at('a2')), { under: 'a2' });
+});
+
+test('Enter on a block without children opens the box beside it', () => {
+  assert.deepEqual(afterContinue(at('a1')), { after: 'a1' });
+  assert.deepEqual(afterContinue(at('b')), { after: 'b' });
+});
+
+test('Enter on the zoomed root opens the box as its first child, children or not', () => {
+  assert.deepEqual(afterContinue(at('a'), at('a')), { under: 'a' });
+  assert.deepEqual(afterContinue(at('b'), at('b')), { under: 'b' });
+  // Another block in the zoom is placed as it is anywhere.
+  assert.deepEqual(afterContinue(at('a1'), at('a')), { after: 'a1' });
 });
 
 // A key in the box for a new block.
+
+test('a first-child box writes the block first under its parent', () => {
+  assert.deepEqual(newBlock(page, { under: 'a', text: 'hi', then: 'again' }), {
+    kind: 'write',
+    after: undefined,
+    parent: 'a',
+    indent: false,
+    move: undefined,
+  });
+  // Zoomed, under the root, as for a bare root too: no second step.
+  assert.deepEqual(newBlock(page, { root: at('b'), under: 'b', text: 'hi', then: 'stop' }), {
+    kind: 'write',
+    after: undefined,
+    parent: 'b',
+    indent: false,
+    move: undefined,
+  });
+});
+
+test('Enter on an empty first-child box pops it out beside its parent, but not past the root', () => {
+  assert.deepEqual(newBlock(page, { under: 'a2', text: '', then: 'again' }), {
+    kind: 'pop',
+    after: 'a2',
+  });
+  assert.equal(newBlock(page, { root: at('a'), under: 'a', text: '', then: 'again' }).kind, 'write');
+  // Shift+Tab as the root's first child is out of the view: no move.
+  assert.equal(
+    (newBlock(page, { root: at('a'), under: 'a', text: 'hi', then: 'outdent' }) as { move?: number }).move,
+    undefined,
+  );
+});
+
+test('a box under a block that went closes when it goes', () => {
+  assert.equal(afterRemove(page, 'a', { writing: { under: 'a2' } })?.closeNew, true);
+  assert.equal(afterRemove(page, 'b', { writing: { under: 'a2' } })?.closeNew, false);
+});
 
 test('leaving an empty box writes nothing; leaving one with text writes it', () => {
   assert.deepEqual(newBlock(page, { after: 'b', text: '', then: 'stop' }), {
@@ -191,7 +252,7 @@ test('a block may move, except out of the view a zoom shows', () => {
 
 test('a menu delete leaves boxes and the zoom alone when they are elsewhere', () => {
   assert.deepEqual(
-    afterRemove(page, 'b', { root: at('a'), editing: 'a1', writingAfter: 'a2' }),
+    afterRemove(page, 'b', { root: at('a'), editing: 'a1', writing: { after: 'a2' } }),
     { closeEditing: false, closeNew: false, unzoom: undefined },
   );
 });
@@ -202,8 +263,8 @@ test('a menu delete closes a box open anywhere in what goes', () => {
     closeNew: false,
     unzoom: undefined,
   });
-  assert.equal(afterRemove(page, 'a2', { writingAfter: 'a2x' })?.closeNew, true);
-  assert.equal(afterRemove(page, 'a2', { writingAfter: 'a1' })?.closeNew, false);
+  assert.equal(afterRemove(page, 'a2', { writing: { after: 'a2x' } })?.closeNew, true);
+  assert.equal(afterRemove(page, 'a2', { writing: { after: 'a1' } })?.closeNew, false);
 });
 
 test('deleting the zoomed root zooms out to what it hung under', () => {

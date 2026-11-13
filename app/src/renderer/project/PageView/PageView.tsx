@@ -28,12 +28,13 @@ import {
 import type { Step, StepsGraph } from './steps/steps';
 import {
   afterCancel,
+  afterContinue,
   afterDelete,
   afterRemove,
   movable,
   newBlock,
 } from './editing/editing';
-import type { Caret, Then } from './editing/editing';
+import type { Box, Caret, Then } from './editing/editing';
 import { drawn, recorded, refused, unseen } from './pending/pending';
 import type { Pending } from './pending/pending';
 import { Selecting } from '../selection/Selecting';
@@ -44,12 +45,12 @@ import { beneath, endOf, landed, withIds } from '../selection/paste/paste';
 import type { Spot } from '../selection/paste/paste';
 
 /**
- * Where an unwritten block is waiting to be typed. `after` is the block it
- * goes beneath; without one it goes at the end of the page. Null is no box
- * open at all — three states, because "writing" and "writing *here*" are
+ * Where an unwritten block is waiting to be typed: a `Box`, beside a block,
+ * first under one, or at the end of what is in view. Null is no box open at
+ * all — separate states, because "writing" and "writing *here*" are
  * different questions and a boolean can only answer the first.
  */
-type Writing = { after?: string } | null;
+type Writing = Box | null;
 
 /**
  * The part of the bridge a page calls: what it calls itself, and what the
@@ -369,7 +370,7 @@ export default function PageView({
       const next = afterRemove(now.blocks, block.id, {
         root: now.root,
         editing: now.editingId,
-        writingAfter: now.writing?.after,
+        writing: now.writing,
       });
       // Gone while the menu was open: nothing left to delete.
       if (!next) return;
@@ -462,6 +463,7 @@ export default function PageView({
     const plan = newBlock(page.blocks, {
       root,
       after: writing?.after,
+      under: writing?.under,
       text,
       then,
     });
@@ -475,7 +477,7 @@ export default function PageView({
     // Named here, so the block is drawn — and the next box opened beneath
     // it, or this one reopened on it — before main has heard of it.
     const id = crypto.randomUUID();
-    const create = add(graph, id, title, text, plan.after);
+    const create = add(graph, id, title, text, plan.after, plan.parent);
     const steps: Step[] = [create];
     // Each move resolved on the page as the steps before it leave it. One
     // with nowhere to go — the first block of an empty page going in, a
@@ -517,7 +519,7 @@ export default function PageView({
    * record of, which is the same nothing-to-go-back-to.
    */
   const cancelNew = () => {
-    const above = afterCancel(page.blocks, writing?.after, root);
+    const above = afterCancel(page.blocks, writing ?? {}, root);
     if (!above) return;
     setWriting(null);
     reopen(above);
@@ -548,7 +550,13 @@ export default function PageView({
     } else {
       const written = text === '' ? undefined : commitNew(text, { then: 'stop' });
       setWriting(null);
-      spot = written ? { after: written } : writing?.after ? { after: writing.after } : endOf(root);
+      spot = written
+        ? { after: written }
+        : writing?.after
+          ? { after: writing.after }
+          : writing?.under
+            ? { parent: writing.under }
+            : endOf(root);
     }
     act(async () => {
       const pasting = withIds(await landed(graph, clipped, html), () => crypto.randomUUID());
@@ -625,9 +633,9 @@ export default function PageView({
 
   /**
    * The page, depth first. Children render in their own indented column
-   * under their parent, and the box for a new block sits below that whole
-   * subtree — `after` makes the new block the next *sibling*, which is where
-   * the fold puts it too.
+   * under their parent. The box for a new block `after` one sits below that
+   * whole subtree — it makes the next *sibling*, which is where the fold puts
+   * it too — and one `under` it sits first in that column (#385).
    *
    * In a cut, Enter ends the block and opens nothing after it, and Tab is
    * the focus key it is everywhere else: there is nowhere to add, and
@@ -662,11 +670,9 @@ export default function PageView({
         }
         onContinue={(text) => {
           commitEdit(block, text);
-          // Out of the zoomed block, the next one goes under it: beside
-          // it would be a sibling nobody can see.
-          if (!reference) {
-            setWriting(block.id === root?.id ? {} : { after: block.id });
-          }
+          // First under a block with children, or under the zoomed one;
+          // otherwise beside it (#385).
+          if (!reference) setWriting(afterContinue(block, root));
         }}
       />
     ) : (
@@ -702,9 +708,10 @@ export default function PageView({
       return (
         <Fragment key={block.id}>
           {renderBlock(block, parent, on, going)}
-          {block.children.length > 0 && (
+          {(block.children.length > 0 || writing?.under === block.id) && (
             // Its own column, since the gap between blocks does not inherit.
             <div className="ml-indent flex flex-col gap-1">
+              {writing?.under === block.id && newBlockEditor}
               {renderBlocks(block.children, block.id, on, going)}
             </div>
           )}
@@ -725,7 +732,8 @@ export default function PageView({
   /** Whether the zoomed block is being dragged, and with it everything shown. */
   const rootMoving = root !== undefined && dragging.has(slotKey(scope, root.id));
   /** Whether the box for a new block is open at the end of the view. */
-  const atEnd = !reference && writing !== null && writing.after === undefined;
+  const atEnd =
+    !reference && writing !== null && writing.after === undefined && writing.under === undefined;
 
   const pageSpace = reference
     ? 'ml-indent cursor-default'
@@ -862,8 +870,9 @@ export default function PageView({
           // and so does the box at the end of the zoom, which is under it too.
           <Fragment key={root.id}>
             {renderBlock(root, undefined, rootLit, rootMoving)}
-            {(root.children.length > 0 || atEnd) && (
+            {(root.children.length > 0 || atEnd || writing?.under === root.id) && (
               <div className="ml-indent flex flex-col gap-1">
+                {writing?.under === root.id && newBlockEditor}
                 {renderBlocks(root.children, root.id, rootLit, rootMoving)}
                 {atEnd && newBlockEditor}
               </div>

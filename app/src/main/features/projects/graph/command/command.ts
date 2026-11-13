@@ -154,6 +154,9 @@ const CHECKERS: {
       // Absent means the end of the page; anything else has to be a block
       // id before it reaches a log that keeps it forever.
       ...(after === undefined ? {} : { after: requireString(after, "after") }),
+      // A first child of this block (#385). Which pairs with `after` is the
+      // graph command's to say, as for a move.
+      ...optionalId(raw, "parent"),
     };
   },
   // No title on the four below. The block id is the whole address, so there

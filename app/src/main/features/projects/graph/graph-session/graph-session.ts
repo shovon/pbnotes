@@ -261,8 +261,8 @@ function isTaking(command: Command): command is Taking {
 function apply(view: GraphView, command: Exclude<Command, Taking>): Promise<unknown> {
   switch (command.type) {
     case "addBlock": {
-      const { title, text, after, id } = command;
-      return addBlock(view, title, text, after, id);
+      const { title, text, after, id, parent } = command;
+      return addBlock(view, title, text, after, id, parent);
     }
     case "editBlock":
       return editBlock(view, command.blockId, command.text);

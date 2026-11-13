@@ -46,18 +46,29 @@ export type Step = [
  */
 export type StepsGraph = { run(command: Command): Promise<unknown> };
 
-/** A new block, named by the caller, at the end of the page or beneath `after`. */
+/**
+ * A new block, named by the caller, at the end of the page, beneath `after`,
+ * or, with `parent` alone, as that block's first child (#385).
+ */
 export function add(
   graph: StepsGraph,
   id: string,
   title: string,
   text: string,
   after?: string,
+  parent?: string,
 ): Step {
   return [
-    blockCreated(title, text, after, id),
+    blockCreated(title, text, after, id, parent),
     () =>
-      graph.run({ type: 'addBlock', id, title, text, ...(after ? { after } : {}) }),
+      graph.run({
+        type: 'addBlock',
+        id,
+        title,
+        text,
+        ...(after ? { after } : {}),
+        ...(parent ? { parent } : {}),
+      }),
   ];
 }
 

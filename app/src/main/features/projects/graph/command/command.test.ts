@@ -9,6 +9,7 @@ test("each command passes with the fields it reads", () => {
   const good = [
     { type: "addBlock", id: ID, title: "Mira", text: "hi" },
     { type: "addBlock", id: ID, title: "Mira", text: "", after: "b1" },
+    { type: "addBlock", id: ID, title: "Mira", text: "", parent: "b1" },
     { type: "editBlock", blockId: "b1", text: "hi" },
     { type: "deleteBlock", blockId: "b1" },
     { type: "deleteBlocks", blockIds: ["b1"] },
@@ -59,6 +60,7 @@ test("a missing or wrong-typed field is refused", () => {
     { type: "addBlock", id: ID, title: "", text: "hi" },
     { type: "addBlock", id: ID, title: "Mira", text: 1 },
     { type: "addBlock", id: ID, title: "Mira", text: "hi", after: 3 },
+    { type: "addBlock", id: ID, title: "Mira", text: "hi", parent: 3 },
     { type: "editBlock", blockId: "b1" },
     { type: "editBlock", text: "hi" },
     { type: "deleteBlock" },
