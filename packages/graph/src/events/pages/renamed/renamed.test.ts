@@ -190,6 +190,16 @@ test("a day renamed to a page leaves no alias, rewrites links by any of its name
   assert.deepEqual(ids(getPage(state, "2026-11-06").blocks), ["y"]);
 });
 
+test("a day renamed while a page keys it by two of its names keeps the title key's value, whichever came first (#371)", () => {
+  for (const [first, second] of [
+    [propertySet("Diary", "2026-11-06", "by title"), propertySet("Diary", "Nov 6th, 2026", "by date")],
+    [propertySet("Diary", "Nov 6th, 2026", "by date"), propertySet("Diary", "2026-11-06", "by title")],
+  ]) {
+    const state = fold(graphFold.initial, first, second, pageRenamed("2026-11-06", "Meeting"));
+    assert.deepEqual(getProperties(state, "Diary"), [{ key: "Meeting", value: "by title" }]);
+  }
+});
+
 test("a page renamed to a date name becomes that day", () => {
   const state = fold(graphFold.initial, blockCreated("Meeting", "x", undefined, "x"), pageRenamed("Meeting", "Nov 6th, 2026"));
   assert.deepEqual(ids(getPage(state, "2026-11-06").blocks), ["x"]);

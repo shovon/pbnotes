@@ -5,6 +5,7 @@
  */
 import { canonicalize } from "../../canonicalize/canonicalize.ts";
 import { from as fromPairs } from "../../immutable/immutable.ts";
+import * as set from "../../immutable/set.ts";
 import { each } from "../batch/batch.ts";
 import type { EventOf } from "../../over/over.ts";
 import { TAG, getTags } from "../../tags/tags.ts";
@@ -57,7 +58,7 @@ export function predictTags(
 ): string[] {
   if (events.length === 0) return [...tags];
   const at = canonicalize(page);
-  const held = new Set(tags.map(canonicalize));
+  const held = set.from(tags.map(canonicalize));
   let state: TagState = {
     tags: held.size === 0 ? fromPairs([]) : fromPairs([[at, held]]),
     titles: fromPairs([

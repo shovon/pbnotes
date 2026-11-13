@@ -11,6 +11,7 @@ import type { Graph, GraphView } from "../../../graph.ts";
 import { ALIAS_ADDED, aliasAdded } from "./added.ts";
 import { aliasRemoved } from "../removed/removed.ts";
 import { from, get } from "../../../immutable/immutable.ts";
+import * as set from "../../../immutable/set.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 
@@ -36,7 +37,7 @@ function memory(): GraphView {
 
 test("an added gives the page that alias, and names both", () => {
   const state = fold([added("JavaScript", "JS")]);
-  assert.deepEqual(state.aliases, from([["javascript", new Set(["js"])]]));
+  assert.deepEqual(state.aliases, from([["javascript", set.from(["js"])]]));
   assert.deepEqual(getAliases(state, "javascript"), ["JS"]);
   assert.equal(get(state.titles, "javascript"), "JavaScript");
   assert.equal(get(state.titles, "js"), "JS");

@@ -21,6 +21,7 @@
  * it opens at once, and no ledger needs a migration.
  */
 import * as map from "../immutable/immutable.ts";
+import * as set from "../immutable/set.ts";
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { DATE_PATTERN, dateOf, namesOf } from "../journal/journal.ts";
 import { titleOf } from "../titles/titles.ts";
@@ -91,6 +92,9 @@ export function resolver(state: Holds): Resolver {
     return (free(at) && claimant(at)) || at;
   };
 
+  /** The `canonicalize`d names the events gave the page at `key`, unordered. */
+  const given = (key: string) => [...set.values(map.get(state.aliases, key) ?? set.empty())];
+
   const it: Resolver = {
     key,
     title: (name) => {
@@ -103,11 +107,11 @@ export function resolver(state: Holds): Resolver {
       return to === undefined ? undefined : titleOf(state, to);
     },
     aliases: (page) =>
-      [...(map.get(state.aliases, page) ?? [])].filter((alias) => alias !== page && key(alias) === page),
+      given(page).filter((alias) => alias !== page && key(alias) === page),
     names: (page) => [
       page,
       ...new Set(
-        [...namesOf(page).map(canonicalize), ...(map.get(state.aliases, page) ?? [])].filter(
+        [...namesOf(page).map(canonicalize), ...given(page)].filter(
           (name) => name !== page && key(name) === page,
         ),
       ),

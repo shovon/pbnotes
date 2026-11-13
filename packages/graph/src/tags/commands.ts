@@ -7,9 +7,7 @@
  * folds to nothing, and writes nothing for a change that changes nothing, so
  * the log does not collect events that mean nothing.
  */
-import * as map from "../immutable/immutable.ts";
-import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { getTags } from "./tags.ts";
+import { getTags, pointsTo } from "./tags.ts";
 import type { TagState } from "./tags.ts";
 import type { TagEvent } from "../events/tags/slice.ts";
 import { tagAdded } from "../events/tags/added/added.ts";
@@ -25,11 +23,6 @@ export type TagsView = {
   dispatch(v: number, type: TagEvent["type"], payload: unknown): Promise<unknown>;
 };
 
-/** Whether `page` points to `tag` as the fold holds it. */
-function has(state: TagState, page: string, tag: string): boolean {
-  return map.get(state.tags, canonicalize(page))?.has(canonicalize(tag)) ?? false;
-}
-
 /** The fold's rule for a page or a tag: something, once trimmed. */
 function requireName(name: string, what: string): void {
   if (name.trim() === "") throw new Error(`A tag needs a ${what}`);
@@ -42,7 +35,7 @@ function requireName(name: string, what: string): void {
 export async function addTag(view: TagsView, page: string, tag: string): Promise<string[]> {
   requireName(page, "page");
   requireName(tag, "tag");
-  if (!has(view.state, page, tag)) {
+  if (!pointsTo(view.state, page, tag)) {
     const event = tagAdded(page, tag);
     await view.dispatch(event.v, event.type, event.payload);
   }
@@ -56,7 +49,7 @@ export async function addTag(view: TagsView, page: string, tag: string): Promise
 export async function removeTag(view: TagsView, page: string, tag: string): Promise<string[]> {
   requireName(page, "page");
   requireName(tag, "tag");
-  if (has(view.state, page, tag)) {
+  if (pointsTo(view.state, page, tag)) {
     const event = tagRemoved(page, tag);
     await view.dispatch(event.v, event.type, event.payload);
   }

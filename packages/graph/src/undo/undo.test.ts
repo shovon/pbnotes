@@ -35,7 +35,7 @@ import {
 import type { Batched, Graph } from "../graph.ts";
 import { CANNOT, holds as holdsWith, invert as invertWith, remember as rememberWith, same } from "./undo.ts";
 import type { Undo, UndoTable } from "./undo.ts";
-import { get } from "../immutable/immutable.ts";
+import { from, get } from "../immutable/immutable.ts";
 
 /** `invert`'s answer for a step that can be undone: never `undefined`. */
 function inverseOf(before: Graph, events: Batched[]): Batched[] {
@@ -163,7 +163,7 @@ test("an outdent that took siblings along goes back exactly", () => {
 test("a deleted page comes back whole, spelled as it was", () => {
   const { undone } = roundTrip("delete Foo", [pageDeleted("foo")]);
   assert.equal(shape(undone), "a(a1 a2) b(b1) c");
-  assert.deepEqual(get(undone.properties, "foo"), new Map([["owner", "Mira"]]));
+  assert.deepEqual(get(undone.properties, "foo"), from([["owner", "Mira"]]));
   const inverse = inverseOf(START, [pageDeleted("foo")]);
   assert.ok(inverse.every((it) => (it.payload as { page: string }).page === "Foo"));
 });

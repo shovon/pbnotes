@@ -21,6 +21,8 @@ import { field } from "../events/events.ts";
 import * as forest from "../forest/forest.ts";
 import * as map from "../immutable/immutable.ts";
 import type { ImmutableMap } from "../immutable/immutable.ts";
+import * as set from "../immutable/set.ts";
+import type { ImmutableSet } from "../immutable/set.ts";
 import { DATE_PATTERN, dateOf, namesOf } from "../journal/journal.ts";
 import { read } from "../reading/reading.ts";
 import { relink } from "../relink/relink.ts";
@@ -105,8 +107,8 @@ export function namedBy(state: Holds, key: string): boolean {
   const names = new Set([key, ...namesOf(key).map(canonicalize)]);
   const named = (page: string) => names.has(canonicalize(page));
   for (const [, text] of map.entries(state.texts)) if (read(text).links.some(named)) return true;
-  for (const [, set] of map.entries(state.tags)) if ([...set].some((it) => names.has(it))) return true;
-  for (const [, props] of map.entries(state.properties)) if ([...props.keys()].some((it) => names.has(it))) return true;
+  for (const held of map.values(state.tags)) if ([...set.values(held)].some((it) => names.has(it))) return true;
+  for (const props of map.values(state.properties)) if ([...map.keys(props)].some((it) => names.has(it))) return true;
   return false;
 }
 
@@ -126,20 +128,31 @@ function each<V>(held: ImmutableMap<V>, pick: (value: V) => V): ImmutableMap<V> 
   return next;
 }
 
-/** `set` with any name in `names` as `to` instead: `set` itself when it holds none. */
-function renamedIn(set: Set<string>, names: Set<string>, to: string): Set<string> {
-  if (![...set].some((it) => names.has(it))) return set;
-  return new Set([...set].map((it) => (names.has(it) ? to : it)));
+/** `held` with any name in `names` as `to` instead: `held` itself when it holds none. */
+function renamedIn(held: ImmutableSet, names: Set<string>, to: string): ImmutableSet {
+  let next = held;
+  for (const name of names) if (set.has(held, name)) next = set.remove(next, name);
+  return next === held ? held : set.add(next, to);
 }
 
 /**
- * A page's properties with a key in `names` as `to` instead, value kept, in
- * place. A page that already has `to` keeps both as they are rather than
- * lose either value.
+ * A page's properties with a key in `names` as `to` instead, value kept. A
+ * page that already has `to` keeps both as they are rather than lose either
+ * value. A page with more than one key in `names` (a day by its title and by
+ * a date name) keeps the value of the first `names` lists: the old title's
+ * own key wins over a date name (#371).
  */
-function rekeyed(props: Map<string, string>, names: Set<string>, to: string): Map<string, string> {
-  if (props.has(to) || ![...props.keys()].some((it) => names.has(it))) return props;
-  return new Map([...props].map(([key, value]) => [names.has(key) ? to : key, value] as const));
+function rekeyed(props: ImmutableMap<string>, names: Set<string>, to: string): ImmutableMap<string> {
+  if (map.has(props, to)) return props;
+  let next = props;
+  let kept: string | undefined;
+  for (const name of names) {
+    const value = map.get(props, name);
+    if (value === undefined) continue;
+    kept ??= value;
+    next = map.remove(next, name);
+  }
+  return kept === undefined ? props : map.put(next, to, kept);
 }
 
 /**
@@ -164,9 +177,8 @@ export function rename<S extends Holds>(state: S, it: PageRenamed): S {
 
   // The page answers to the old name, and to what it answered to before,
   // unless the new name was one of those: a page never answers to itself.
-  const answers = new Set(map.get(state.aliases, was));
-  if (!isDay(was)) answers.add(was);
-  answers.delete(now);
+  const held = map.get(state.aliases, was) ?? set.empty();
+  const answers = set.remove(isDay(was) ? held : set.add(held, was), now);
   const aliases = map.remove(state.aliases, was);
 
   let renames = each(map.remove(state.renames, now), (to) => (to === was ? now : to));

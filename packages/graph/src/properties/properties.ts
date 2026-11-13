@@ -29,11 +29,12 @@ import type { Titles } from "../titles/titles.ts";
  * `canonicalize(key)` → value. A page with no properties has no entry, never
  * an empty one. The spelling of every page and key is in `titles`.
  *
- * `Map` throughout, so `__proto__` is an ordinary page or key (#62), and the
- * state survives the structured clone to the renderer (#146).
+ * Immutable maps all the way down (#276, #371), so `__proto__` is an
+ * ordinary page or key (#62), a write costs one path of one page's map, and
+ * the state survives the structured clone to the renderer (#146).
  */
 export type PropertyState = {
-  readonly properties: ImmutableMap<Map<string, string>>;
+  readonly properties: ImmutableMap<ImmutableMap<string>>;
   readonly titles: Titles;
 };
 
@@ -74,7 +75,8 @@ export function readKey(payload: unknown): PropertyRemoved | undefined {
 
 /** `page`'s value for `key`, or undefined for none. */
 export function valueOf(state: PropertyState, page: string, key: string): string | undefined {
-  return map.get(state.properties, canonicalize(page))?.get(canonicalize(key));
+  const held = map.get(state.properties, canonicalize(page));
+  return held === undefined ? undefined : map.get(held, canonicalize(key));
 }
 
 /**
@@ -92,16 +94,15 @@ export function setValue<S extends PropertyState>(
 ): S {
   const titles = spell(state.titles, [page, key]);
   const at = canonicalize(page);
-  const held = map.get(state.properties, at);
+  const held = map.get(state.properties, at) ?? map.empty<string>();
   if (value !== undefined) {
-    const next = new Map(held).set(canonicalize(key), value);
+    const next = map.put(held, canonicalize(key), value);
     return { ...state, titles, properties: map.put(state.properties, at, next) };
   }
-  if (!held?.has(canonicalize(key))) {
+  if (!map.has(held, canonicalize(key))) {
     return titles === state.titles ? state : { ...state, titles };
   }
-  const next = new Map(held);
-  next.delete(canonicalize(key));
+  const next = map.remove(held, canonicalize(key));
   const properties = next.size === 0 ? map.remove(state.properties, at) : map.put(state.properties, at, next);
   return { ...state, titles, properties };
 }
@@ -117,8 +118,8 @@ export type Property = { key: string; value: string };
  * with none.
  */
 export function getProperties(state: PropertyState, page: string): Property[] {
-  const held = map.get(state.properties, canonicalize(page)) ?? new Map<string, string>();
-  return [...held]
+  const held = map.get(state.properties, canonicalize(page)) ?? map.empty<string>();
+  return [...map.entries(held)]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, value]) => ({ key: titleOf(state, key), value }));
 }
@@ -127,6 +128,6 @@ export function getProperties(state: PropertyState, page: string): Property[] {
 export function* named(state: PropertyState): Generator<string> {
   for (const [page, held] of map.entries(state.properties)) {
     yield page;
-    yield* held.keys();
+    yield* map.keys(held);
   }
 }
