@@ -39,11 +39,11 @@ export const CUT_BLOCKS = 200;
  * Each view loads one list a chunk at a time, through `through`, and says
  * which `through` it read and the one that reads a chunk more (`list`):
  *
- * - **The journal's days** (#282): every day on or after `through`, a date,
- *   so a day arriving above it (today rolling over, another device's day)
- *   is added at the top and none falls off the bottom. With none, the newest
- *   `DAYS` days with something on them. Only the days in it are read for
- *   what links to them.
+ * - **The journal's days** (#282): every day from `through`, a date, up to
+ *   and including today, so a day arriving above it (today rolling over,
+ *   another device's day) is added at the top and none falls off the bottom.
+ *   With none, the newest `DAYS` days with something on them. Only the days
+ *   in it are read for what links to them.
  * - **A page's linked references** (#285): every page that links to it, in
  *   the order they are listed, up to and including the one titled
  *   `through`. With none, no page at all, so the page's own blocks draw
@@ -51,12 +51,14 @@ export const CUT_BLOCKS = 200;
  *   end. Each chunk is `CUTS` pages, or fewer once it reaches `CUT_BLOCKS`
  *   blocks. `links` counts every block that links here, loaded or not.
  *
- * Today is in the journal whether or not it has been written on: it is the
- * day the user is about to type in, so the window always reaches it. Handed
- * in, because which day that is belongs to the clock and not to the log.
- * Sorted again only when it is added, and only because a day dated later
- * than today can exist — another machine with a fast clock, or a folder that
- * travelled backwards across a date line.
+ * Today is in the journal whether or not it has been written on, and on top:
+ * it is the day the user is about to type in, so the window always reaches
+ * it. Handed in, because which day that is belongs to the clock and not to
+ * the log. A day dated later than today is left out of the journal (#386):
+ * it is somewhere to put something down for later, and above today it would
+ * push the day being written in down the screen. It is still a page, and
+ * opens as one; it joins the journal once its date is today here, which
+ * also covers a day another machine with a fast clock wrote as its today.
  *
  * An empty today is asked what links to it too: other days can name it. Not
  * under a zoom, where what links to the page is not about the block showing,
@@ -104,18 +106,21 @@ export function getView(
 }
 
 /**
- * Which of `days` (newest first) the journal shows: those on or after
- * `from`, or the newest `DAYS` without one, always reaching `today`, and
- * today among them. `next` is the `from` that shows `DAYS` more, or null
- * when nothing is older.
+ * Which of `days` (newest first) the journal shows: those from `from`, or
+ * the newest `DAYS` without one, through `today` and none after it, always
+ * reaching today, and today on top whether or not it has been written on.
+ * `next` is the `from` that shows `DAYS` more, or null when nothing is older.
  */
 function days(all: readonly string[], today: string, from: string | undefined) {
-  const start = from ?? all[Math.min(DAYS, all.length) - 1] ?? today;
+  // Counted from today down, so days after it do not take the newest DAYS' room.
+  const upTo = all.filter((day) => day <= today);
+  const start = from ?? upTo[Math.min(DAYS, upTo.length) - 1] ?? today;
   const edge = start < today ? start : today;
-  const shown = all.filter((day) => day >= edge);
-  const older = all.filter((day) => day < edge);
+  const shown = upTo.filter((day) => day >= edge);
+  const older = upTo.filter((day) => day < edge);
   return {
-    days: shown.includes(today) ? shown : [today, ...shown].sort((a, b) => b.localeCompare(a)),
+    // Nothing shown is after today, so an unwritten today goes on top as it is.
+    days: shown[0] === today ? shown : [today, ...shown],
     through: edge,
     next: older[Math.min(DAYS, older.length) - 1] ?? null,
   };

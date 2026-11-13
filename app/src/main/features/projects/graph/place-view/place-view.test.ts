@@ -41,12 +41,14 @@ test("the view is the journal with today on top, or the one page asked for", () 
   assert.deepEqual(zoomed.showing[0].references, []);
 });
 
-test("a day dated after today keeps its place above it", () => {
-  const view = folded(blockCreated(TOMORROW, "from a fast clock", undefined, "b1"));
+test("a day dated after today is left out of the journal, and still opens as a page (#386)", () => {
+  const view = folded(blockCreated(TOMORROW, "an agenda", undefined, "b1"));
   assert.deepEqual(
     getView(view, undefined, TODAY).showing.map((shown) => shown.page.title),
-    [TOMORROW, TODAY],
+    [TODAY],
   );
+  const page = getView(view, { page: TOMORROW }, TODAY);
+  assert.deepEqual(page.showing[0].page.blocks.map((block) => block.text), ["an agenda"]);
 });
 
 test("every page in the view carries its properties, whether or not it has blocks", () => {
@@ -176,9 +178,27 @@ test("a day arriving above the window is added, and none falls off the bottom (#
   const events = daysBack(DAYS);
   const first = getView(folded(...events), undefined, TODAY);
   const from = first.list?.through;
-  const later = getView(folded(...events, blockCreated(TOMORROW, "a fast clock", undefined, "t")), undefined, TODAY, from);
+  // Today written on, then the date rolls over: the new today comes in on top.
+  const later = getView(folded(...events, blockCreated(TODAY, "today", undefined, "t")), undefined, TOMORROW, from);
   assert.deepEqual(titles(later), [TOMORROW, ...titles(first)]);
   assert.equal(later.list?.through, from);
+});
+
+test("days after today show nowhere in the journal, take no room in it, and leave where older days start alone (#386)", () => {
+  const after = (n: number) => before(-n);
+  const past = daysBack(DAYS + 5);
+  const future = Array.from({ length: DAYS }, (_, i) => blockCreated(after(i + 1), `later ${i + 1}`, undefined, `f${i + 1}`));
+  const written = [...past, blockCreated(TODAY, "today", undefined, "t")];
+  const without = getView(folded(...written), undefined, TODAY);
+  const journal = getView(folded(...written, ...future), undefined, TODAY);
+  assert.deepEqual(titles(journal), titles(without));
+  assert.equal(titles(journal)[0], TODAY);
+  assert.deepEqual(journal.list, without.list);
+
+  // Asked from a day, too.
+  const from = getView(folded(...past, ...future), undefined, TODAY, before(3));
+  assert.deepEqual(titles(from), [TODAY, before(1), before(2), before(3)]);
+  assert.deepEqual(from.list, { through: before(3), next: before(DAYS + 3) });
 });
 
 test("the window always reaches today, and with nothing older says so (#282)", () => {
