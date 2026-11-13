@@ -7,6 +7,8 @@
  * Each takes only the call it makes: `run`, with the command for its write.
  */
 import {
+  aliasAdded,
+  aliasRemoved,
   batch,
   blockCreated,
   blockDeleted,
@@ -23,6 +25,7 @@ import {
   tagRemoved,
 } from '@pbnotes/graph';
 import type {
+  AliasEvent,
   BatchEvent,
   Block,
   IconEvent,
@@ -34,7 +37,7 @@ import type { Command } from '../../../../shared/graph';
 
 /** An event to draw, and the call that asks main to record it. */
 export type Step = [
-  PageEvent | PropertyEvent | TagEvent | IconEvent | BatchEvent,
+  PageEvent | PropertyEvent | TagEvent | AliasEvent | IconEvent | BatchEvent,
   () => Promise<unknown>,
 ];
 
@@ -146,6 +149,16 @@ export function addTag(graph: StepsGraph, title: string, tag: string): Step {
 /** `title` no longer points to `tag`. */
 export function removeTag(graph: StepsGraph, title: string, tag: string): Step {
   return [tagRemoved(title, tag), () => graph.run({ type: 'removeTag', title, tag })];
+}
+
+/** `title` now answers to `alias` (#383). */
+export function addAlias(graph: StepsGraph, title: string, alias: string): Step {
+  return [aliasAdded(title, alias), () => graph.run({ type: 'addAlias', title, alias })];
+}
+
+/** `title` no longer answers to `alias`. */
+export function removeAlias(graph: StepsGraph, title: string, alias: string): Step {
+  return [aliasRemoved(title, alias), () => graph.run({ type: 'removeAlias', title, alias })];
 }
 
 /** `title`'s icon is now `icon` (#323). */

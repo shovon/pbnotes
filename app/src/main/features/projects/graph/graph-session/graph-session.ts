@@ -9,6 +9,7 @@
  */
 import {
   addBlock,
+  addAlias,
   addTag,
   batch,
   deleteBlock,
@@ -23,12 +24,14 @@ import {
   listPages,
   locateBlock,
   getRenamed,
+  getAliasing,
   getIcon,
   moveBlock,
   moveBlocks,
   outdentBlock,
   removeIcon,
   removeProperty,
+  removeAlias,
   removeTag,
   renameProperty,
   searchBlocks,
@@ -36,7 +39,7 @@ import {
   setIcon,
   setProperty,
 } from "@pbnotes/graph";
-import type { Batched, GraphView as Base, PageMatch } from "@pbnotes/graph";
+import type { Batched, GraphView as Base, Inert, PageMatch } from "@pbnotes/graph";
 import type {
   Command,
   Filter,
@@ -214,6 +217,8 @@ export function createGraphSession(
     },
     search: async (query: string): Promise<PageMatch[]> =>
       searchNames((await open.require()).state, query),
+    aliasing: async (page: string, alias: string): Promise<Inert | undefined> =>
+      getAliasing((await open.require()).state, page, alias),
     find: async (query: string): Promise<Matches> => {
       const { state } = await open.require();
       return { pages: searchNames(state, query), blocks: searchBlocks(state, query) };
@@ -301,6 +306,10 @@ function apply(view: GraphView, command: Exclude<Command, Taking>): Promise<unkn
       return addTag(view, command.title, command.tag);
     case "removeTag":
       return removeTag(view, command.title, command.tag);
+    case "addAlias":
+      return addAlias(view, command.title, command.alias);
+    case "removeAlias":
+      return removeAlias(view, command.title, command.alias);
     case "setIcon":
       return setIcon(view, command.title, command.icon);
     case "removeIcon":

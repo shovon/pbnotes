@@ -11,6 +11,7 @@ import LinkedReferences from './LinkedReferences';
 const graph: PageViewGraph = {
   run: async () => undefined,
   search: async () => [],
+  aliasing: async () => undefined,
   blockMenu: async () => null,
   carryImages: async (images) => images.map((): string | undefined => undefined),
 };

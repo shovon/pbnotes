@@ -46,7 +46,7 @@ test('a held view gives its page and icon, and nothing for the journal or no ico
   const view = (icon?: string): PlaceView => ({
     version: 1,
     showing: [
-      { page: { title: 'Mira', blocks: [] }, references: [], links: 0, properties: [], tags: [], taggedBy: [], deletions: 0, refsTo: 0, ...(icon === undefined ? {} : { icon }) },
+      { page: { title: 'Mira', blocks: [] }, references: [], links: 0, properties: [], tags: [], aliases: [], taggedBy: [], deletions: 0, refsTo: 0, ...(icon === undefined ? {} : { icon }) },
     ],
     previews: [],
   });

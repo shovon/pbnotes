@@ -134,6 +134,10 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
     session.search(requireString(query, "query")),
   );
 
+  ipcMain.handle(GRAPH_CHANNELS.aliasing, (_event, page: unknown, alias: unknown) =>
+    session.aliasing(requireString(page, "page"), requireString(alias, "alias")),
+  );
+
   ipcMain.handle(GRAPH_CHANNELS.find, (_event, query: unknown) =>
     session.find(requireString(query, "query")),
   );

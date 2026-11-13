@@ -55,6 +55,8 @@ import type { IconState } from "./icons/icons.ts";
 import { ICON_HANDLES, ICON_UNDO, reads as readsIcons, reduce as reduceIcons } from "./icons/slice.ts";
 import type { IconEvent } from "./icons/slice.ts";
 import { resolver } from "./resolve/resolve.ts";
+import { aliasing, getHeldAliases as heldAliases } from "./resolve/effect/effect.ts";
+import type { HeldAlias, Inert } from "./resolve/effect/effect.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
 import {
   PAGE_HANDLES,
@@ -120,6 +122,9 @@ export type { TagEvent } from "./tags/slice.ts";
 export { aliasAdded } from "./aliases/added/added.ts";
 export { aliasRemoved } from "./aliases/removed/removed.ts";
 export type { AliasAdded, AliasRemoved } from "./aliases/aliases.ts";
+export { predictAliases } from "./aliases/slice.ts";
+export { addAlias, removeAlias } from "./aliases/commands.ts";
+export type { HeldAlias, Inert } from "./resolve/effect/effect.ts";
 export type { AliasEvent } from "./aliases/slice.ts";
 export { iconSet } from "./icons/set/set.ts";
 export { iconRemoved } from "./icons/removed/removed.ts";
@@ -422,6 +427,23 @@ export function getAliases(state: Names, page: string): string[] {
     .aliases(names.key(page))
     .sort()
     .map((alias) => titleOf(state, alias));
+}
+
+/**
+ * Every alias the page `page` opens holds (#383), in effect or not, each as
+ * it shows and ordered by `canonicalize`, with why it is inert when it is.
+ */
+export function getHeldAliases(state: Names, page: string): HeldAlias[] {
+  return heldAliases(state, page);
+}
+
+/**
+ * Why `alias` would not open the page `page` opens, were it added to that
+ * page (#383), or undefined when it would: what the alias input says while
+ * a name is typed.
+ */
+export function getAliasing(state: Names, page: string, alias: string): Inert | undefined {
+  return aliasing(state, page, alias);
 }
 
 /** The page `alias` opens as an alias in effect, as it shows, or undefined. */

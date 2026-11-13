@@ -18,6 +18,7 @@ const answer = (blocks: Block[]): PlaceView => ({
       links: 0,
       properties: [{ key: 'status', value: 'ongoing' }],
       tags: ['books'],
+      aliases: [],
       taggedBy: [],
       deletions: 0,
       refsTo: 0,
@@ -33,6 +34,7 @@ const answer = (blocks: Block[]): PlaceView => ({
 const graphOf = (blocks: Block[]): CardGraph => ({
   run: async () => undefined,
   search: async () => [],
+  aliasing: async () => undefined,
   blockMenu: async () => null,
   carryImages: async (images) => images.map((): string | undefined => undefined),
   view: async () => answer(blocks),

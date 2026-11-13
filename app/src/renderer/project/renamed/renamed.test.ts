@@ -9,7 +9,7 @@ const at = (place: Place | undefined, title: string): Held => ({
   place,
   view: {
     version: 1,
-    showing: [{ page: { title, blocks: [] }, references: [], links: 0, properties: [], tags: [], taggedBy: [], deletions: 0, refsTo: 0 }],
+    showing: [{ page: { title, blocks: [] }, references: [], links: 0, properties: [], tags: [], aliases: [], taggedBy: [], deletions: 0, refsTo: 0 }],
     previews: [],
   },
 });

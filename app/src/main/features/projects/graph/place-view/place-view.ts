@@ -15,6 +15,7 @@ import {
   getReferences,
   getRefsTo,
   getTaggedBy,
+  getHeldAliases,
   getTags,
   shownOrder,
 } from "@pbnotes/graph";
@@ -63,7 +64,7 @@ export const CUT_BLOCKS = 200;
  * An empty today is asked what links to it too: other days can name it. Not
  * under a zoom, where what links to the page is not about the block showing,
  * and so there is no list. Every page carries its properties, under a zoom
- * too: whether to draw them is the window's. Its tags and what tags it are
+ * too: whether to draw them is the window's. Its tags, its aliases and what tags it are
  * left out under a zoom, as what links to it is: the zoom shows a block, not
  * the page. Its icon comes in every mode, as properties do, and is absent
  * for a page with none.
@@ -90,6 +91,7 @@ export function getView(
       links: all.reduce((n, cut) => n + cut.blocks.length, 0),
       properties: getProperties(state, page.title),
       tags: at?.block ? [] : getTags(state, page.title),
+      aliases: at?.block ? [] : getHeldAliases(state, page.title),
       taggedBy: at?.block ? [] : getTaggedBy(state, page.title),
       deletions: getDeletions(state, page.title),
       refsTo: at && !at.block ? getRefsTo(state, page.title) : 0,

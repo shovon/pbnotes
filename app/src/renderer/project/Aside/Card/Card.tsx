@@ -112,6 +112,8 @@ export default function Card({ graph, title, now, scope, onClose, onShown, act }
               links={0}
               properties={shown.properties}
               tags={shown.tags}
+              aliases={shown.aliases}
+              asked={title}
               icon={shown.icon ?? null}
               scope={scope}
               act={act}

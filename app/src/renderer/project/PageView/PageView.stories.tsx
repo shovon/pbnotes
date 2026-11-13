@@ -13,6 +13,7 @@ import type { PageViewGraph } from './PageView';
 const graph: PageViewGraph = {
   run: async () => undefined,
   search: async () => [],
+  aliasing: async () => undefined,
   blockMenu: async () => null,
   carryImages: async (images) => images.map((): string | undefined => undefined),
 };
@@ -116,6 +117,30 @@ export const WithTags: Story = {
     tags: ['People', 'Shed'],
     properties: [{ key: 'Role', value: 'editor' }],
   },
+};
+
+/** A page with no aliases (#383): "Add alias" sits above the title with the
+    other add buttons, hidden until the header is hovered or holds focus. */
+export const NoAliases: Story = {
+  args: { page: page('JavaScript', []), aliases: [], properties: [], tags: [] },
+};
+
+/** A page with aliases: they take their own line between the title and the
+    tags, plain chips, not links. ECMA is dimmed, since a page of its own
+    keeps it from opening this one. */
+export const WithAliases: Story = {
+  args: {
+    page: page('JavaScript', [block('20', 'Runs in every browser.')]),
+    aliases: [{ alias: 'ECMA', inert: { why: 'own' } }, { alias: 'ECMAScript' }, { alias: 'JS' }],
+    tags: ['Languages', 'Web'],
+    properties: [],
+  },
+};
+
+/** Opened by an alias: the tab asked for `JS` and shows JavaScript, so the
+    `JS` chip is lit, the way Wikipedia says "Redirected from". */
+export const OpenedByAlias: Story = {
+  args: { ...WithAliases.args, asked: 'js' },
 };
 
 /** A page with tags and no properties: the tags take the line under the

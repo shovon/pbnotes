@@ -1,6 +1,6 @@
 import { Fragment, useContext, useEffect, useRef, useState } from 'react';
-import { locate, predict, predictIcon, predictProperties, predictTags } from '@pbnotes/graph';
-import type { Block as BlockType, Page, Property } from '@pbnotes/graph';
+import { canonicalize, locate, predict, predictAliases, predictIcon, predictProperties, predictTags } from '@pbnotes/graph';
+import type { Block as BlockType, HeldAlias, Page, Property } from '@pbnotes/graph';
 import type { GraphApi } from '../../../shared/graph';
 import type { Act } from '../../ui';
 import { Block, BlockEditor, blockBox, blockFocus } from '../Block/Block';
@@ -9,10 +9,13 @@ import TaggedBy from './TaggedBy/TaggedBy';
 import Properties from './Properties/Properties';
 import type { Write } from './Properties/rows';
 import Tags from './Tags/Tags';
+import Aliases from './Aliases/Aliases';
+import { drawn as drawnAliases } from './Aliases/adding/adding';
 import Title from './Title/Title';
 import HeaderIcon from './HeaderIcon/HeaderIcon';
 import {
   add,
+  addAlias,
   addTag,
   edit,
   indent,
@@ -20,6 +23,7 @@ import {
   remove,
   removeIcon,
   removeProperty,
+  removeAlias,
   removeTag,
   renameProperty,
   setIcon,
@@ -57,7 +61,7 @@ type Writing = Box | null;
  * steps it writes through call. A cut under the page is another `PageView`,
  * so `LinkedReferences` needs no more than this.
  */
-export type PageViewGraph = StepsGraph & Pick<GraphApi, 'search' | 'blockMenu' | 'carryImages'>;
+export type PageViewGraph = StepsGraph & Pick<GraphApi, 'search' | 'aliasing' | 'blockMenu' | 'carryImages'>;
 
 type Props = {
   graph: PageViewGraph;
@@ -85,6 +89,16 @@ type Props = {
   properties?: Property[];
   /** The pages it points to, as main last showed them. Left off where none are drawn. */
   tags?: string[];
+  /**
+   * Every alias it holds (#383), as main last showed them, each with why it
+   * is inert when it is. Left off where none are drawn.
+   */
+  aliases?: HeldAlias[];
+  /**
+   * The name the page was asked for, as the link spelt it: when it is not
+   * the page's title, the alias it was opened by is lit.
+   */
+  asked?: string;
   /** The pages that point to it. Left off, as `references` is, where none are drawn. */
   taggedBy?: string[];
   /**
@@ -157,6 +171,8 @@ export default function PageView({
   links = references?.reduce((n, cut) => n + cut.blocks.length, 0) ?? 0,
   properties: sentProperties,
   tags: sentTags,
+  aliases: sentAliases,
+  asked,
   taggedBy,
   icon: sentIcon,
   reference = false,
@@ -228,6 +244,13 @@ export default function PageView({
     sentProperties && predictProperties(sentProperties, sent.title, inFlight);
   /** Its tags as they are drawn, the same way. */
   const tags = sentTags && predictTags(sentTags, sent.title, inFlight);
+  /** Its aliases as they are drawn, the same way, with what main said of each. */
+  const aliases =
+    sentAliases &&
+    drawnAliases(
+      predictAliases(sentAliases.map((it) => it.alias), sent.title, inFlight),
+      sentAliases,
+    );
   /** Its icon as it is drawn, the same way. */
   const icon = sentIcon === undefined ? undefined : predictIcon(sentIcon ?? undefined, sent.title, inFlight);
 
@@ -590,6 +613,12 @@ export default function PageView({
   const tagPage = (tag: string) => act(() => write(addTag(graph, title, tag)));
   const untagPage = (tag: string) => act(() => write(removeTag(graph, title, tag)));
 
+  /** An alias typed in the alias row, and the × on a chip (#383). */
+  const aliasPage = (alias: string) => act(() => write(addAlias(graph, title, alias)));
+  const unaliasPage = (alias: string) => act(() => write(removeAlias(graph, title, alias)));
+  /** What a name would do as an alias of this page: the hint under the input. */
+  const explainAlias = (alias: string) => graph.aliasing(title, alias);
+
   /** An emoji picked for the page's icon, and *Remove* (#323). */
   const iconPage = (emoji: string) => act(() => write(setIcon(graph, title, emoji)));
   const unIconPage = () => act(() => write(removeIcon(graph, title)));
@@ -764,7 +793,7 @@ export default function PageView({
           tag's.
           Hidden is opacity, not removal: they keep their room, and nothing
           moves as the pointer crosses the title. */}
-      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity [&_[data-line]:hover:not(:has(>section:not([data-bare]):hover)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare],[data-icon])>[data-reveal]]:opacity-100 [&_[data-line]:focus-within:not(:has(>section:not([data-bare]):focus-within)):not(:has(>[data-typing]))>:is([aria-label=Tags],section[data-bare],[data-icon])>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:hover>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:focus-within>[data-reveal]]:opacity-100">
+      <div className="[&_[data-reveal]]:opacity-0 [&_[data-reveal]]:transition-opacity [&_[data-line]:hover:not(:has(>section:not([data-bare]):hover)):not(:has(>[data-typing]))>:is([aria-label=Tags],[aria-label=Aliases],section[data-bare],[data-icon])>[data-reveal]]:opacity-100 [&_[data-line]:focus-within:not(:has(>section:not([data-bare]):focus-within)):not(:has(>[data-typing]))>:is([aria-label=Tags],[aria-label=Aliases],section[data-bare],[data-icon])>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:hover>[data-reveal]]:opacity-100 [&_[data-line]:not(:has(>[data-typing]))>section:focus-within>[data-reveal]]:opacity-100">
         <div
           data-line
           className="flex flex-wrap items-baseline gap-x-3 [&>*]:min-w-0 [&>:not([data-bare])]:basis-full [&>[data-bare]]:-order-1 [&>[data-bare]]:mt-4 [&>[data-bare]]:mb-0 [&:has(>[data-bare])>:first-child]:mt-1"
@@ -818,6 +847,23 @@ export default function PageView({
                 title
               )}
             </h2>
+          )}
+
+          {/* Its other names, between the title and the tags once it has
+              one, or "Add alias" first in the line above it. A journal day
+              shows them only when it has some, and neither a zoom nor a cut
+              shows them. */}
+          {aliases && !reference && !root && (!linked || aliases.length > 0) && (
+            <Aliases
+              aliases={aliases}
+              title={title}
+              opened={
+                asked !== undefined && canonicalize(asked) !== canonicalize(title) ? asked : undefined
+              }
+              explain={explainAlias}
+              onAdd={aliasPage}
+              onRemove={unaliasPage}
+            />
           )}
 
           {/* The page's icon, large above the title, or "Add icon" first
