@@ -438,10 +438,11 @@ export type Command =
    * `id` is a fresh UUID of the caller's own: the view draws the block before
    * main has written it, so the id on screen has to be the id on disk. Main
    * refuses one that is not a UUID or that the project already has. `after`
-   * puts the new block directly beneath that one; without it the block goes
-   * at the end of the page.
+   * puts the new block directly beneath that one; `parent` alone makes it
+   * that block's first child (#385); without either the block goes at the
+   * end of the page.
    */
-  | { type: 'addBlock'; id: string; title: string; text: string; after?: string }
+  | { type: 'addBlock'; id: string; title: string; text: string; after?: string; parent?: string }
   /**
    * Appends a `block.edited` event. The earlier text is not replaced on disk:
    * the log keeps both facts, and the fold shows the later one.

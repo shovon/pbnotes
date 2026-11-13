@@ -16,6 +16,31 @@ import { placeNew } from '../../placement/placement.ts';
 export type Caret = { editing: string; at: number };
 
 /**
+ * Where the box for a block that does not exist yet waits. `after` is the
+ * block it goes beneath, as its next sibling; `under` is the block it goes
+ * under, as its first child (#385). Neither is the end of what is in view.
+ * Never both.
+ */
+export type Box = { after?: string; under?: string };
+
+/**
+ * Enter at the end of a block that exists: where the next box opens.
+ *
+ * Under a block whose children are drawn, as its first child, directly under
+ * the caret: beside it, the box would land below the whole subtree, away from
+ * where the user was typing. So does the zoomed root, children or not, since
+ * beside it would be a sibling nobody can see — first, not last, so it means
+ * what Enter means anywhere else. Otherwise beside the block, as the next
+ * sibling. Children are always drawn today; a collapsed block, once there is
+ * one, is to stay a sibling, read off the same fold state that draws it.
+ */
+export function afterContinue(block: Block, root?: Block): Box {
+  return block.children.length > 0 || block.id === root?.id
+    ? { under: block.id }
+    : { after: block.id };
+}
+
+/**
  * Backspace in the empty box of a block that exists.
  *
  * Null: the block has children, and nothing happens — not a delete, not a
@@ -81,8 +106,8 @@ export function afterRemove(
   {
     root,
     editing,
-    writingAfter,
-  }: { root?: Block; editing?: string | null; writingAfter?: string },
+    writing,
+  }: { root?: Block; editing?: string | null; writing?: Box | null },
 ):
   | { closeEditing: boolean; closeNew: boolean; unzoom?: { to?: string } }
   | undefined {
@@ -92,7 +117,7 @@ export function afterRemove(
   const gone = (it: string | null | undefined) => it != null && going.has(it);
   return {
     closeEditing: gone(editing),
-    closeNew: gone(writingAfter),
+    closeNew: gone(writing?.after) || gone(writing?.under),
     unzoom: gone(root?.id) ? { to: found.parent?.id } : undefined,
   };
 }
@@ -105,19 +130,25 @@ function ids(block: Block): string[] {
 /**
  * Backspace in the empty box for a block that does not exist yet: the box
  * closes on the block directly above it on screen, caret at its end — the
- * deepest last child of what the box sits under, of the zoomed root, or of
- * the page's last block. Null when there is no such block and the box stays
- * open: a page with nothing on it, or an `after` the page has no record of.
+ * block a first child's box sits under, or else the deepest last child of
+ * what the box sits beside, of the zoomed root, or of the page's last block.
+ * Null when there is no such block and the box stays open: a page with
+ * nothing on it, or a block the page has no record of.
  */
 export function afterCancel(
   blocks: Block[],
-  after: string | undefined,
+  { after, under }: Box,
   root?: Block,
 ): Caret | null {
+  if (under) {
+    const found = locate(blocks, under);
+    const parent = found?.siblings[found.at];
+    return parent ? { editing: parent.id, at: parent.text.length } : null;
+  }
   const found = after ? locate(blocks, after) : undefined;
-  const under = after ? found?.siblings[found.at] : (root ?? blocks.at(-1));
-  if (!under) return null;
-  const above = lastLeaf(under);
+  const beside = after ? found?.siblings[found.at] : (root ?? blocks.at(-1));
+  if (!beside) return null;
+  const above = lastLeaf(beside);
   return { editing: above.id, at: above.text.length };
 }
 
@@ -131,24 +162,30 @@ export type Then = 'stop' | 'again' | 'indent' | 'outdent';
  * - `pop`: Enter (or Shift+Tab) on an empty box among a block's children. The
  *   box moves out a level, beside that parent, and nothing is written. Not
  *   past a zoomed root, whose children are the top level of the view.
- * - `write`: a block, placed by `placeNew`, then filed under a bare root when
- *   `indent` says so, then moved a level by `move` for Tab and Shift+Tab — none
- *   for Shift+Tab out of the top level of a zoom, which is out of the view.
+ * - `write`: a block, as the first child of `parent` for a box `under` it, or
+ *   else placed by `placeNew`, then filed under a bare root when `indent`
+ *   says so; then moved a level by `move` for Tab and Shift+Tab — none for
+ *   Shift+Tab out of the top level of a zoom, which is out of the view.
  */
 export function newBlock(
   blocks: Block[],
   {
     root,
     after: boxAfter,
+    under,
     text,
     then,
-  }: { root?: Block; after?: string; text: string; then: Then },
+  }: { root?: Block; text: string; then: Then } & Box,
 ):
   | { kind: 'nothing' }
   | { kind: 'pop'; after: string }
-  | { kind: 'write'; after?: string; indent: boolean; move?: 1 | -1 } {
-  const { after, indent } = placeNew(root, boxAfter);
-  const parent = after ? locate(blocks, after)?.parent : undefined;
+  | { kind: 'write'; after?: string; parent?: string; indent: boolean; move?: 1 | -1 } {
+  const { after, indent } = under ? { after: undefined, indent: false } : placeNew(root, boxAfter);
+  const parent = under
+    ? locate(blocks, under)?.siblings.find((it) => it.id === under)
+    : after
+      ? locate(blocks, after)?.parent
+      : undefined;
   const top = root !== undefined && (indent || parent?.id === root.id);
   if (!text && (then === 'again' || then === 'outdent') && parent && !top) {
     return { kind: 'pop', after: parent.id };
@@ -156,7 +193,7 @@ export function newBlock(
   if (!text && then === 'stop') return { kind: 'nothing' };
   const move =
     then === 'indent' ? 1 : then === 'outdent' && !top ? -1 : undefined;
-  return { kind: 'write', after, indent, move };
+  return { kind: 'write', after, ...(under ? { parent: under } : {}), indent, move };
 }
 
 /**

@@ -66,6 +66,7 @@ test('each step draws the event main writes, and sends the write that records it
   const cases: [Step | undefined, unknown, Command][] = [
     [add(graph, 'n', 'Mira', 'hi', 'a'), blockCreated('Mira', 'hi', 'a', 'n'), { type: 'addBlock', id: 'n', title: 'Mira', text: 'hi', after: 'a' }],
     [add(graph, 'n', 'Mira', 'hi'), blockCreated('Mira', 'hi', undefined, 'n'), { type: 'addBlock', id: 'n', title: 'Mira', text: 'hi' }],
+    [add(graph, 'n', 'Mira', 'hi', undefined, 'a'), blockCreated('Mira', 'hi', undefined, 'n', 'a'), { type: 'addBlock', id: 'n', title: 'Mira', text: 'hi', parent: 'a' }],
     [edit(graph, 'a', 'A!'), blockEdited('a', 'A!'), { type: 'editBlock', blockId: 'a', text: 'A!' }],
     [remove(graph, 'a'), blockDeleted('a'), { type: 'deleteBlock', blockId: 'a' }],
     [indent(graph, blocks, 'b'), blockIndented({ id: 'b', parent: 'a' }), { type: 'indentBlock', blockId: 'b' }],
