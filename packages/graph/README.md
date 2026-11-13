@@ -30,6 +30,8 @@ A view that draws its writes before they are recorded folds them with `predict` 
 
 The queries (`getPage`, `getPages`, `getDays`, `getReferences`, `getPreviews`, `getProperties`, `getTags`, `getTaggedBy`, `getIcon`, `getAliases`, `getAliasOf`, `getRenamed`, `resolve`, `getDeletions`, `getRefsTo`, `hasContent`, `searchPages`, `searchNames`, `listPages` and `locateBlock`) take the folded graph alone, since they never write. The ones that take a page's title resolve it first (see "What a name opens"), so `getPage(graph, "JS")` is the page `JS` opens.
 
+What a page holds is its blocks, properties, tags, aliases and icon; nothing else is stored for it. `hasContent` is not one of them: it is a read over those five, true when any of them is there, and the rules below that say "`hasContent` counts it" mean only that the thing is one of the five.
+
 ## What it does not depend on
 
 - **The log.** The fold takes `{ type, v, payload }` and the commands write through `dispatch`. This package does not import `@pbnotes/ledger`, so events can come from anywhere.
