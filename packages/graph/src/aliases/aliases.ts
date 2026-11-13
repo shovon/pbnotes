@@ -19,6 +19,8 @@
 
 import * as map from "../immutable/immutable.ts";
 import type { ImmutableMap } from "../immutable/immutable.ts";
+import * as set from "../immutable/set.ts";
+import type { ImmutableSet } from "../immutable/set.ts";
 import { canonicalize } from "../canonicalize/canonicalize.ts";
 import { field } from "../events/events.ts";
 import { over } from "../over/over.ts";
@@ -30,11 +32,13 @@ import type { Titles } from "../titles/titles.ts";
  * `canonicalize`d names it answers to. A page with no aliases has no entry,
  * never an empty one. The spelling of every page and alias is in `titles`.
  *
- * `Map` and `Set`, so `__proto__` is an ordinary page or alias (#62), and the
- * state survives the structured clone to the renderer (#146).
+ * An immutable map of immutable sets (#276, #371), so `__proto__` is an
+ * ordinary page or alias (#62), and the state survives the structured clone
+ * to the renderer (#146). A page's aliases are unordered: a reader that shows
+ * or picks them sorts first.
  */
 export type AliasState = {
-  readonly aliases: ImmutableMap<Set<string>>;
+  readonly aliases: ImmutableMap<ImmutableSet>;
   readonly titles: Titles;
 };
 
@@ -72,7 +76,8 @@ export function readAlias(payload: unknown): AliasAdded | undefined {
 
 /** Whether `page` answers to `alias`. */
 export function answersTo(state: AliasState, page: string, alias: string): boolean {
-  return map.get(state.aliases, canonicalize(page))?.has(canonicalize(alias)) ?? false;
+  const held = map.get(state.aliases, canonicalize(page));
+  return held !== undefined && set.has(held, canonicalize(alias));
 }
 
 /**
@@ -88,9 +93,8 @@ export function setAlias<S extends AliasState>(state: S, it: AliasAdded, on: boo
     return titles === state.titles ? state : { ...state, titles };
   }
   const at = canonicalize(page);
-  const next = new Set(map.get(state.aliases, at));
-  if (on) next.add(canonicalize(alias));
-  else next.delete(canonicalize(alias));
+  const held = map.get(state.aliases, at) ?? set.empty();
+  const next = on ? set.add(held, canonicalize(alias)) : set.remove(held, canonicalize(alias));
   const aliases = next.size === 0 ? map.remove(state.aliases, at) : map.put(state.aliases, at, next);
   return { ...state, titles, aliases };
 }
@@ -104,7 +108,7 @@ export function setAlias<S extends AliasState>(state: S, it: AliasAdded, on: boo
 export function claims(state: AliasState): Map<string, string[]> {
   const by = new Map<string, string[]>();
   for (const [page, held] of map.entries(state.aliases)) {
-    for (const alias of held) by.set(alias, [...(by.get(alias) ?? []), page]);
+    for (const alias of set.values(held)) by.set(alias, [...(by.get(alias) ?? []), page]);
   }
   for (const pages of by.values()) pages.sort();
   return by;
@@ -114,6 +118,6 @@ export function claims(state: AliasState): Map<string, string[]> {
 export function* named(state: AliasState): Generator<string> {
   for (const [page, held] of map.entries(state.aliases)) {
     yield page;
-    yield* held;
+    yield* set.values(held);
   }
 }

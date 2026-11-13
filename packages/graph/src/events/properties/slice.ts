@@ -57,7 +57,7 @@ export function predictProperties(
 ): Property[] {
   if (events.length === 0) return [...properties];
   const at = canonicalize(page);
-  const held = new Map(properties.map(({ key, value }) => [canonicalize(key), value]));
+  const held = fromPairs(properties.map(({ key, value }): [string, string] => [canonicalize(key), value]));
   let state: PropertyState = {
     properties: held.size === 0 ? fromPairs([]) : fromPairs([[at, held]]),
     titles: fromPairs([

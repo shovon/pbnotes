@@ -17,6 +17,7 @@ import type { Written } from "../../../over/over.ts";
 import { same } from "../../../undo/undo.ts";
 import * as forest from "../../../forest/forest.ts";
 import * as map from "../../../immutable/immutable.ts";
+import * as set from "../../../immutable/set.ts";
 import { titleOf } from "../../../titles/titles.ts";
 import { aliasRemoved } from "../../aliases/removed/removed.ts";
 import { hasContent } from "../../../deletes/deletes.ts";
@@ -32,9 +33,9 @@ function page(key: string): (now: Holds) => string {
   return (now) =>
     JSON.stringify([
       forest.inGroup(now.forest, key).map((id) => [id, forest.node(now.forest, id)?.parent, map.get(now.texts, id)]),
-      [...(map.get(now.properties, key) ?? [])].sort(),
-      [...(map.get(now.tags, key) ?? [])].sort(),
-      [...(map.get(now.aliases, key) ?? [])].sort(),
+      [...map.entries(map.get(now.properties, key) ?? map.empty<string>())].sort(),
+      [...set.values(map.get(now.tags, key) ?? set.empty())].sort(),
+      [...set.values(map.get(now.aliases, key) ?? set.empty())].sort(),
       map.get(now.icons, key) ?? null,
     ]);
 }

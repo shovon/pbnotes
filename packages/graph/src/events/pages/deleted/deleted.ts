@@ -16,6 +16,7 @@ import type { Named } from "../../events.ts";
 import type { Written } from "../../../over/over.ts";
 import * as forest from "../../../forest/forest.ts";
 import * as map from "../../../immutable/immutable.ts";
+import * as set from "../../../immutable/set.ts";
 import { pageBlocks, stillGone } from "../../../blocks/blocks.ts";
 import { recreate } from "../../blocks/created/created.ts";
 import { propertySet } from "../../properties/set/set.ts";
@@ -25,6 +26,8 @@ import { iconSet } from "../../icons/set/set.ts";
 import { titleOf } from "../../../titles/titles.ts";
 import { DELETE } from "../../../deletes/deletes.ts";
 import type { PageDeleted } from "../../../deletes/deletes.ts";
+
+const byKey = ([a]: [string, unknown], [b]: [string, unknown]) => (a < b ? -1 : 1);
 
 export const PAGE_DELETED = DELETE.define({
   type: namespaced("page.deleted"),
@@ -48,8 +51,9 @@ export const PAGE_DELETED = DELETE.define({
     return { ...state, forest: blocks, texts, properties, tags, aliases, icons, deletions };
   },
   undo: {
-    // Every block back in place, then every property, tag and alias, and the
-    // icon, each spelled as the graph before the delete had it.
+    // Every block back in place, then every property, tag and alias, each
+    // kind by key so the log reads the same on every machine, and the icon,
+    // each spelled as the graph before the delete had it.
     inverse: (state, { page }) => {
       const key = canonicalize(page);
       const title = titleOf(state, page);
@@ -59,11 +63,11 @@ export const PAGE_DELETED = DELETE.define({
         ...blocks.flatMap((block, at) =>
           recreate(title, block, at === 0 ? { first: true } : { after: blocks[at - 1].id }),
         ),
-        ...[...(map.get(state.properties, key) ?? [])].map(([name, value]) =>
+        ...[...map.entries(map.get(state.properties, key) ?? map.empty<string>())].sort(byKey).map(([name, value]) =>
           propertySet(title, titleOf(state, name), value),
         ),
-        ...[...(map.get(state.tags, key) ?? [])].map((tag) => tagAdded(title, titleOf(state, tag))),
-        ...[...(map.get(state.aliases, key) ?? [])].map((alias) =>
+        ...[...set.values(map.get(state.tags, key) ?? set.empty())].sort().map((tag) => tagAdded(title, titleOf(state, tag))),
+        ...[...set.values(map.get(state.aliases, key) ?? set.empty())].sort().map((alias) =>
           aliasAdded(title, titleOf(state, alias)),
         ),
         ...(icon === undefined ? [] : [iconSet(title, icon)]),
