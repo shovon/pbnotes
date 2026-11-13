@@ -1,8 +1,8 @@
 /**
  * The block is the primitive, and this is what every block event shares: the
  * fold state, the payloads, where a new block goes, and what undo reads. The
- * events themselves are in `events/blocks/`, one module each, with the list
- * that puts them together as the fold (#238).
+ * events themselves are the folders beside this file, one module each, and
+ * `slice.ts` is the list that puts them together as the fold (#238).
  *
  * The fold keeps blocks flat (#276): a forest of block ids grouped by page,
  * and each block's text beside it. A write costs the rows it touches, never
@@ -20,13 +20,13 @@
  * have to agree are one fold, or they drift.
  */
 
-import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { field } from "../events/events.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
+import { field } from "../event/event.ts";
 import * as forest from "../forest/forest.ts";
 import type { Forest, Spot } from "../forest/forest.ts";
 import * as map from "../immutable/immutable.ts";
 import type { ImmutableMap } from "../immutable/immutable.ts";
-import { over } from "../over/over.ts";
+import { over } from "../event/over.ts";
 import type { Check } from "../undo/undo.ts";
 import { spelled } from "../titles/titles.ts";
 import type { Titles } from "../titles/titles.ts";

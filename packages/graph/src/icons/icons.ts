@@ -8,8 +8,9 @@
  * key would name an "icon" page and show in every properties table.
  *
  * This file holds what both icon events share: the state, the payloads, and
- * how a page's icon is read and written. The events themselves are in
- * `events/icons/`, one module each, with the list that puts them together.
+ * how a page's icon is read and written. The events themselves are the
+ * folders beside this file, one module each, and `slice.ts` is the list that
+ * puts them together.
  *
  * Nothing here reads blocks, properties, tags or aliases, and nothing in
  * those folds reads this.
@@ -17,9 +18,9 @@
 
 import * as map from "../immutable/immutable.ts";
 import type { ImmutableMap } from "../immutable/immutable.ts";
-import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { field } from "../events/events.ts";
-import { over } from "../over/over.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
+import { field } from "../event/event.ts";
+import { over } from "../event/over.ts";
 import { spell } from "../titles/titles.ts";
 import type { Titles } from "../titles/titles.ts";
 

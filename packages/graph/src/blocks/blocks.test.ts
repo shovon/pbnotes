@@ -10,8 +10,8 @@ import assert from "node:assert/strict";
 import { blocksOn } from "./blocks.ts";
 import { indented, outdented } from "./tree.ts";
 import * as forest from "../forest/forest.ts";
-import { BLOCK_HANDLES, predict, reduce } from "../events/blocks/slice.ts";
-import { NAMESPACE } from "../events/events.ts";
+import { BLOCK_HANDLES, predict, reduce } from "./slice.ts";
+import { NAMESPACE } from "../event/event.ts";
 import {
   blockCreated,
   getDays,
@@ -26,7 +26,7 @@ import {
 } from "../graph.ts";
 import type { Graph } from "../graph.ts";
 import type { Block } from "./tree.ts";
-import type { PageEvent } from "../events/blocks/slice.ts";
+import type { PageEvent } from "./slice.ts";
 import { from, get } from "../immutable/immutable.ts";
 
 const TODAY = "2026-09-21";

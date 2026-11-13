@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   addBlock,
   batch,
@@ -467,20 +467,24 @@ test("today is the local calendar day of the moment it is handed", () => {
 });
 
 /**
- * Every event module: `events/<subject>/<event>/<event>.ts`, found on disk
- * so a new one is covered without being listed here.
+ * Every event module: `<subject>/<event>/<event>.ts`, made with its subject's
+ * `define`, found on disk so a new one is covered without being listed here.
+ * A subject is a folder with a `slice.ts`; a folder beside its events that
+ * is not one (`blocks/paste/`, `pages/relink/`) defines nothing and is left out.
  */
 function eventModules(): string[] {
-  const events = new URL("events/", import.meta.url);
+  const src = new URL(".", import.meta.url);
   const folders = (at: URL) =>
     readdirSync(at, { withFileTypes: true })
       .filter((it) => it.isDirectory())
       .map((it) => it.name);
-  return folders(events)
+  return folders(src)
+    .filter((subject) => existsSync(new URL(`${subject}/slice.ts`, src)))
     .flatMap((subject) =>
-      folders(new URL(`${subject}/`, events)).map((event) => `events/${subject}/${event}/${event}.ts`),
+      folders(new URL(`${subject}/`, src)).map((event) => `${subject}/${event}/${event}.ts`),
     )
-    .filter((path) => existsSync(new URL(path, import.meta.url)))
+    .filter((path) => existsSync(new URL(path, src)))
+    .filter((path) => /\.define\(/.test(readFileSync(new URL(path, src), "utf8")))
     .sort();
 }
 

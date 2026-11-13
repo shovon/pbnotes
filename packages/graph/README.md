@@ -55,9 +55,9 @@ Every event type is `NAMESPACE` followed by a name, for example `github.com/shov
 
 ## Where the events are
 
-Every event is one module under [`src/events/`](src/events/README.md), grouped by subject: its name, its `v`, how its payload is read, its fold, its builder and its undo, together. Each subject's `slice.ts` there lists its events, and `HANDLES`, `UNDO`, the fold and the predictions are built from those lists. What a subject's events share (its state, the helpers that change it, its queries and its commands) is in the subject's own folder: `blocks/`, `properties/`, `tags/`, `aliases/`, `deletes/` and `renames/`.
+Every event is one module in its subject's folder under `src/` (`blocks/`, `pages/`, `properties/`, `tags/`, `aliases/`, `icons/`), one folder per event: its name, its `v`, how its payload is read, its fold, its builder and its undo, together. Beside the events in that folder are what they share (the subject's state and the helpers that change it), its `slice.ts`, which lists its events, and its commands and queries. `HANDLES`, `UNDO`, the fold and the predictions are built from those lists.
 
-That folder's README says what an event module holds, and how to add, change or remove an event.
+[`src/event/README.md`](src/event/README.md) maps the folders, says what an event module holds, and how to add, change or remove an event.
 
 ## Page titles are a contract
 

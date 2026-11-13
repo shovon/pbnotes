@@ -6,13 +6,13 @@
  * Kept as the latest seen, not the last folded, so the answer is the same
  * whatever order the events arrive in.
  */
-import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { field } from "../events/events.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
+import { field } from "../event/event.ts";
 import { keyOf } from "../blocks/blocks.ts";
 import { dateOf } from "../journal/journal.ts";
 import type { BlockState } from "../blocks/blocks.ts";
 import type { PropertyState } from "../properties/properties.ts";
-import type { DeleteState } from "../deletes/deletes.ts";
+import type { DeleteState } from "../pages/delete.ts";
 import type { TagState } from "../tags/tags.ts";
 import type { AliasState } from "../aliases/aliases.ts";
 import type { IconState } from "../icons/icons.ts";

@@ -2,25 +2,25 @@
  * Writing blocks: a command per keystroke that checks the page before it
  * builds and dispatches. Each event's builder is its own module.
  */
-import type { Written } from "../over/over.ts";
-import { canonicalize } from "../canonicalize/canonicalize.ts";
+import type { Written } from "../event/over.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
 import * as forest from "../forest/forest.ts";
 import { blocksOn, find, isOn, placedAt, sitsAt } from "./blocks.ts";
 import type { BlockState, Found, Page, Place } from "./blocks.ts";
 import { ids, locate } from "./tree.ts";
 import type { Block } from "./tree.ts";
 import { getPage } from "./queries.ts";
-import { reduce } from "../events/blocks/slice.ts";
-import type { PageEvent } from "../events/blocks/slice.ts";
-import { blockCreated } from "../events/blocks/created/created.ts";
-import { blockEdited } from "../events/blocks/edited/edited.ts";
-import { blockDeleted } from "../events/blocks/deleted/deleted.ts";
-import { blockIndented } from "../events/blocks/indented/indented.ts";
-import { blockOutdented } from "../events/blocks/outdented/outdented.ts";
-import { blockMoved } from "../events/blocks/moved/moved.ts";
-import { batch } from "../events/batch/batch.ts";
-import type { Batched } from "../events/batch/batch.ts";
-import type { BatchEvent } from "../events/batch/batch.ts";
+import { reduce } from "./slice.ts";
+import type { PageEvent } from "./slice.ts";
+import { blockCreated } from "./created/created.ts";
+import { blockEdited } from "./edited/edited.ts";
+import { blockDeleted } from "./deleted/deleted.ts";
+import { blockIndented } from "./indented/indented.ts";
+import { blockOutdented } from "./outdented/outdented.ts";
+import { blockMoved } from "./moved/moved.ts";
+import { batch } from "../batch/batch.ts";
+import type { Batched } from "../batch/batch.ts";
+import type { BatchEvent } from "../batch/batch.ts";
 import { pasted } from "./paste/paste.ts";
 import type { PasteAt } from "./paste/paste.ts";
 

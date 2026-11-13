@@ -22,7 +22,7 @@
  */
 import * as map from "../immutable/immutable.ts";
 import * as set from "../immutable/set.ts";
-import { canonicalize } from "../canonicalize/canonicalize.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
 import { DATE_PATTERN, dateOf, namesOf } from "../journal/journal.ts";
 import { titleOf } from "../titles/titles.ts";
 import { claims } from "../aliases/aliases.ts";

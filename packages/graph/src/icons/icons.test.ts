@@ -26,8 +26,8 @@ import {
   tagAdded,
 } from "../graph.ts";
 import type { Graph } from "../graph.ts";
-import { iconSet } from "../events/icons/set/set.ts";
-import { iconRemoved } from "../events/icons/removed/removed.ts";
+import { iconSet } from "./set/set.ts";
+import { iconRemoved } from "./removed/removed.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };
 

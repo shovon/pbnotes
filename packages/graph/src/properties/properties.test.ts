@@ -6,12 +6,12 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NAMESPACE } from "../events/events.ts";
+import { NAMESPACE } from "../event/event.ts";
 import { addBlock, getProperties, graphFold, searchPages } from "../graph.ts";
 import type { Graph, GraphView } from "../graph.ts";
-import { predictProperties, reduce } from "../events/properties/slice.ts";
-import { propertySet } from "../events/properties/set/set.ts";
-import { propertyRemoved } from "../events/properties/removed/removed.ts";
+import { predictProperties, reduce } from "./slice.ts";
+import { propertySet } from "./set/set.ts";
+import { propertyRemoved } from "./removed/removed.ts";
 import { get } from "../immutable/immutable.ts";
 
 type Event = { type: string; v: number; payload: unknown };

@@ -9,9 +9,9 @@
  * later, so removing an alias undoes everything it did at once.
  *
  * This file holds what both alias events share: the state, the payload, and
- * how a page gains or loses an alias. The events themselves are in
- * `events/aliases/`, one module each, with the list that puts them together
- * (#238).
+ * how a page gains or loses an alias. The events themselves are the folders
+ * beside this file, one module each, and `slice.ts` is the list that puts
+ * them together (#238).
  *
  * Nothing here reads blocks, properties or tags, and nothing in those folds
  * reads this.
@@ -21,9 +21,9 @@ import * as map from "../immutable/immutable.ts";
 import type { ImmutableMap } from "../immutable/immutable.ts";
 import * as set from "../immutable/set.ts";
 import type { ImmutableSet } from "../immutable/set.ts";
-import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { field } from "../events/events.ts";
-import { over } from "../over/over.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
+import { field } from "../event/event.ts";
+import { over } from "../event/over.ts";
 import { spell } from "../titles/titles.ts";
 import type { Titles } from "../titles/titles.ts";
 

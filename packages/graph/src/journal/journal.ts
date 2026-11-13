@@ -1,4 +1,4 @@
-import { canonicalize } from "../canonicalize/canonicalize.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
 
 /**
  * What makes a title a journal day. Whoever writes picks the day, so the fold

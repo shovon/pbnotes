@@ -9,9 +9,9 @@
  */
 import { iconOf } from "./icons.ts";
 import type { IconState } from "./icons.ts";
-import type { IconEvent } from "../events/icons/slice.ts";
-import { iconSet } from "../events/icons/set/set.ts";
-import { iconRemoved } from "../events/icons/removed/removed.ts";
+import type { IconEvent } from "./slice.ts";
+import { iconSet } from "./set/set.ts";
+import { iconRemoved } from "./removed/removed.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of

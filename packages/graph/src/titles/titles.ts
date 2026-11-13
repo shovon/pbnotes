@@ -1,7 +1,7 @@
 /**
  * How a page is spelled: `canonicalize` key → the first spelling the fold saw.
  */
-import { canonicalize } from "../canonicalize/canonicalize.ts";
+import { canonicalize } from "./canonicalize.ts";
 import { get, has, put } from "../immutable/immutable.ts";
 import type { ImmutableMap } from "../immutable/immutable.ts";
 
