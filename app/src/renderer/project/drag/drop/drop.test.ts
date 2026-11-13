@@ -88,6 +88,15 @@ test('above the first row of a zoom or a linked reference lands nowhere', () => 
   assert.equal(place(cut, 'c', at(0), above(0)), undefined);
 });
 
+test('in a zoom, the root\'s children are one level in, and a drop lands at the depth it shows', () => {
+  // The root at the left edge, its children one indent in under it (#340).
+  const zoom = view('zoom', ['r', '  r1', '  r2', '    r2a'], { whole: false, page: 'Bar' });
+  assert.deepEqual(place(zoom, 'r1', at(1), below(3)), { page: 'Bar', after: 'r2', parent: 'r' });
+  assert.deepEqual(place(zoom, 'r1', at(2), below(3)), { page: 'Bar', after: 'r2a', parent: 'r2' });
+  // Under the root itself, first among its children whatever the x.
+  assert.deepEqual(place(zoom, 'r2', at(0), below(0)), { page: 'Bar', parent: 'r' });
+});
+
 test('a drop in a linked reference lands on that page, beside or under the block', () => {
   const cut = view('cut', ['x', '  x1'], { whole: false, page: 'Bar', from: 200 });
   const rows = [...PAGE, ...cut];

@@ -724,6 +724,8 @@ export default function PageView({
   const rootLit = root !== undefined && selecting.selected.has(slotKey(scope, root.id));
   /** Whether the zoomed block is being dragged, and with it everything shown. */
   const rootMoving = root !== undefined && dragging.has(slotKey(scope, root.id));
+  /** Whether the box for a new block is open at the end of the view. */
+  const atEnd = !reference && writing !== null && writing.after === undefined;
 
   const pageSpace = reference
     ? 'ml-indent cursor-default'
@@ -856,9 +858,16 @@ export default function PageView({
         {root ? (
           // Keyed, or zooming out with a box open hands the new root the old
           // root's box — and its text, which blur would then commit over it.
+          // Its children sit one indent in, as they do under it on its page,
+          // and so does the box at the end of the zoom, which is under it too.
           <Fragment key={root.id}>
             {renderBlock(root, undefined, rootLit, rootMoving)}
-            {renderBlocks(root.children, root.id, rootLit, rootMoving)}
+            {(root.children.length > 0 || atEnd) && (
+              <div className="ml-indent flex flex-col gap-1">
+                {renderBlocks(root.children, root.id, rootLit, rootMoving)}
+                {atEnd && newBlockEditor}
+              </div>
+            )}
           </Fragment>
         ) : (
           renderBlocks(page.blocks)
@@ -880,7 +889,7 @@ export default function PageView({
               Click to write the first block
             </button>
           )
-        ) : writing.after === undefined ? (
+        ) : atEnd && !root ? (
           newBlockEditor
         ) : null}
       </div>
