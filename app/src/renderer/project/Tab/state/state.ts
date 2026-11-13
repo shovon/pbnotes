@@ -12,6 +12,8 @@ import { renamedIn as renamedInStack } from '../../Aside/stack/stack.ts';
 import { INITIAL_WIDTH } from '../../Aside/width/width.ts';
 import { INITIAL } from '../../AllPages/sort/sort.ts';
 import type { Sort } from '../../AllPages/sort/sort.ts';
+import { OPEN_TASKS } from '../../../../shared/graph.ts';
+import type { Filter } from '../../../../shared/graph.ts';
 
 /**
  * A block to scroll to and flash once its page has drawn, and the version
@@ -25,6 +27,11 @@ export type TabState = {
   trail: Stop[];
   /** How the list of every page is sorted, so back to it finds it as it was. */
   sort: Sort;
+  /**
+   * Which tasks the Tasks view shows (#387), so back to it finds it as it
+   * was. This machine's and this tab's: never an event.
+   */
+  filter: Filter;
   /** The pages kept open beside it (#287), most recently opened first. */
   aside: string[];
   /** How wide the aside is. */
@@ -37,6 +44,7 @@ export type TabState = {
 export const NEW_TAB: TabState = {
   trail: [],
   sort: INITIAL,
+  filter: OPEN_TASKS,
   aside: [],
   asideWidth: INITIAL_WIDTH,
   target: null,

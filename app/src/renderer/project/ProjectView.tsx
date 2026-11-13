@@ -4,7 +4,7 @@ import type { GraphApi, Undone } from '../../shared/graph';
 import type { SidebarApi } from '../../shared/sidebar';
 import type { Act } from '../ui';
 import type { PageViewGraph } from './PageView/PageView';
-import { back, browse, go, home, label, placeOf, ALL_PAGES } from './trail/trail';
+import { back, browse, go, home, label, placeOf, tasks, ALL_PAGES, TASKS } from './trail/trail';
 import type { Stop } from './trail/trail';
 import Finder from './Finder/Finder';
 import { opensFinder } from './Finder/shortcut/shortcut';
@@ -51,6 +51,8 @@ export type ProjectViewGraph = PageViewGraph &
     | 'icons'
     | 'find'
     | 'pages'
+    | 'tasks'
+    | 'filterMenu'
     | 'addImage'
     | 'image'
     | 'imageSource'
@@ -248,6 +250,7 @@ export default function ProjectView({
   /** Where the tab is: undefined on the journal and on the list of every page. */
   const place = placeOf(trail.at(-1));
   const browsing = trail.at(-1) === ALL_PAGES;
+  const tasking = trail.at(-1) === TASKS;
   /** The page the tab is on now, for what lands later than it moved. */
   const latestPage = useRef(place?.page);
   latestPage.current = place?.page;
@@ -595,8 +598,10 @@ export default function ProjectView({
           icons={recentPageIcons}
           showing={place?.page}
           browsing={browsing}
+          tasking={tasking}
           onJournal={() => step(home)}
           onAllPages={() => step(browse)}
+          onTasks={() => step(tasks)}
           onOpen={openWith}
           onRecentMenu={openRecentMenu}
           recentCollapsed={recentCollapsed}

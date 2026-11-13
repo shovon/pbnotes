@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ALL_PAGES, back, browse, go, home, label, leave, placeOf, renamed, rezoom } from "./trail.ts";
+import { ALL_PAGES, TASKS, back, browse, go, home, label, leave, placeOf, renamed, rezoom, tasks } from "./trail.ts";
 import type { Stop } from "./trail.ts";
 
 test("a link to where the view already is adds nothing", () => {
@@ -133,4 +133,17 @@ test("a rename moves every stop on the page to its new title, zoom kept (#109)",
   assert.equal(renamed(trail, "Nobody", "Else"), trail, "the same trail");
   const done = renamed(trail, "Mira", "Mira Sato");
   assert.equal(renamed(done, "Mira Sato", "Mira Sato"), done, "already there");
+});
+
+test("tasks adds every task as a stop, on no page, and back returns to it from a page (#387)", () => {
+  const listed = tasks([{ page: "Mira" }]);
+  assert.deepEqual(listed, [{ page: "Mira" }, TASKS]);
+  assert.equal(tasks(listed), listed);
+  assert.equal(placeOf(TASKS), undefined);
+  assert.equal(label(TASKS), "Tasks");
+  assert.deepEqual(back(go(listed, { page: "Kitchen" })), listed);
+});
+
+test("leaving a deleted page stops at the tasks", () => {
+  assert.deepEqual(leave([TASKS, { page: "Mira" }], "Mira"), [TASKS]);
 });

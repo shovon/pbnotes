@@ -9,22 +9,26 @@ import type { Place } from "../../../shared/graph.ts";
 /** The All pages list (#200) as a stop: a place of its own, on no page. */
 export const ALL_PAGES = "all-pages";
 
+/** The Tasks view (#387) as a stop: every task in the project, on no page. */
+export const TASKS = "tasks";
+
 /**
  * A stop on the trail: a place, the journal, which is `undefined` as it is
  * everywhere else (`graph:view` with no place is the journal), or the list
  * of every page. An empty trail is the journal too: where a project starts.
  */
-export type Stop = Place | undefined | typeof ALL_PAGES;
+export type Stop = Place | undefined | typeof ALL_PAGES | typeof TASKS;
 
-/** The place a stop is, or undefined for one on no page: the journal or the list. */
+/** The place a stop is, or undefined for one on no page: the journal, the list or the tasks. */
 export function placeOf(stop: Stop): Place | undefined {
-  return stop === ALL_PAGES ? undefined : stop;
+  return stop === ALL_PAGES || stop === TASKS ? undefined : stop;
 }
 
 /** What a stop is called on the way back to it. */
 export function label(stop: Stop): string {
   if (stop === undefined) return "Journal";
   if (stop === ALL_PAGES) return "All pages";
+  if (stop === TASKS) return "Tasks";
   return stop.page;
 }
 
@@ -61,6 +65,14 @@ export function browse(trail: Stop[]): Stop[] {
   return trail.at(-1) === ALL_PAGES ? trail : [...trail, ALL_PAGES];
 }
 
+/**
+ * To every task in the project (#387), as a stop of its own, so back
+ * returns to it from a page opened off it. Nothing to do on it already.
+ */
+export function tasks(trail: Stop[]): Stop[] {
+  return trail.at(-1) === TASKS ? trail : [...trail, TASKS];
+}
+
 /** One step back; from the first page that is the journal. */
 export function back(trail: Stop[]): Stop[] {
   return trail.slice(0, -1);
@@ -82,7 +94,7 @@ export function rezoom(trail: Stop[], block?: string): Stop[] {
  * Off a page that was just deleted: back past every stop at the end of the
  * trail that is on it, the page itself and any zoom into one of its blocks,
  * to the first that is somewhere else. A journal stop is on no page, and
- * neither is the list of every page, so either is where this stops. With nothing left, the journal; and a journal stop
+ * neither is the list of every page or the tasks, so any of them is where this stops. With nothing left, the journal; and a journal stop
  * left first on the trail goes too, since the empty trail is already the
  * journal and back from it would go nowhere.
  */

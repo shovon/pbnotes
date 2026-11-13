@@ -128,7 +128,7 @@ function days(all: readonly string[], today: string, from: string | undefined) {
  * as it was asked, or null when nothing was; `next` is the `through` that
  * shows one chunk more, or null when every one shows.
  */
-function cuts(all: Page[], through: string | undefined) {
+export function cuts(all: Page[], through: string | undefined) {
   const after = through === undefined ? 0 : all.findIndex((cut) => shownOrder(cut.title, through) > 0);
   const end = after === -1 ? all.length : after;
   const last = end + chunk(all.slice(end)) - 1;
