@@ -181,9 +181,10 @@ export const TaggedByOthers: Story = {
   },
 };
 
-/** Zoomed into a block two levels down: it alone is the root, its children
-    are the top level, and above it the page and what it hangs under are the
-    ways back out. Its sibling is not shown. */
+/** Zoomed into a block two levels down: it alone is the root, at the left
+    edge, with its children one indent in under it and theirs nested under
+    them, as on its page (#340). Above it the page and what it hangs under
+    are the ways back out. Its sibling is not shown. */
 export const Zoomed: Story = {
   args: {
     zoom: '3',
@@ -193,7 +194,9 @@ export const Zoomed: Story = {
       block('2', 'Shed', [
         block('3', 'Measure the second door before Friday', [
           block('12', 'Tape is in the kitchen drawer'),
-          block('13', 'Width at the top *and* the bottom'),
+          block('13', 'Width at the top *and* the bottom', [
+            block('15', 'They were different last time'),
+          ]),
         ]),
         block('14', 'Not shown: a sibling of the zoomed block'),
       ]),
