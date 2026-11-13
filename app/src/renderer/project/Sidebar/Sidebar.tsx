@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronDown, ChevronRight, Files, FileText } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronRight, Files, FileText, ListTodo } from "lucide-react";
 import Icon from "../../Icon/Icon";
 import PageIcon from "../PageIcon/PageIcon";
 import { isShowing } from "./recent/recent";
@@ -37,12 +37,15 @@ type Props = {
    * holds it (#331). A page with none shows `file-text`.
    */
   icons?: ReadonlyMap<string, string>;
-  /** The page on screen, or undefined on the journal or the list. */
+  /** The page on screen, or undefined on the journal, the list or the tasks. */
   showing: string | undefined;
   /** Whether the list of every page is on screen. */
   browsing: boolean;
+  /** Whether every task is on screen (#387). */
+  tasking?: boolean;
   onJournal: () => void;
   onAllPages: () => void;
+  onTasks: () => void;
   /**
    * A recent page was clicked, with the keys held, which say where it
    * opens: here, beside (#287) or in a new tab (#309, `opening/`).
@@ -73,8 +76,10 @@ export default function Sidebar({
   icons = NO_ICONS,
   showing,
   browsing,
+  tasking = false,
   onJournal,
   onAllPages,
+  onTasks,
   onOpen,
   onRecentMenu,
   recentCollapsed,
@@ -83,7 +88,7 @@ export default function Sidebar({
   onPointerEnter,
   onPointerLeave,
 }: Props) {
-  const journal = showing === undefined && !browsing;
+  const journal = showing === undefined && !browsing && !tasking;
   const hover = { onPointerEnter, onPointerLeave };
   // Floating: above the page and its own raised bits, still under the header.
   const lift = floating ? "z-20 shadow-[6px_0_16px_-8px_rgb(0_0_0/0.25)]" : "z-10";
@@ -129,6 +134,15 @@ export default function Sidebar({
           >
             <Icon of={Files} />
             <span className="truncate">All pages</span>
+          </button>
+          <button
+            type="button"
+            className={`${place} ${tasking ? current : ""}`}
+            aria-current={tasking ? "page" : undefined}
+            onClick={onTasks}
+          >
+            <Icon of={ListTodo} />
+            <span className="truncate">Tasks</span>
           </button>
         </div>
 

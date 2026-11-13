@@ -11,11 +11,12 @@ import type { MenuItemConstructorOptions } from "electron";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { CARRY_COUNT, CARRY_LIMIT, IMAGE_SCHEME, GRAPH_CHANNELS } from "../../../../shared/graph";
-import type { BlockMenuPick, CarriedImage, Clip, PageMenuPick, Place } from "../../../../shared/graph";
+import type { BlockMenuPick, CarriedImage, Clip, FilterPick, PageMenuPick, Place } from "../../../../shared/graph";
 import { readPoint, requireString, requireStringArray } from "../../../ipc";
 import { cutLabel, deleteLabel, readOffer } from "./block-menu/block-menu";
 import { readOffer as readPageOffer } from "./page-menu/page-menu";
 import { requireCommand, requireDay, requireTitle } from "./command/command";
+import { markersOf, requireFilter } from "./filter/filter";
 import type { GraphSession } from "./graph-session/graph-session";
 import { mimeOf } from "./images/images";
 
@@ -138,6 +139,15 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
   );
 
   ipcMain.handle(GRAPH_CHANNELS.pages, () => session.pages());
+
+  // Every task that meets a filter (#387), loaded `through` a title: any
+  // string, as a page's linked references take, since it is only compared.
+  ipcMain.handle(GRAPH_CHANNELS.tasks, (_event, filter: unknown, through: unknown) =>
+    session.tasks(
+      requireFilter(filter),
+      through === undefined || through === null ? undefined : requireString(through, "through"),
+    ),
+  );
 
   ipcMain.handle(GRAPH_CHANNELS.status, () => session.status());
 
@@ -284,4 +294,32 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
       });
     },
   );
+  // What can be added to a filter (#387), from its `+ Filter`: each kind of
+  // condition, with what it takes under it, ticked for what the filter
+  // holds. Settles the way the page menu's does.
+  ipcMain.handle(GRAPH_CHANNELS.filterMenu, (event, at: unknown, filter: unknown) => {
+    const point = readPoint(at);
+    const held = requireFilter(filter);
+    const markers = markersOf(held);
+    const marked = held.some((it) => it.kind === "marker");
+    const window = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    return new Promise<FilterPick | null>((resolve) => {
+      Menu.buildFromTemplate([
+        {
+          label: "Marker",
+          submenu: (["TODO", "DOING", "DONE"] as const).map((marker) => ({
+            label: marker,
+            type: "checkbox",
+            // No marker condition is every marker, but none is picked yet.
+            checked: marked && markers.has(marker),
+            click: () => resolve({ kind: "marker", marker }),
+          })),
+        },
+      ]).popup({
+        window,
+        ...point,
+        callback: () => setTimeout(() => resolve(null), 100),
+      });
+    });
+  });
 }

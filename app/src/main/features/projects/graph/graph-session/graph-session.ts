@@ -39,16 +39,19 @@ import {
 import type { Batched, GraphView as Base, PageMatch } from "@pbnotes/graph";
 import type {
   Command,
+  Filter,
   Matches,
   PageList,
   Place,
   PlaceView,
   Reply,
+  TaskView,
   Taking,
   Undone,
 } from "../../../../../shared/graph.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
 import { getView } from "../place-view/place-view.ts";
+import { getTaskView } from "../task-view/task-view.ts";
 import { createHistory, stepOf, takenBack } from "../history/history.ts";
 import type { History, Way } from "../history/history.ts";
 
@@ -220,6 +223,9 @@ export function createGraphSession(
       const view = await open.require();
       return { version: view.version, pages: listPages(view.state) };
     },
+    /** Every task that meets `filter` (#387), its pages loaded `through` a title. */
+    tasks: async (filter: Filter, through?: string): Promise<TaskView> =>
+      getTaskView(await open.require(), filter, through),
     status: async (): Promise<LogStatus> => (await open.require()).status,
 
     /**

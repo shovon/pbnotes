@@ -1,19 +1,21 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { locate, canonicalize, today } from '@pbnotes/graph';
-import type { Block } from '@pbnotes/graph';
+import type { Block, Page } from '@pbnotes/graph';
 import { CARRY_LIMIT } from '../../../shared/graph';
 import type { Act } from '../../ui';
 import type { ProjectViewGraph } from '../ProjectView';
 import { Previews } from '../Block/Block';
 import PageView from '../PageView/PageView';
 import { imageTarget, placeNew } from '../placement/placement';
-import { ALL_PAGES, go, placeOf, rezoom } from '../trail/trail';
+import { ALL_PAGES, TASKS, go, placeOf, rezoom } from '../trail/trail';
 import type { Stop } from '../trail/trail';
 import { samePlace } from '../held/held';
 import type { Held } from '../held/held';
 import { createFetcher } from '../fetcher/fetcher';
 import AllPages from '../AllPages/AllPages';
+import Tasks from '../Tasks/Tasks';
+import type { Filter } from '../../../shared/graph';
 import type { Sort } from '../AllPages/sort/sort';
 import PageMenu from '../PageMenu/PageMenu';
 import { deletedSince } from '../deleted/deleted';
@@ -140,10 +142,11 @@ function Tab({
   heard,
   onHeld,
 }: Props) {
-  const { trail, sort, aside, asideWidth, target } = tab;
+  const { trail, sort, filter, aside, asideWidth, target } = tab;
   const setTrail = (take: (trail: Stop[]) => Stop[]) =>
     update((tab) => withField(tab, 'trail', take(tab.trail)));
   const setSort = (sort: Sort) => update((tab) => withField(tab, 'sort', sort));
+  const setFilter = (filter: Filter) => update((tab) => withField(tab, 'filter', filter));
   const setAside = (take: (aside: string[]) => string[]) =>
     update((tab) => withField(tab, 'aside', take(tab.aside)));
   const setAsideWidth = (width: number) => update((tab) => withField(tab, 'asideWidth', width));
@@ -156,6 +159,8 @@ function Tab({
    */
   const place = placeOf(trail.at(-1));
   const browsing = trail.at(-1) === ALL_PAGES;
+  /** On every task in the project (#387): on no page, as the list is. */
+  const tasking = trail.at(-1) === TASKS;
   /**
    * What is drawn, and the place it was asked for. Null until main first
    * answers. It can be a step behind the trail while the next place is being
@@ -293,6 +298,8 @@ function Tab({
    * there as they do on the page.
    */
   const [asideShown, setAsideShown] = useState<ReadonlyMap<string, CardShown>>(new Map());
+  /** What the Tasks view draws (#387), for a copy of blocks selected in it. */
+  const [tasksShown, setTasksShown] = useState<readonly Page[]>([]);
   const closeCard = (page: string) => setAside((stack) => unshelve(stack, page));
   /**
    * Only the cards still open: one closed, or opened again under a new name
@@ -349,12 +356,12 @@ function Tab({
   const firstDrawn = useRef<string | null>(null);
   const navigated = useRef(false);
   useEffect(() => {
-    const key = JSON.stringify([asked, zoom ?? null, browsing]);
+    const key = JSON.stringify([asked, zoom ?? null, browsing, tasking]);
     firstDrawn.current ??= key;
     if (key !== firstDrawn.current) navigated.current = true;
     const back = !navigated.current && resume?.held && samePlace(resume.held.place, place);
     window.scrollTo(0, back ? resume.scroll : 0);
-  }, [asked, zoom, browsing]);
+  }, [asked, zoom, browsing, tasking]);
 
   /**
    * Makes a block the root of the view: what its dot does. Looked up in main
@@ -841,7 +848,7 @@ function Tab({
   /** What shows has changed: what is gone drops out of the selection. */
   useEffect(() => {
     setChosen((it) => it && followShown(it, onScreen().map((entry) => entry.key)));
-  }, [held, browsing, asideShown]);
+  }, [held, browsing, tasking, asideShown, tasksShown]);
 
   /** Up and Down keep the block they reach in sight. */
   useEffect(() => {
@@ -942,6 +949,7 @@ function Tab({
         ...references.map((it) => it.blocks),
       ]),
       ...[...asideShown.values()].map((it) => it.page.blocks),
+      ...(tasking ? tasksShown.map((it) => it.blocks) : []),
     ];
     return picked(trees, blockIds);
   };
@@ -1219,7 +1227,7 @@ function Tab({
           />
         )}
 
-        {!browsing && own && (
+        {!browsing && !tasking && own && (
           <PageMenu
             title={own.page.title}
             canDelete={own.page.blocks.length > 0 || own.properties.length > 0}
@@ -1237,7 +1245,19 @@ function Tab({
         <Selecting.Provider value={selecting}>
         <Dragging.Provider value={draggingKeys}>
         <Previews value={previews}>
-          {browsing ? null : held === null ? (
+          {tasking && (
+            // The journal is still asked for underneath, as it is under the
+            // list of every page: it is what back from here can land on.
+            <Tasks
+              graph={bridge}
+              filter={filter}
+              onFilter={setFilter}
+              scope={TASKS}
+              onShown={setTasksShown}
+              act={act}
+            />
+          )}
+          {browsing || tasking ? null : held === null ? (
             <p className="mt-1 text-sm text-muted">Loading…</p>
           ) : (
             held.view.showing.map(({ page, references, links, properties, tags, taggedBy, icon }) => (
@@ -1291,7 +1311,7 @@ function Tab({
           </Aside>
         )}
         </Dragging.Provider>
-        {!browsing && held?.view.list?.next && (
+        {!browsing && !tasking && held?.view.list?.next && (
           <p ref={older} className="mt-1 text-sm text-muted">
             {held.place ? 'Loading more linked references…' : 'Loading older days…'}
           </p>

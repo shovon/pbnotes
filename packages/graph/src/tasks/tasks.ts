@@ -4,7 +4,7 @@
  * task is a block like any other and a change of state is an edit of its
  * text; nothing here knows about blocks, only about the string.
  */
-export type Marker = 'TODO' | 'DOING' | 'DONE';
+export type Marker = "TODO" | "DOING" | "DONE";
 
 /**
  * The marker, then the spaces after it, or a line break or the end of the
@@ -33,10 +33,10 @@ export function withMarker(text: string, marker: Marker): string {
 
 /** What the checkbox makes it: checked is done, unchecked is to do, whatever it was before. */
 export function checked(on: boolean): Marker {
-  return on ? 'DONE' : 'TODO';
+  return on ? "DONE" : "TODO";
 }
 
 /** What a click on the label makes it: to do and doing swap. */
-export function labelled(marker: 'TODO' | 'DOING'): Marker {
-  return marker === 'TODO' ? 'DOING' : 'TODO';
+export function labelled(marker: "TODO" | "DOING"): Marker {
+  return marker === "TODO" ? "DOING" : "TODO";
 }

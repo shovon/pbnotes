@@ -14,8 +14,8 @@ import Markdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import { IMAGE_SCHEME } from '../../../shared/graph';
-import { remarkPlugins as reading } from '@pbnotes/graph';
-import type { PageMatch } from '@pbnotes/graph';
+import { checked, labelled, readTask, remarkPlugins as reading, withMarker } from '@pbnotes/graph';
+import type { Marker, PageMatch } from '@pbnotes/graph';
 import { remarkHighlight, remarkStrikethrough } from './marks/marks';
 import { bracketEdit } from './brackets/brackets';
 import type { Edit } from './brackets/brackets';
@@ -24,8 +24,6 @@ import type { LinkQuery } from './linkQuery/linkQuery';
 import { extendsBy, selectsAll } from '../selection/shortcut/shortcut';
 import type { FromBox } from '../selection/Selecting';
 import { createParsed } from './parsed/parsed';
-import { checked, labelled, readTask, withMarker } from './task/task';
-import type { Marker } from './task/task';
 
 /** `data-*` attributes a view puts on a block, for whatever reads the screen. */
 type Data = Record<`data-${string}`, string>;
