@@ -6,7 +6,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NAMESPACE } from "../events/events.ts";
+import { NAMESPACE } from "../event/event.ts";
 import {
   addBlock,
   getEdited,
@@ -18,9 +18,9 @@ import {
 } from "../graph.ts";
 import type { Graph, GraphView } from "../graph.ts";
 import { getTaggedBy, getTags } from "./tags.ts";
-import { predictTags, reduce } from "../events/tags/slice.ts";
-import { tagAdded } from "../events/tags/added/added.ts";
-import { tagRemoved } from "../events/tags/removed/removed.ts";
+import { predictTags, reduce } from "./slice.ts";
+import { tagAdded } from "./added/added.ts";
+import { tagRemoved } from "./removed/removed.ts";
 import { get } from "../immutable/immutable.ts";
 
 type Event = { type: string; v: number; at?: string; payload: unknown };

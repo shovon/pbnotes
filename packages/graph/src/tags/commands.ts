@@ -9,9 +9,9 @@
  */
 import { getTags, pointsTo } from "./tags.ts";
 import type { TagState } from "./tags.ts";
-import type { TagEvent } from "../events/tags/slice.ts";
-import { tagAdded } from "../events/tags/added/added.ts";
-import { tagRemoved } from "../events/tags/removed/removed.ts";
+import type { TagEvent } from "./slice.ts";
+import { tagAdded } from "./added/added.ts";
+import { tagRemoved } from "./removed/removed.ts";
 
 /**
  * What the commands need: the state as it stands, and a way to append one of

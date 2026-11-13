@@ -2,7 +2,7 @@
  * Reads over the folded blocks. Each takes the state alone, since none of
  * them writes.
  */
-import { canonicalize } from "../canonicalize/canonicalize.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
 import { DATE_PATTERN } from "../journal/journal.ts";
 import { read } from "../reading/reading.ts";
 import { spelled, titleOf } from "../titles/titles.ts";

@@ -7,9 +7,9 @@
  * one when the last of them goes, as a page that only a link names does.
  *
  * This file holds what both tag events share: the state, the payload, and
- * how a page gains or loses a tag. The events themselves are in
- * `events/tags/`, one module each, with the list that puts them together
- * (#238).
+ * how a page gains or loses a tag. The events themselves are the folders
+ * beside this file, one module each, and `slice.ts` is the list that puts
+ * them together (#238).
  *
  * Nothing here reads blocks or properties, and nothing in those folds reads
  * this.
@@ -19,9 +19,9 @@ import * as map from "../immutable/immutable.ts";
 import type { ImmutableMap } from "../immutable/immutable.ts";
 import * as set from "../immutable/set.ts";
 import type { ImmutableSet } from "../immutable/set.ts";
-import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { field } from "../events/events.ts";
-import { over } from "../over/over.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
+import { field } from "../event/event.ts";
+import { over } from "../event/over.ts";
 import { spell, titleOf } from "../titles/titles.ts";
 import type { Titles } from "../titles/titles.ts";
 

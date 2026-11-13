@@ -7,9 +7,9 @@
 import { locate } from "../tree.ts";
 import type { Block } from "../tree.ts";
 import type { Place } from "../blocks.ts";
-import type { Batched } from "../../events/batch/batch.ts";
-import { blockEdited } from "../../events/blocks/edited/edited.ts";
-import { recreate } from "../../events/blocks/created/created.ts";
+import type { Batched } from "../../batch/batch.ts";
+import { blockEdited } from "../edited/edited.ts";
+import { recreate } from "../created/created.ts";
 
 /**
  * Where a paste goes: a place, as `block.created` means one, or `into` an

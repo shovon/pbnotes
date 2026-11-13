@@ -10,17 +10,17 @@
  *
  * This file holds what both property events share: the state, the payloads,
  * and how a page's value for a key is read and written. The events
- * themselves are in `events/properties/`, one module each, with the list that
- * puts them together (#238).
+ * themselves are the folders beside this file, one module each, and
+ * `slice.ts` is the list that puts them together (#238).
  *
  * Nothing here reads blocks, and nothing in the block fold reads this.
  */
 
 import * as map from "../immutable/immutable.ts";
 import type { ImmutableMap } from "../immutable/immutable.ts";
-import { canonicalize } from "../canonicalize/canonicalize.ts";
-import { field } from "../events/events.ts";
-import { over } from "../over/over.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
+import { field } from "../event/event.ts";
+import { over } from "../event/over.ts";
 import { spell, titleOf } from "../titles/titles.ts";
 import type { Titles } from "../titles/titles.ts";
 

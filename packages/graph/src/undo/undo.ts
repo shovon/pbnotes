@@ -13,8 +13,8 @@
  * events it owns (an `Undo` per event type), and the graph hands the fold and
  * the table of them in. This walks a step and puts the answers together.
  */
-import { each } from "../events/batch/batch.ts";
-import type { Batched } from "../events/batch/batch.ts";
+import { each } from "../batch/batch.ts";
+import type { Batched } from "../batch/batch.ts";
 
 /**
  * A reading of one thing a step touched: a value that is the same in two

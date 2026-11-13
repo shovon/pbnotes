@@ -2,7 +2,7 @@
  * Ranking titles against a query. Knows nothing of where the titles came
  * from: a caller hands it every title it wants offered.
  */
-import { canonicalize } from "../canonicalize/canonicalize.ts";
+import { canonicalize } from "../titles/canonicalize.ts";
 
 /**
  * The titles that contain `query`, ignoring case: prefix matches first, then

@@ -10,8 +10,8 @@
  */
 import { noBlocks } from "./blocks/blocks.ts";
 import type { BlockState } from "./blocks/blocks.ts";
-import { BLOCK_HANDLES, BLOCK_UNDO, reads as readsBlocks, reduce } from "./events/blocks/slice.ts";
-import type { PageEvent } from "./events/blocks/slice.ts";
+import { BLOCK_HANDLES, BLOCK_UNDO, reads as readsBlocks, reduce } from "./blocks/slice.ts";
+import type { PageEvent } from "./blocks/slice.ts";
 import {
   countBlocks,
   countLinks,
@@ -30,8 +30,8 @@ import {
   PROPERTY_UNDO,
   reads as readsProperties,
   reduce as reduceProperties,
-} from "./events/properties/slice.ts";
-import type { PropertyEvent } from "./events/properties/slice.ts";
+} from "./properties/slice.ts";
+import type { PropertyEvent } from "./properties/slice.ts";
 import {
   countTaggedBy,
   getTaggedBy as getTaggedByAt,
@@ -39,8 +39,8 @@ import {
   named as namedByTags,
 } from "./tags/tags.ts";
 import type { TagState } from "./tags/tags.ts";
-import { TAG_HANDLES, TAG_UNDO, reads as readsTags, reduce as reduceTags } from "./events/tags/slice.ts";
-import type { TagEvent } from "./events/tags/slice.ts";
+import { TAG_HANDLES, TAG_UNDO, reads as readsTags, reduce as reduceTags } from "./tags/slice.ts";
+import type { TagEvent } from "./tags/slice.ts";
 import { named as namedByAliases } from "./aliases/aliases.ts";
 import type { AliasState } from "./aliases/aliases.ts";
 import {
@@ -48,12 +48,12 @@ import {
   ALIAS_UNDO,
   reads as readsAliases,
   reduce as reduceAliases,
-} from "./events/aliases/slice.ts";
-import type { AliasEvent } from "./events/aliases/slice.ts";
+} from "./aliases/slice.ts";
+import type { AliasEvent } from "./aliases/slice.ts";
 import { iconOf, named as namedByIcons } from "./icons/icons.ts";
 import type { IconState } from "./icons/icons.ts";
-import { ICON_HANDLES, ICON_UNDO, reads as readsIcons, reduce as reduceIcons } from "./events/icons/slice.ts";
-import type { IconEvent } from "./events/icons/slice.ts";
+import { ICON_HANDLES, ICON_UNDO, reads as readsIcons, reduce as reduceIcons } from "./icons/slice.ts";
+import type { IconEvent } from "./icons/slice.ts";
 import { resolver } from "./resolve/resolve.ts";
 import { DATE_PATTERN, namesOf } from "./journal/journal.ts";
 import {
@@ -61,35 +61,35 @@ import {
   PAGE_UNDO,
   reads as readsDeletes,
   reduce as reduceDeletes,
-} from "./events/pages/slice.ts";
-import { all, BATCH_HANDLES, unbatch } from "./events/batch/batch.ts";
-import type { BatchEvent, Batched } from "./events/batch/batch.ts";
+} from "./pages/slice.ts";
+import { all, BATCH_HANDLES, unbatch } from "./batch/batch.ts";
+import type { BatchEvent, Batched } from "./batch/batch.ts";
 import { holds as holdsWith, invert as invertWith, remember as rememberWith } from "./undo/undo.ts";
 import type { Remembered as RememberedWith, Undo } from "./undo/undo.ts";
-import { admits } from "./over/over.ts";
-import type { DeleteState } from "./deletes/deletes.ts";
-import { redirect, renamedAway, renamedTo } from "./renames/renames.ts";
-import type { RenameState, Renamed } from "./renames/renames.ts";
-import { field, unnamed } from "./events/events.ts";
-import type { PagesEvent } from "./events/pages/slice.ts";
+import { admits } from "./event/over.ts";
+import type { DeleteState } from "./pages/delete.ts";
+import { redirect, renamedAway, renamedTo } from "./pages/rename.ts";
+import type { RenameState, Renamed } from "./pages/rename.ts";
+import { field, unnamed } from "./event/event.ts";
+import type { PagesEvent } from "./pages/slice.ts";
 import { reduce as reduceEdited } from "./edited/edited.ts";
 import type { EditedState } from "./edited/edited.ts";
 import { search } from "./search/search.ts";
 import { titleOf } from "./titles/titles.ts";
-import { canonicalize } from "./canonicalize/canonicalize.ts";
+import { canonicalize } from "./titles/canonicalize.ts";
 import { empty as emptyMap, get as getKey } from "./immutable/immutable.ts";
 
-export { canonicalize } from "./canonicalize/canonicalize.ts";
-export { NAMESPACE } from "./events/events.ts";
-export { batch, each } from "./events/batch/batch.ts";
+export { canonicalize } from "./titles/canonicalize.ts";
+export { NAMESPACE } from "./event/event.ts";
+export { batch, each } from "./batch/batch.ts";
 export { CANNOT } from "./undo/undo.ts";
 export type { Check, Undo } from "./undo/undo.ts";
-export type { BatchEvent, Batched } from "./events/batch/batch.ts";
+export type { BatchEvent, Batched } from "./batch/batch.ts";
 export { DATE_PATTERN, dateOf, namesOf, today } from "./journal/journal.ts";
 export { titleOf } from "./titles/titles.ts";
 export { blocksOn, find } from "./blocks/blocks.ts";
 export { beside, indented, lastLeaf, locate, outdented, without } from "./blocks/tree.ts";
-export { predict, reduce } from "./events/blocks/slice.ts";
+export { predict, reduce } from "./blocks/slice.ts";
 export type {
   Block,
   BlockCreated,
@@ -102,45 +102,44 @@ export type {
   Page,
   Place,
 } from "./blocks/blocks.ts";
-export type { PageEvent } from "./events/blocks/slice.ts";
+export type { PageEvent } from "./blocks/slice.ts";
 export { getDays, getPages, getPreviews, linking, locateBlock, searchBlocks, shownOrder } from "./blocks/queries.ts";
 export type { BlockMatch } from "./blocks/queries.ts";
-export { propertySet } from "./events/properties/set/set.ts";
-export { propertyRemoved } from "./events/properties/removed/removed.ts";
-export { predictProperties } from "./events/properties/slice.ts";
+export { propertySet } from "./properties/set/set.ts";
+export { propertyRemoved } from "./properties/removed/removed.ts";
+export { predictProperties } from "./properties/slice.ts";
 export type { Property, PropertyRemoved, PropertySet } from "./properties/properties.ts";
-export type { PropertyEvent } from "./events/properties/slice.ts";
+export type { PropertyEvent } from "./properties/slice.ts";
 export { removeProperty, renameProperty, setProperty } from "./properties/commands.ts";
-export { tagAdded } from "./events/tags/added/added.ts";
-export { tagRemoved } from "./events/tags/removed/removed.ts";
-export { predictTags } from "./events/tags/slice.ts";
+export { tagAdded } from "./tags/added/added.ts";
+export { tagRemoved } from "./tags/removed/removed.ts";
+export { predictTags } from "./tags/slice.ts";
 export { addTag, removeTag } from "./tags/commands.ts";
 export type { TagAdded, TagRemoved } from "./tags/tags.ts";
-export type { TagEvent } from "./events/tags/slice.ts";
-export { aliasAdded } from "./events/aliases/added/added.ts";
-export { aliasRemoved } from "./events/aliases/removed/removed.ts";
+export type { TagEvent } from "./tags/slice.ts";
+export { aliasAdded } from "./aliases/added/added.ts";
+export { aliasRemoved } from "./aliases/removed/removed.ts";
 export type { AliasAdded, AliasRemoved } from "./aliases/aliases.ts";
-export type { AliasEvent } from "./events/aliases/slice.ts";
-export { iconSet } from "./events/icons/set/set.ts";
-export { iconRemoved } from "./events/icons/removed/removed.ts";
-export { predictIcon } from "./events/icons/slice.ts";
+export type { AliasEvent } from "./aliases/slice.ts";
+export { iconSet } from "./icons/set/set.ts";
+export { iconRemoved } from "./icons/removed/removed.ts";
+export { predictIcon } from "./icons/slice.ts";
 export { removeIcon, setIcon } from "./icons/commands.ts";
 export type { IconRemoved, IconSet } from "./icons/icons.ts";
-export type { IconEvent } from "./events/icons/slice.ts";
-export { getDeletions, getRefsTo, hasContent } from "./deletes/deletes.ts";
-export { deletePage } from "./deletes/commands.ts";
-export { pageDeleted } from "./events/pages/deleted/deleted.ts";
-export { pageRenamed } from "./events/pages/renamed/renamed.ts";
-export { renamePage } from "./renames/commands.ts";
-export type { PageRenamed, Renamed } from "./renames/renames.ts";
-export type { PageDeleted } from "./deletes/deletes.ts";
-export type { PagesEvent } from "./events/pages/slice.ts";
-export { blockCreated } from "./events/blocks/created/created.ts";
-export { blockEdited } from "./events/blocks/edited/edited.ts";
-export { blockDeleted } from "./events/blocks/deleted/deleted.ts";
-export { blockIndented } from "./events/blocks/indented/indented.ts";
-export { blockOutdented } from "./events/blocks/outdented/outdented.ts";
-export { blockMoved } from "./events/blocks/moved/moved.ts";
+export type { IconEvent } from "./icons/slice.ts";
+export { getDeletions, getRefsTo, hasContent } from "./pages/delete.ts";
+export { pageDeleted } from "./pages/deleted/deleted.ts";
+export { pageRenamed } from "./pages/renamed/renamed.ts";
+export { deletePage, renamePage } from "./pages/commands.ts";
+export type { PageRenamed, Renamed } from "./pages/rename.ts";
+export type { PageDeleted } from "./pages/delete.ts";
+export type { PagesEvent } from "./pages/slice.ts";
+export { blockCreated } from "./blocks/created/created.ts";
+export { blockEdited } from "./blocks/edited/edited.ts";
+export { blockDeleted } from "./blocks/deleted/deleted.ts";
+export { blockIndented } from "./blocks/indented/indented.ts";
+export { blockOutdented } from "./blocks/outdented/outdented.ts";
+export { blockMoved } from "./blocks/moved/moved.ts";
 export {
   addBlock,
   deleteBlock,
