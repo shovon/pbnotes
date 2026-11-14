@@ -10,6 +10,8 @@ import type { Camera, Size } from './camera/camera';
 import { place } from './flat/flat';
 import type { Flat } from './flat/flat';
 import { createGpu } from './gpu';
+import { groups } from './groups/groups';
+import type { Groups } from './groups/groups';
 import type { Colors, Gpu, Rgb } from './gpu';
 import { OPEN_HIGH, drawn, pick } from './pick/pick';
 import type { Keys } from '../opening/opening';
@@ -60,7 +62,18 @@ const CALM_FRAMES = 30;
 const COOLING = 0.996;
 const DRAG_HEAT = 0.3;
 const MAX_LABELS = 300;
+/**
+ * How long the pointer rests on a bubble before the map lights it up and
+ * says what it is: lighting one dims every arrow that is not its own, and a
+ * pointer crossing a dense map would flash the whole view. It is let go as
+ * soon as the pointer leaves it. And how long the lighting takes to fade in
+ * or out, to within a third of the way.
+ */
+const SETTLE_MS = 300;
+const FADE_MS = 90;
 const TAG: Rgb = [0.66, 0.47, 0.93];
+/** What the physics is told of the clusters on a frame that does not step it. */
+const RESTING: Groups = { days: { x: 0, y: 0 }, apart: { x: 0, y: 0 }, share: 0 };
 
 /** Undefined where there is no WebGPU. */
 export async function createScene(options: Options): Promise<Scene | undefined> {
@@ -91,7 +104,16 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
   let colors = readColors(host);
   let background = getComputedStyle(host).backgroundColor;
 
+  /** What the pointer is over now: what a click takes, and what the cursor shows. */
   let hover = -1;
+  /** What it was last seen over, and since when: `lit` follows it once it has stayed `SETTLE_MS`. */
+  let resting = { node: -1, since: 0 };
+  /** The bubble lit up, with its tooltip: -1 for none. */
+  let lit = -1;
+  /** The last bubble lit, kept while it fades out, and how far lit it is. */
+  let shown = -1;
+  let glow = 0;
+  let drawnAt = 0;
   let told = { x: 0, y: 0 };
   let pointer: { x: number; y: number; client: { x: number; y: number } } | null = null;
   let press:
@@ -153,16 +175,36 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
     return { x: event.clientX - box.left, y: event.clientY - box.top, client: { x: event.clientX, y: event.clientY } };
   };
 
-  const rehover = () => {
-    const before = hover;
+  /** What is under the pointer, and what is lit up; true while either is still settling. */
+  const rehover = (now: number): boolean => {
     const hit = flat && pointer && !press ? pick(flat, state, camera, size, pointer.x, pointer.y) : undefined;
     hover = hit && !hit.ground ? hit.node : -1;
     host.style.cursor = press?.kind === 'pan' && press.moved ? 'grabbing' : hover >= 0 ? 'pointer' : 'default';
+
+    // A bubble being dragged is lit at once; anything else once the pointer has rested there.
+    const held = press?.kind === 'node' ? press.node : -1;
+    const wanted = held >= 0 ? held : hover;
+    if (wanted !== resting.node) resting = { node: wanted, since: now };
+    const before = lit;
+    // Let go as soon as the pointer is off it, and lit once the pointer has stayed.
+    if (wanted !== lit) lit = -1;
+    if (wanted >= 0 && (held >= 0 || now - resting.since >= SETTLE_MS)) lit = wanted;
+    if (lit >= 0) shown = lit;
+    const to = lit >= 0 ? 1 : 0;
+    glow += (to - glow) * (1 - Math.exp(-(now - drawnAt) / FADE_MS));
+    if (Math.abs(to - glow) < 0.01) glow = to;
+    if (glow === 0) shown = -1;
+    drawnAt = now;
+
     const at = pointer?.client ?? { x: 0, y: 0 };
-    // Told when it changes, and as the pointer moves over it, never every frame.
-    if (hover === before && (hover < 0 || (at.x === told.x && at.y === told.y))) return;
-    told = at;
-    onHover(flat && hover >= 0 ? targetOf(flat, hover) : null, at);
+    // Told when it changes, and as the pointer moves over it, never every frame. Nothing is
+    // said of a bubble while it is dragged.
+    const say = lit >= 0 && held < 0 ? lit : -1;
+    if (!(lit === before && (say < 0 || (at.x === told.x && at.y === told.y)))) {
+      told = at;
+      onHover(flat && say >= 0 ? targetOf(flat, say) : null, at);
+    }
+    return lit !== wanted || glow !== to;
   };
 
   const onDown = (event: PointerEvent) => {
@@ -282,7 +324,7 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
     let named = 0;
     for (let rank = 0; rank < shown.length && named < MAX_LABELS; rank++) {
       const { node, x, y, r } = shown[rank];
-      if (r < 6 && rank >= 40 && node !== hover) continue;
+      if (r < 6 && rank >= 40 && node !== lit) continue;
       const open = map.childCount[node] > 0 && map.radius[node] * camera.zoom >= OPEN_HIGH;
       const title = map.titles[node];
       const text = title.length > 34 ? `${title.slice(0, 33)}…` : title;
@@ -301,7 +343,7 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
       }
       taken.push(box);
       named++;
-      const color = node === hover ? colors.accent : map.childCount[node] === 0 ? colors.muted : colors.fg;
+      const color = node === lit ? colors.accent : map.childCount[node] === 0 ? colors.muted : colors.fg;
       pen.fillStyle = `rgb(${color.map((it) => Math.round(it * 255)).join(' ')})`;
       pen.strokeText(text, middle, baseline);
       pen.fillText(text, middle, baseline);
@@ -348,20 +390,21 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
       }
     }
 
-    rehover();
+    const now = performance.now();
+    if (rehover(now)) again = true;
 
     let drag = null;
     if (press?.kind === 'node' && press.moved && pointer) {
       const [x, y] = toWorld(camera, size, pointer.x, pointer.y);
       drag = { node: press.node, x: x + press.dx, y: y + press.dy };
     }
-    const now = performance.now();
     const due = Math.max(1, Math.round((now - stepped) / STEP_MS)) * (warm > 0 ? WARM_SPEED : 1);
     const steps = awake ? Math.min(MAX_STEPS, due) : 0;
     stepped = now;
     warm = Math.max(0, warm - steps);
     if (drag) heat = Math.max(heat, DRAG_HEAT);
-    gpu.frame({ camera, size, colors, hover: press?.kind === 'node' ? press.node : hover, drag, steps, heat });
+    const clusters = flat && steps > 0 ? groups(flat, state) : RESTING;
+    gpu.frame({ camera, size, colors, hover: shown, glow, drag, steps, heat, groups: clusters });
     heat *= COOLING ** steps;
     if (heat < 0.005) heat = 0;
     drawLabels();
@@ -387,7 +430,12 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
       flat = next;
       state = place(next, known);
       last = state.slice();
+      // What was lit is another map's node now.
       hover = -1;
+      resting = { node: -1, since: 0 };
+      lit = -1;
+      shown = -1;
+      glow = 0;
       press = null;
       gpu.load(next, state);
       awake = true;

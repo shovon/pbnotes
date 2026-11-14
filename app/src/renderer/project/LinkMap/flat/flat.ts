@@ -4,6 +4,7 @@
  * side, so a node's siblings and its children are each one run of indices.
  * Pure: arrays in, arrays out.
  */
+import { DATE_PATTERN } from '@pbnotes/graph';
 import type { LinkMap, Sub } from '@pbnotes/graph/link-map';
 
 /** A block with nothing under it, in world units. Everything else is sized from it. */
@@ -18,11 +19,26 @@ const RIM = 0.6;
 /** How far apart two linked siblings rest, past their radii. */
 const REST = 8;
 
+/**
+ * Journal days are kept together (an experiment), two ways. Here, each day
+ * is sprung to the next one there is, so the days stay in date order:
+ * `DAY_STRENGTH` is the spring between two days in a row, one across a gap
+ * is weaker by the square root of the gap, and 0 turns it off. And in the
+ * physics (`DAY_PULL` in `shaders.ts`), every day is drawn to the middle of
+ * all of them, and the days are held clear of the other pages (`groups/`).
+ */
+export const DAY_STRENGTH = 6;
+/** How far apart two days in a row rest, past their radii. */
+const DAY_REST = 2;
+const DAY_MS = 86_400_000;
+
 /** A spring between two siblings, or a steady pull of a block toward what it points at. */
 export const SPRING = 0;
 export const PULL = 1;
 
 export const KINDS = { link: 0, ref: 1, tag: 2 } as const;
+/** Not an arrow anyone wrote: the line from one journal day to the next, drawn with no head. */
+export const DAY_LINE = 3;
 
 export type Flat = {
   count: number;
@@ -42,6 +58,8 @@ export type Flat = {
   childStart: Uint32Array;
   childCount: Uint32Array;
   radius: Float32Array;
+  /** 1 for a journal day's page: those are drawn to each other (`shaders.ts`). */
+  day: Uint8Array;
   springStart: Uint32Array;
   springCount: Uint32Array;
   /** Four numbers a spring: the other node, `SPRING` or `PULL`, its strength, its rest length. */
@@ -154,6 +172,23 @@ export function flatten(linkMap: LinkMap): Flat {
   }
   for (const pull of pulls) held[Math.floor(pull / count)].push(pull % count, PULL, 1, 0);
 
+  // The journal's ribbon: each day to the next there is. Titles sort as dates do.
+  const days = linkMap.pages
+    .map((page, node) => ({ node, title: page.title, at: Date.parse(`${page.title}T00:00:00Z`) }))
+    .filter((day) => DATE_PATTERN.test(day.title) && !Number.isNaN(day.at))
+    .sort((a, b) => a.at - b.at);
+  const day = new Uint8Array(count);
+  for (const it of days) day[it.node] = 1;
+  for (let i = 1; DAY_STRENGTH > 0 && i < days.length; i++) {
+    const a = days[i - 1];
+    const b = days[i];
+    const strength = DAY_STRENGTH / Math.sqrt(Math.max(1, Math.round((b.at - a.at) / DAY_MS)));
+    const rest = radius[a.node] + radius[b.node] + DAY_REST;
+    held[a.node].push(b.node, SPRING, strength, rest);
+    held[b.node].push(a.node, SPRING, strength, rest);
+    edges.push(a.node, b.node, DAY_LINE, 0);
+  }
+
   const springStart = new Uint32Array(count);
   const springCount = new Uint32Array(count);
   const springs: number[] = [];
@@ -176,6 +211,7 @@ export function flatten(linkMap: LinkMap): Flat {
     childStart: Uint32Array.from(childStart),
     childCount: Uint32Array.from(childCount),
     radius,
+    day,
     springStart,
     springCount,
     springs: Float32Array.from(springs),
@@ -191,13 +227,21 @@ export function flatten(linkMap: LinkMap): Flat {
 export function place(flat: Flat, kept?: ReadonlyMap<string, readonly [number, number]>): Float32Array {
   const GOLDEN = 2.399963229728653;
   const state = new Float32Array(flat.count * 4);
+  // The journal's days start as a spiral of their own, to the right of the other pages',
+  // so the two clusters (`groups/`) begin apart and the journal is always on the same side.
+  const aside = 9 * Math.sqrt(flat.pages) * 1.5;
+  let days = 0;
   for (let i = 0; i < flat.count; i++) {
     const was = kept?.get(flat.ids[i]);
     const above = flat.parent[i];
     let x: number;
     let y: number;
     if (was) [x, y] = was;
-    else {
+    else if (above < 0 && flat.day[i] === 1) {
+      x = aside + Math.cos(days * GOLDEN) * 5 * Math.sqrt(days);
+      y = Math.sin(days * GOLDEN) * 5 * Math.sqrt(days);
+      days++;
+    } else {
       const nth = i - flat.sibStart[i];
       // Pages spread wide enough to start clear of one another; blocks fill their bubble.
       const reach = above < 0 ? 9 * Math.sqrt(nth) : flat.radius[above] * 0.7 * Math.sqrt((nth + 0.5) / flat.sibCount[i]);

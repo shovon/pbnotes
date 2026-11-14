@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { LinkMap } from '@pbnotes/graph/link-map';
-import { KINDS, PULL, SPRING, flatten, place } from './flat.ts';
+import { DAY_LINE, DAY_STRENGTH, KINDS, PULL, SPRING, flatten, place } from './flat.ts';
 
 /** Mira: m1 (m2 under it), m3. Oslo: o1. Book: nothing. */
 const MAP: LinkMap = {
@@ -86,4 +86,39 @@ test('place: kept places are kept, and a new block starts inside its bubble', ()
   // Nothing starts on top of anything else.
   const at = new Set(Array.from({ length: flat.count }, (_, i) => `${state[i * 4]},${state[i * 4 + 1]}`));
   assert.equal(at.size, flat.count);
+});
+
+test('flatten: each journal day is sprung to the next there is, weaker across a gap', () => {
+  const day = (title: string): LinkMap['pages'][number] => ({ title, blocks: 0, forest: [] });
+  // Listed out of order, with a page among them, as a map may have them.
+  const flat = flatten({
+    pages: [day('2026-11-13'), day('Mira'), day('2026-11-09'), day('2026-11-12'), day('2026-13-45')],
+    edges: [],
+  });
+  const of = (node: number) =>
+    Array.from({ length: flat.springCount[node] }, (_, k) => {
+      const at = (flat.springStart[node] + k) * 4;
+      return [flat.springs[at], flat.springs[at + 1], flat.springs[at + 2]];
+    });
+  // The 9th to the 12th, three days on; the 12th to the 13th, the day after.
+  assert.deepEqual(of(2), [[3, SPRING, Math.fround(DAY_STRENGTH / Math.sqrt(3))]]);
+  assert.deepEqual(of(3), [[2, SPRING, Math.fround(DAY_STRENGTH / Math.sqrt(3))], [0, SPRING, DAY_STRENGTH]]);
+  assert.deepEqual(of(0), [[3, SPRING, DAY_STRENGTH]]);
+  assert.deepEqual([...flat.day], [1, 0, 1, 1, 0]);
+  // And a line is drawn along it, in date order.
+  assert.deepEqual([...flat.edges], [2, 3, DAY_LINE, 0, 3, 0, DAY_LINE, 0]);
+  // A page, and a title that only looks like a date, are left out of it.
+  assert.deepEqual(of(1), []);
+  assert.deepEqual(of(4), []);
+});
+
+test('place: the journal\'s days start together, to the right of the other pages', () => {
+  const page = (title: string): LinkMap['pages'][number] => ({ title, blocks: 0, forest: [] });
+  const flat = flatten({
+    pages: [page('2026-11-12'), page('Mira'), page('2026-11-13'), page('Oslo'), page('Book')],
+    edges: [],
+  });
+  const state = place(flat);
+  const x = (node: number) => state[node * 4];
+  assert.ok(Math.min(x(0), x(2)) > Math.max(x(1), x(3), x(4)));
 });

@@ -9,7 +9,7 @@ import { MIN_BLOCK, MIN_PAGE, OPEN, OPEN_HIGH, OPEN_LOW } from './pick/pick';
 /** A number as WGSL takes a float. */
 const f = (value: number) => value.toFixed(3);
 
-/** As `flat.ts` packs them (`gpu.ts`): 32 bytes a node, 16 a spring. */
+/** As `flat.ts` packs them (`gpu.ts`): 36 bytes a node, 16 a spring. */
 const STRUCTS = /* wgsl */ `
 struct Node {
   parent: i32,
@@ -20,6 +20,8 @@ struct Node {
   springStart: u32,
   springCount: u32,
   radius: f32,
+  /** Bit 0: a journal day's page. */
+  flags: u32,
 }
 `;
 
@@ -28,7 +30,9 @@ struct View {
   center: vec2f,
   size: vec2f,
   zoom: f32,
+  /** The bubble lit up, or -1, and how far lit it is: 0 not at all, 1 fully. */
   hover: i32,
+  glow: f32,
   fg: vec4f,
   muted: vec4f,
   accent: vec4f,
@@ -67,7 +71,7 @@ fn drawn(n: Node) -> f32 {
 export const SIM = /* wgsl */ `
 ${STRUCTS}
 struct Spring { other: u32, kind: u32, strength: f32, rest: f32 }
-struct Sim { count: u32, drag: i32, dragPos: vec2f, heat: f32 }
+struct Sim { count: u32, drag: i32, dragPos: vec2f, heat: f32, share: f32, daysAt: vec2f, apart: vec2f }
 
 @group(0) @binding(0) var<uniform> sim: Sim;
 @group(0) @binding(1) var<storage, read> nodes: array<Node>;
@@ -90,6 +94,11 @@ const LINK = 0.012;
 const PULL = 0.02;
 /** How much of its bubble's own motion a node is carried along by; the rest it catches up on. */
 const INHERIT = 0.7;
+/**
+ * How hard a journal day is drawn to the middle of all the days, as GRAVITY draws the other
+ * pages to the middle of the map: more keeps the days closer together.
+ */
+const DAY_PULL = 0.04;
 
 /** The child of \`i\` the dragged node is, or is under; -1 for none. */
 fn heldUnder(i: u32) -> i32 {
@@ -113,6 +122,7 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
   var v = s.zw;
   let m = n.radius * n.radius;
   let top = n.parent < 0;
+  let day = (n.flags & 1u) != 0u;
   var a = vec2f(0.0);
   // Moved outright, not sped up: what keeps two bubbles from sitting in each other.
   var push = vec2f(0.0);
@@ -141,13 +151,23 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
       let closing = dot(v - before[j].zw, dir);
       if (closing < 0.0) { v -= dir * closing * share; }
     }
-    if (top) {
+    // Pages spread out among their own kind: the days among the days, the rest among the
+    // rest. Where the two clusters sit beside each other is for one spring to say (groups/).
+    if (top && day == ((nodes[j].flags & 1u) != 0u)) {
       a += dir * sim.heat * CHARGE * (other + 1.0) / (max(dist - n.radius - other, 0.0) + 6.0);
     }
   }
 
   if (top) {
-    a -= p * GRAVITY * sim.heat;
+    if (day) {
+      // A journal day is drawn to the middle of all the days, not of the map.
+      a += (sim.daysAt - p) * DAY_PULL * sim.heat;
+      // And the days and the other pages are two clusters, pushed apart as wholes (groups/).
+      a += sim.apart * (1.0 - sim.share) * sim.heat;
+    } else {
+      a -= p * GRAVITY * sim.heat;
+      a -= sim.apart * sim.share * sim.heat;
+    }
   } else {
     let above = nodes[u32(n.parent)];
     let its = before[u32(n.parent)];
@@ -232,7 +252,7 @@ struct Out {
   @builtin(position) position: vec4f,
   @location(0) local: vec2f,
   @location(1) @interpolate(flat) radius: f32,
-  /** How open, how visible, what kind (0 a page, 1 an empty page, 2 a block), whether hovered. */
+  /** How open, how visible, what kind (0 a page, 1 an empty page, 2 a block), how far lit up. */
   @location(2) @interpolate(flat) look: vec4f,
 }
 
@@ -258,7 +278,7 @@ fn vertex(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> O
   out.radius = r;
   var kind = 2.0;
   if (n.parent < 0) { kind = select(0.0, 1.0, n.childCount == 0u); }
-  out.look = vec4f(open, visible, kind, select(0.0, 1.0, i32(ii) == view.hover));
+  out.look = vec4f(open, visible, kind, select(0.0, view.glow, i32(ii) == view.hover));
   return out;
 }
 
@@ -269,17 +289,15 @@ fn fragment(in: Out) -> @location(0) vec4f {
   let disc = 1.0 - smoothstep(r - 0.75, r + 0.75, d);
   if (disc <= 0.0) { discard; }
   let open = in.look.x;
-  let hovered = in.look.w > 0.5;
   var color = view.fg.rgb;
   var solid = 0.92;
   if (in.look.z > 1.5) { solid = 0.5; }
   if (in.look.z > 0.5 && in.look.z < 1.5) { color = view.muted.rgb; solid = 0.75; }
   let ring = smoothstep(r - 2.25, r - 1.0, d);
   var alpha = max(mix(solid, 0.045, open), ring * mix(0.0, 0.45, open));
-  if (hovered) {
-    color = view.accent.rgb;
-    alpha = max(mix(1.0, 0.1, open), ring);
-  }
+  // Lit up by degrees, so a pointer crossing the map does not flash it.
+  color = mix(color, view.accent.rgb, in.look.w);
+  alpha = mix(alpha, max(mix(1.0, 0.1, open), ring), in.look.w);
   alpha *= disc * in.look.y;
   return vec4f(color * alpha, alpha);
 }
@@ -340,7 +358,8 @@ fn vertex(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> O
   if (span < 2.0) { return out; }
   let dir = between / apart;
   let side = vec2f(-dir.y, dir.x);
-  let head = min(7.0, span * 0.45);
+  // The line between two journal days points nowhere.
+  let head = select(min(7.0, span * 0.45), 0.0, e.kind == 3u);
   let half = max(head * 0.5, 1.5) + 1.0;
   var corners = CORNERS;
   let corner = corners[vi];
@@ -353,8 +372,11 @@ fn vertex(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> O
   var alpha = 0.17;
   if (e.kind == 1u) { color = view.accent; alpha = 0.4; }
   if (e.kind == 2u) { color = view.tag; alpha = 0.5; }
+  if (e.kind == 3u) { color = view.muted; alpha = 0.7; }
   if (view.hover >= 0) {
-    if (i32(a) == view.hover || i32(b) == view.hover) { alpha = 0.95; } else { alpha *= 0.35; }
+    // The lit bubble's arrows come forward and the rest fall back, by degrees.
+    let lit = i32(a) == view.hover || i32(b) == view.hover;
+    alpha = mix(alpha, select(alpha * 0.35, 0.95, lit), view.glow);
   }
   out.color = vec4f(color.rgb, alpha);
   return out;

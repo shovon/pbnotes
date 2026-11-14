@@ -7,6 +7,7 @@
  */
 import type { Camera, Size } from './camera/camera';
 import type { Flat } from './flat/flat';
+import type { Groups } from './groups/groups';
 import { EDGES, NODES, SIM } from './shaders';
 
 export type Rgb = readonly [number, number, number];
@@ -16,14 +17,17 @@ export type Frame = {
   camera: Camera;
   size: Size;
   colors: Colors;
-  /** The node under the pointer, or -1. */
+  /** The node lit up, or -1, and how far lit it is, 0 to 1. */
   hover: number;
+  glow: number;
   /** The node being dragged, and where in the world the pointer has it. */
   drag: { node: number; x: number; y: number } | null;
   /** How many times to step the physics before drawing. */
   steps: number;
   /** How strongly the map lays itself out: 1 fresh, cooling to 0 at rest. */
   heat: number;
+  /** Where the journal's days are drawn to, and how they and the other pages are pushed apart. */
+  groups: Groups;
 };
 
 export type Gpu = {
@@ -102,7 +106,7 @@ export async function createGpu(
     throw new Error(refused.message);
   }
 
-  const simUniform = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const simUniform = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   const viewUniform = device.createBuffer({ size: 96, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 
   let loaded: Loaded | null = null;
@@ -127,18 +131,19 @@ export async function createGpu(
       unload();
       const { count } = flat;
 
-      const packed = new ArrayBuffer(count * 32);
+      const packed = new ArrayBuffer(count * 36);
       const ints = new Int32Array(packed);
       const floats = new Float32Array(packed);
       for (let i = 0; i < count; i++) {
-        ints[i * 8] = flat.parent[i];
-        ints[i * 8 + 1] = flat.sibStart[i];
-        ints[i * 8 + 2] = flat.sibCount[i];
-        ints[i * 8 + 3] = flat.childStart[i];
-        ints[i * 8 + 4] = flat.childCount[i];
-        ints[i * 8 + 5] = flat.springStart[i];
-        ints[i * 8 + 6] = flat.springCount[i];
-        floats[i * 8 + 7] = flat.radius[i];
+        ints[i * 9] = flat.parent[i];
+        ints[i * 9 + 1] = flat.sibStart[i];
+        ints[i * 9 + 2] = flat.sibCount[i];
+        ints[i * 9 + 3] = flat.childStart[i];
+        ints[i * 9 + 4] = flat.childCount[i];
+        ints[i * 9 + 5] = flat.springStart[i];
+        ints[i * 9 + 6] = flat.springCount[i];
+        floats[i * 9 + 7] = flat.radius[i];
+        ints[i * 9 + 8] = flat.day[i];
       }
       // The other node and the kind are whole numbers on the GPU.
       const springs = new ArrayBuffer(flat.springs.byteLength);
@@ -189,7 +194,7 @@ export async function createGpu(
       };
     },
 
-    frame({ camera, size, colors, hover, drag, steps, heat }) {
+    frame({ camera, size, colors, hover, glow, drag, steps, heat, groups }) {
       if (destroyed) return;
       const now = loaded;
 
@@ -197,6 +202,7 @@ export async function createGpu(
       const viewFloats = new Float32Array(view);
       viewFloats.set([camera.x, camera.y, size.width, size.height, camera.zoom]);
       new Int32Array(view)[5] = hover;
+      viewFloats[6] = glow;
       viewFloats.set([...colors.fg, 1], 8);
       viewFloats.set([...colors.muted, 1], 12);
       viewFloats.set([...colors.accent, 1], 16);
@@ -206,10 +212,13 @@ export async function createGpu(
       const encoder = device.createCommandEncoder();
       let reading: GPUBuffer | undefined;
       if (now && now.count > 0 && steps > 0) {
-        const uniform = new ArrayBuffer(32);
+        const uniform = new ArrayBuffer(48);
         new Uint32Array(uniform)[0] = now.count;
         new Int32Array(uniform)[1] = drag?.node ?? -1;
-        new Float32Array(uniform).set([drag?.x ?? 0, drag?.y ?? 0, heat], 2);
+        new Float32Array(uniform).set(
+          [drag?.x ?? 0, drag?.y ?? 0, heat, groups.share, groups.days.x, groups.days.y, groups.apart.x, groups.apart.y],
+          2,
+        );
         device.queue.writeBuffer(simUniform, 0, uniform);
 
         const pass = encoder.beginComputePass();
