@@ -58,11 +58,26 @@ function registry(
   };
 }
 
-/** What is open over `projects`, reached through its own disk. */
+/**
+ * What is open over `projects`, reached through its own disk, with a ledger
+ * that opens for every project but those in `refused`, which it refuses by
+ * name. `loaded` is every project it was asked to open.
+ */
 const openOver = (
   projects: ReturnType<typeof registry>,
   onMoved: () => void,
-) => createOpenProject(projects, projects.probe, onMoved);
+  refused: string[] = [],
+  loaded: string[] = [],
+) =>
+  createOpenProject(
+    projects,
+    projects.probe,
+    async (project) => {
+      loaded.push(project.id);
+      if (refused.includes(project.id)) throw new Error(`${project.id} is not a ledger`);
+    },
+    onMoved,
+  );
 
 /** How many times the open project changed. */
 function counter(): { count: number; onMoved: () => void } {
@@ -84,84 +99,118 @@ test("with nothing tracked, nothing is open", async () => {
   await assert.rejects(open.requireProject(), /No project is open/);
 });
 
-test("with nothing opened this session, the most recently opened one is", () => {
-  const projects = registry(["a", "b", "c"]);
+test("with nothing opened this session, nothing is open, however recently one was", async () => {
+  const projects = registry(["a", "b"]);
   projects.touchProject("a");
-  projects.touchProject("c");
-  projects.touchProject("b");
   const open = openOver(projects, unwatched);
-  assert.equal(open.currentProject()?.id, "b");
+  assert.equal(open.currentProject(), null);
+  await assert.rejects(open.requireProject(), /No project is open/);
 });
 
-test("opening a project makes it current and records when", () => {
+test("opening a project opens its ledger, makes it current and records when", async () => {
   const projects = registry(["a", "b"]);
-  const open = openOver(projects, unwatched);
-  open.open("a");
+  const loaded: string[] = [];
+  const open = openOver(projects, unwatched, [], loaded);
+  await open.open("a");
   assert.equal(open.currentProject()?.id, "a");
+  assert.deepEqual(loaded, ["a"]);
   assert.notEqual(projects.getProject("a")?.lastOpenedAt, null);
 });
 
-test("opening an id the registry does not track throws and moves nothing", () => {
+test("opening an id the registry does not track rejects and moves nothing", async () => {
   const moved = counter();
   const open = openOver(registry(["a"]), moved.onMoved);
-  open.open("a");
+  await open.open("a");
   moved.count = 0;
-  assert.throws(() => open.open("nope"), /No such project/);
+  await assert.rejects(open.open("nope"), /No such project/);
   assert.equal(open.currentProject()?.id, "a");
   assert.equal(moved.count, 0);
 });
 
-test("the open project changing is told once, and reopening it is not a change", () => {
+test("opening a project whose folder can't be reached rejects by name, and never opens its ledger", async () => {
+  const projects = registry(["a", "b", "c"], { b: "missing", c: "unknown" });
+  const loaded: string[] = [];
   const moved = counter();
-  const open = openOver(registry(["a", "b"]), moved.onMoved);
-  open.open("a");
-  // Nothing was open but the fallback, and with nothing opened before that is
-  // whichever the registry lists first; `a` may already be it.
+  const open = openOver(projects, moved.onMoved, [], loaded);
+  await open.open("a");
   moved.count = 0;
-  open.open("b");
-  assert.equal(moved.count, 1);
-  open.open("b");
-  assert.equal(moved.count, 1);
+  await assert.rejects(open.open("b"), /"b" is not reachable right now/);
+  await assert.rejects(open.open("c"), /"c" is not reachable right now/);
+  assert.equal(open.currentProject()?.id, "a");
+  assert.deepEqual(loaded, ["a"]);
+  assert.equal(moved.count, 0);
 });
 
-test("removing the open project moves to the next most recent", () => {
+test("opening a project whose ledger is refused rejects with why, and leaves the open one, unrecorded", async () => {
+  const projects = registry(["a", "b"]);
+  const moved = counter();
+  const open = openOver(projects, moved.onMoved, ["b"]);
+  await open.open("a");
+  moved.count = 0;
+  await assert.rejects(open.open("b"), /b is not a ledger/);
+  assert.equal(open.currentProject()?.id, "a");
+  assert.equal(projects.getProject("b")?.lastOpenedAt, null);
+  assert.equal(moved.count, 0);
+});
+
+test("of two opens in flight, the one asked for last wins", async () => {
+  const open = openOver(registry(["a", "b"]), unwatched);
+  const first = open.open("a");
+  const second = open.open("b");
+  await Promise.all([first, second]);
+  assert.equal(open.currentProject()?.id, "b");
+});
+
+test("the open project changing is told once, and reopening it is not a change", async () => {
+  const moved = counter();
+  const open = openOver(registry(["a", "b"]), moved.onMoved);
+  await open.open("a");
+  assert.equal(moved.count, 1);
+  await open.open("b");
+  assert.equal(moved.count, 2);
+  await open.open("b");
+  assert.equal(moved.count, 2);
+});
+
+test("removing the open project leaves none open", async () => {
   const moved = counter();
   const open = openOver(registry(["a", "b", "c"]), moved.onMoved);
-  open.open("a");
-  open.open("b");
+  await open.open("a");
+  await open.open("b");
   moved.count = 0;
   open.remove("b");
-  assert.equal(open.currentProject()?.id, "a");
+  assert.equal(open.currentProject(), null);
   assert.equal(moved.count, 1);
 });
 
-test("removing a project that is not open moves nothing", () => {
+test("removing a project that is not open moves nothing", async () => {
   const moved = counter();
   const open = openOver(registry(["a", "b"]), moved.onMoved);
-  open.open("a");
+  await open.open("a");
   moved.count = 0;
   open.remove("b");
   assert.equal(open.currentProject()?.id, "a");
   assert.equal(moved.count, 0);
 });
 
-test("a project that cannot be reached is refused, by name", async () => {
-  const projects = registry(["a", "b"], { a: "missing", b: "unknown" });
+test("an open project that stops being reachable is refused, by name", async () => {
+  const projects = registry(["a"]);
   const open = openOver(projects, unwatched);
-  open.open("a");
+  await open.open("a");
+  projects.reachable.a = "missing";
   await assert.rejects(open.requireProject(), /"a" is not reachable right now/);
-  open.open("b");
-  await assert.rejects(open.requireProject(), /"b" is not reachable right now/);
-  projects.reachable.b = "available";
-  assert.equal((await open.requireProject()).id, "b");
+  projects.reachable.a = "unknown";
+  await assert.rejects(open.requireProject(), /"a" is not reachable right now/);
+  projects.reachable.a = "available";
+  assert.equal((await open.requireProject()).id, "a");
 });
 
 test("requireProject settles which project the moment it is called", async () => {
   const open = openOver(registry(["a", "b"]), unwatched);
-  open.open("a");
+  await open.open("a");
   // A write sent just before the project changed lands where it was typed.
   const pending = open.requireProject();
-  open.open("b");
+  await open.open("b");
   assert.equal((await pending).id, "a");
   assert.equal((await open.requireProject()).id, "b");
 });
@@ -169,7 +218,8 @@ test("requireProject settles which project the moment it is called", async () =>
 test("requireProject asks the disk about the open project's own folder, and only that", async () => {
   const projects = registry(["a", "b"]);
   const open = openOver(projects, unwatched);
-  open.open("b");
+  await open.open("b");
+  projects.probed.length = 0;
   await open.requireProject();
   assert.deepEqual(projects.probed, ["/projects/b"]);
 

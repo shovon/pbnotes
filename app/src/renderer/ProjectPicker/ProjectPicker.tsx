@@ -12,6 +12,8 @@ type Props = {
   menu: (at: { x: number; y: number }, openId: string) => Promise<PickerMenuPick | null>;
   onSelect: (id: string) => void;
   onAdd: () => void;
+  /** Manage projects… (#393). */
+  onManage: () => void;
 };
 
 /**
@@ -20,7 +22,7 @@ type Props = {
  * keyboard behaviour and type-ahead for free, and it stays right for forty
  * projects as well as for two. Main draws it, with each project's directory
  * under its name where the platform can, and after a dash where it can't,
- * and Open project… below a separator.
+ * and Open project… and Manage projects… below a separator.
  *
  * As wide as the room it is given, whatever the project is called: `App`
  * gives it up to the sidebar's edge, so it does not jump in width from one
@@ -59,7 +61,7 @@ function Whole({ name }: { name: string }) {
   );
 }
 
-export default function ProjectPicker({ projects, projectId, menu, onSelect, onAdd }: Props) {
+export default function ProjectPicker({ projects, projectId, menu, onSelect, onAdd, onManage }: Props) {
   const name = projects.find((it) => it.id === projectId)?.name ?? '';
   const button = useRef<HTMLButtonElement>(null);
   // While the menu is up, a second click opens nothing: main is still
@@ -91,6 +93,7 @@ export default function ProjectPicker({ projects, projectId, menu, onSelect, onA
       .then((pick) => {
         if (pick?.kind === 'open' && pick.id !== projectId) onSelect(pick.id);
         else if (pick?.kind === 'add') onAdd();
+        else if (pick?.kind === 'manage') onManage();
       })
       .finally(() => {
         showing.current = false;

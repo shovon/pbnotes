@@ -23,8 +23,19 @@ export type Registry = {
 export type Probe = (directory: string) => Promise<Availability>;
 
 /**
- * `probe` is asked whether the open project's directory is there before
- * anything is handed out to write to it.
+ * Opens a project's ledger, or rejects with why it can't be: a folder the
+ * ledger refuses, or a log damaged past what it reads. What it resolves with
+ * is not looked at.
+ */
+export type Load = (project: Project) => Promise<unknown>;
+
+/**
+ * `probe` is asked whether a project's directory is there before its ledger is
+ * opened, and before anything is handed out to write to it.
+ *
+ * `load` opens a project's ledger before it is made the open one (#393), so a
+ * project that can't be opened says so to whoever asked to open it, and
+ * leaves the one open before it as it was.
  *
  * `onMoved` is told that the open project is now a different one, and not
  * which: whoever wires this to what a project contains already knows how to
@@ -33,31 +44,26 @@ export type Probe = (directory: string) => Promise<Availability>;
 export function createOpenProject(
   registry: Registry,
   probe: Probe,
+  load: Load,
   onMoved: () => void,
 ) {
   /**
-   * Only the session's choice is kept here. Null falls through to whichever was
-   * opened most recently — on the assumption that someone who was working in a
-   * project on Friday is still working in it on Monday — and so does a project
-   * removed from under the view. `last_opened_at` is the only record of that,
-   * so it doubles as the restored session; nothing separate is persisted.
+   * Only the session's choice is kept here. Null is no project open: the app
+   * starts with none, and is back to none when the open one is removed. The
+   * window opens the one opened most recently (`lastOpenedAt`) itself, through
+   * `open`, so a project that can't be opened is told the same way at launch
+   * as any other time (#393), rather than half-opened by default.
    *
    * ponytail: one per call, and the app makes one, which is right for the one
    * window it creates. Key it by `webContents` if a second window ever shows
    * another project.
    */
   let openId: string | null = null;
+  /** How many opens were asked for: only the last one asked takes effect. */
+  let asked = 0;
 
   function currentProject(): Project | null {
-    return (
-      (openId && registry.getProject(openId)) ||
-      registry
-        .listProjects()
-        .sort((a, b) =>
-          (b.lastOpenedAt ?? "").localeCompare(a.lastOpenedAt ?? ""),
-        )[0] ||
-      null
-    );
+    return (openId && registry.getProject(openId)) || null;
   }
 
   /**
@@ -96,19 +102,31 @@ export function createOpenProject(
   }
 
   /**
-   * Makes `id` the open project, and records when for ordering the list. Kept
-   * only if it is one the registry tracks: `currentProject` would fall through
-   * an unknown id anyway, and silently showing some other project is worse
-   * than saying so.
+   * Makes `id` the open project, once its folder is there and its ledger
+   * opens, and records when for ordering the list. Rejects, and leaves the
+   * open project as it was, for an id the registry does not track, a folder
+   * that can't be reached, and a ledger that won't open. A second open asked
+   * for before this one settles wins: this one then changes nothing.
+   *
+   * The probe comes first for the reason `requireProject` gives: opening a
+   * ledger on a folder that isn't there would create it.
    */
-  function open(id: string): void {
+  async function open(id: string): Promise<void> {
+    const turn = ++asked;
+    const project = registry.getProject(id);
+    if (!project) throw new Error("No such project");
+    if ((await probe(project.path)) !== "available") {
+      throw new Error(`"${project.name}" is not reachable right now.`);
+    }
+    await load(project);
+    if (turn !== asked) return;
     moving(() => {
       if (!registry.touchProject(id)) throw new Error("No such project");
       openId = id;
     });
   }
 
-  /** Stops tracking `id`. If it was open, the next most recent one is. */
+  /** Stops tracking `id`. If it was open, none is. */
   function remove(id: string): void {
     moving(() => registry.removeProject(id));
   }

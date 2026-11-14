@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import type { BenchApi } from '../../shared/bench';
 import type { SidebarApi } from '../../shared/sidebar';
 import type { TabItem } from '../../shared/window';
-import type { Project, ProjectsApi } from '../../shared/projects';
+import type { Availability, Project, ProjectsApi } from '../../shared/projects';
 import { sidebarKept } from '../kept/kept';
 import ProjectPicker from '../ProjectPicker/ProjectPicker';
 import ProjectView from '../project/ProjectView';
 import type { ProjectViewGraph } from '../project/ProjectView';
 import Welcome from '../Welcome/Welcome';
+import ManageProjects from '../ManageProjects/ManageProjects';
+import { latest } from './latest/latest';
 import MenuButton from './MenuButton/MenuButton';
 import type { Act } from '../ui';
 import { humanize } from '../humanize/humanize';
@@ -18,7 +20,10 @@ import { humanize } from '../humanize/humanize';
  * project that is open.
  */
 type Props = {
-  projects: Pick<ProjectsApi, 'list' | 'current' | 'open' | 'pick' | 'pickerMenu'>;
+  projects: Pick<
+    ProjectsApi,
+    'list' | 'current' | 'open' | 'pick' | 'pickerMenu' | 'availability' | 'directories'
+  >;
   /** Only what the project that is open calls. */
   graph: ProjectViewGraph;
   /**
@@ -70,6 +75,16 @@ export default function App({
    * to honour, main is where it lands.
    */
   const [project, setProject] = useState<Project | null>(null);
+  /** Whether Manage projects… was picked (#393). With no project open it shows regardless. */
+  const [managing, setManaging] = useState(false);
+  /**
+   * Why each project that failed to open this session didn't, by id, for the
+   * Manage projects modal to say. Cleared for a project once it opens.
+   */
+  const [failures, setFailures] = useState<Record<string, string>>({});
+  /** What the modal was told of each project's folder, and where each is, while it shows. */
+  const [availability, setAvailability] = useState<Record<string, Availability>>({});
+  const [directories, setDirectories] = useState<Record<string, string>>({});
 
   /**
    * With no project open there are no tabs (#304): Close Tab closes the
@@ -87,34 +102,67 @@ export default function App({
   }, [project, onTab, closeWindow]);
 
   /**
-   * The view renders from the database alone: nothing here waits on the disk,
-   * so a sleeping network share cannot hold up the first paint. `loading`
-   * clears on both paths — a failed list must not leave the app showing
-   * "Loading…" with no way out.
-   *
-   * Whether each project can be reached (`projects.availability`) is not read
-   * here: nothing on screen shows it yet. It comes back with the code that
-   * draws it.
+   * The list renders from the database alone: nothing here waits on the disk,
+   * so a sleeping network share cannot hold up the first paint. Whether each
+   * project can be reached (`projects.availability`) is read only while the
+   * Manage projects modal shows it.
    */
-  const refresh = useCallback(async (): Promise<Project[]> => {
+  const refresh = useCallback(async (): Promise<{ projects: Project[]; current: Project | null }> => {
     try {
       // Together, so a rename shows through in the picker and the page at
       // once, and a project removed from under the view takes it along.
       const [next, current] = await Promise.all([api.list(), api.current()]);
       setProjects(next);
       setProject(current);
-      setLoading(false);
-      return next;
+      return { projects: next, current };
     } catch (error) {
       setNotice(humanize(error));
-      setLoading(false);
-      return [];
+      return { projects: [], current: null };
     }
   }, []);
 
+  /**
+   * Opens `id`, and keeps why it couldn't be for the Manage projects modal
+   * (#393), rejecting all the same so the caller can say so too. Opening one
+   * closes the modal.
+   */
+  const tryOpen = useCallback(async (id: string): Promise<void> => {
+    try {
+      await api.open(id);
+    } catch (error) {
+      setFailures((was) => ({ ...was, [id]: humanize(error) }));
+      throw error;
+    }
+    setFailures((was) => {
+      if (!(id in was)) return was;
+      const rest = { ...was };
+      delete rest[id];
+      return rest;
+    });
+    setManaging(false);
+  }, []);
+
+  /**
+   * Main starts with no project open (#393): the window opens the one opened
+   * most recently, as a session restored. One that can't be opened leaves
+   * none open, and the Manage projects modal says why. `loading` holds until
+   * that is settled, so the modal doesn't flash up before the project does,
+   * and clears on every path: a failed list must not leave the app showing
+   * nothing with no way out.
+   */
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void (async () => {
+      const { projects: next, current } = await refresh();
+      const last = current ? undefined : latest(next);
+      if (last) {
+        await tryOpen(last.id).then(
+          () => refresh(),
+          (): void => undefined,
+        );
+      }
+      setLoading(false);
+    })();
+  }, [refresh, tryOpen]);
 
   /**
    * Every button in every view reaches main, and every one of those calls can
@@ -163,10 +211,51 @@ export default function App({
     return () => next.off();
   }, [projectId]);
 
+  /** From the picker and from adding: a failure is said in the app's notice, and kept for the modal. */
   const openProject = useCallback(
-    (id: string) => act(() => api.open(id)),
-    [act],
+    (id: string) => act(() => tryOpen(id)),
+    [act, tryOpen],
   );
+
+  /** From the modal, whose row says what went wrong: the notice is left be. */
+  const openFromModal = useCallback(
+    (id: string): void =>
+      void tryOpen(id).then(
+        () => refresh(),
+        (): void => undefined,
+      ),
+    [tryOpen, refresh],
+  );
+
+  /**
+   * The Manage projects modal (#393) shows when it was picked, and in place
+   * of `Welcome` whenever projects are tracked but none is open.
+   */
+  const showingModal = !loading && projects.length > 0 && (managing || !project);
+  const ids = projects.map((it) => it.id).join('\n');
+  // Read each time the modal shows, and dropped when it goes, so what it says
+  // of a folder is never left over from the last time it showed. The paths
+  // answer at once; the folders may take a moment each.
+  useEffect(() => {
+    if (!showingModal) return;
+    let live = true;
+    void api.directories().then(
+      (answer) => {
+        if (live) setDirectories(answer);
+      },
+      (): void => undefined,
+    );
+    void api.availability(ids.split('\n')).then(
+      (answer) => {
+        if (live) setAvailability(answer);
+      },
+      (): void => undefined,
+    );
+    return () => {
+      live = false;
+      setAvailability({});
+    };
+  }, [showingModal, ids]);
 
   /**
    * Adding opens what was added: the only reason to pick a directory is to
@@ -258,6 +347,7 @@ export default function App({
               menu={api.pickerMenu}
               onSelect={openProject}
               onAdd={addProjects}
+              onManage={() => setManaging(true)}
             />
           )}
         </div>
@@ -305,10 +395,24 @@ export default function App({
               />
             )
           ) : (
-            !loading && <Welcome onAdd={addProjects} />
+            !loading && projects.length === 0 && <Welcome onAdd={addProjects} />
           )}
         </main>
       </div>
+
+      {showingModal && (
+        <ManageProjects
+          projects={projects}
+          openId={project?.id ?? null}
+          directories={directories}
+          availability={availability}
+          failures={failures}
+          notice={notice}
+          onOpen={openFromModal}
+          onAdd={addProjects}
+          onClose={project ? () => setManaging(false) : undefined}
+        />
+      )}
     </>
   );
 }

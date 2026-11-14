@@ -53,6 +53,11 @@ export const PROJECT_CHANNELS = {
   current: 'projects:current',
   relocate: 'projects:relocate',
   availability: 'projects:availability',
+  /**
+   * Renderer to main: the directory each project is in, as the picker's menu
+   * shows it, with the home directory as `~` (#393).
+   */
+  directories: 'projects:directories',
   reveal: 'projects:reveal',
   /**
    * Renderer to main: open the project picker's menu at a point in the
@@ -63,10 +68,10 @@ export const PROJECT_CHANNELS = {
 } as const;
 
 /**
- * What the project picker's menu answers with (#373): a project to open, or
- * Open project…, which asks for a directory.
+ * What the project picker's menu answers with (#373): a project to open,
+ * Open project…, which asks for a directory, or Manage projects… (#393).
  */
-export type PickerMenuPick = { kind: 'open'; id: string } | { kind: 'add' };
+export type PickerMenuPick = { kind: 'open'; id: string } | { kind: 'add' } | { kind: 'manage' };
 
 /** The surface exposed on `window.pbnotes.projects` by the preload bridge. */
 export type ProjectsApi = {
@@ -80,17 +85,21 @@ export type ProjectsApi = {
   /**
    * Makes this the project main has open, and records when, for ordering the
    * list. The one call that names which project the graph is about: every
-   * `graph` call after it is about this one.
+   * `graph` call after it is about this one. Opens its ledger first, and
+   * rejects with why, the open project left as it was, when its folder can't
+   * be reached or its ledger won't open (#393).
    */
   open(id: string): Promise<void>;
   /**
-   * The project main has open: the last one opened this session, else the
-   * one opened most recently before it. Null with nothing tracked.
+   * The project main has open: the last one opened this session. Null until
+   * one is, and once the open one is removed.
    */
   current(): Promise<Project | null>;
   /** Points an existing project at a new directory, preserving its id. */
   relocate(id: string): Promise<Project | null>;
   availability(ids: string[]): Promise<Record<string, Availability>>;
+  /** Each tracked project's directory, keyed by id, with home as `~`. */
+  directories(): Promise<Record<string, string>>;
   reveal(id: string): Promise<void>;
   /**
    * Opens the project picker's menu with its top-left corner at `at`, in
