@@ -39,6 +39,7 @@ import {
 import { registerProjectIpc } from "./features/projects/projects-ipc";
 import { pickerLook } from "./features/projects/picker-menu/picker-menu";
 import { createOpenProject } from "./features/projects/open-project/open-project";
+import type { Load } from "./features/projects/open-project/open-project";
 import { createInFlight } from "./in-flight";
 import { createLedgers } from "./ledgers";
 import {
@@ -260,7 +261,13 @@ app.on("ready", () => {
   // trail is each window's, and `App` remounts the project view when the
   // project changes. A feature that holds something gets a line here. `graph`
   // is made below; this only runs once the app is up.
-  const projects = createOpenProject(store, disk.probe, () => {
+  // A project's ledger is opened before it is made the open one (#393), so a
+  // folder the ledger refuses says so to the window that asked, and the
+  // project open before it stays open. Tracked like any call that reaches a
+  // ledger, so a change of project made meanwhile doesn't close it under the
+  // open.
+  const load: Load = (project) => inFlight.track(ledgers.graphOf(project));
+  const projects = createOpenProject(store, disk.probe, load, () => {
     bench.release();
     graph.forget();
     void inFlight

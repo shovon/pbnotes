@@ -1,7 +1,8 @@
 /**
  * What the project picker's menu lists (#373), worked out without drawing
  * it: one row per project with the directory it lives in, a separator, then
- * Open project…. `projects-ipc.ts` turns these rows into a native menu.
+ * Open project… and Manage projects… (#393). `projects-ipc.ts` turns these
+ * rows into a native menu.
  *
  * Free of `electron` and `node:` imports, so it runs under `node --test`.
  * Where the home directory is, and how the platform's menus look, are
@@ -21,7 +22,8 @@ export type PickerRow =
       mark: PickerLook["mark"];
     }
   | { kind: "separator" }
-  | { kind: "add"; label: string };
+  | { kind: "add"; label: string }
+  | { kind: "manage"; label: string };
 
 /** How the menu looks on this platform: `pickerLook`. */
 export type PickerLook = {
@@ -106,5 +108,10 @@ export function pickerRows(
         return { ...row, label: project.name };
     }
   });
-  return [...rows, { kind: "separator" }, { kind: "add", label: "Open project…" }];
+  return [
+    ...rows,
+    { kind: "separator" },
+    { kind: "add", label: "Open project…" },
+    { kind: "manage", label: "Manage projects…" },
+  ];
 }
