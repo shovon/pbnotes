@@ -15,6 +15,7 @@
  */
 
 import type { HeldAlias, Inert, Marker, Page, PageListing, PageMatch, Property } from '@pbnotes/graph';
+import type { LinkMap } from '@pbnotes/graph/link-map';
 import type { LogStatus } from './log';
 
 /**
@@ -142,6 +143,12 @@ export type PageList = {
 };
 
 /**
+ * The link map (#183), for the graph view, and the fold version it was read
+ * at. Throwaway, with `@pbnotes/graph/link-map`.
+ */
+export type LinkMapReply = LinkMap & { version: number };
+
+/**
  * One condition a block has to meet to show in a filtered view: the first
  * sketch of block filters (#387). A tagged union, so the next kinds of
  * condition (a page, a tag, a link, a range of dates) slot in beside it.
@@ -208,6 +215,8 @@ export const GRAPH_CHANNELS = {
   aliasing: 'graph:aliasing',
   find: 'graph:find',
   pages: 'graph:pages',
+  linkMap: 'graph:link-map',
+  blockPreviews: 'graph:block-previews',
   tasks: 'graph:tasks',
   filterMenu: 'graph:filter-menu',
   command: 'graph:command',
@@ -301,6 +310,10 @@ export type GraphApi = {
    * many blocks link to it and when it last changed (#200).
    */
   pages(): Promise<PageList>;
+  /** Every page, its outline and every arrow between them (#183), for the graph view. */
+  linkMap(): Promise<LinkMapReply>;
+  /** What each block in `ids` says, for a hover on the graph view: null for one the project lacks. */
+  blockPreviews(ids: string[]): Promise<[string, string | null][]>;
   /**
    * Every task that meets `filter` (#387), its pages loaded `through` a
    * title (`TaskView.list`), or just the first chunk without one.

@@ -8,13 +8,15 @@ import type { ProjectViewGraph } from '../ProjectView';
 import { Previews } from '../Block/Block';
 import PageView from '../PageView/PageView';
 import { imageTarget, placeNew } from '../placement/placement';
-import { ALL_PAGES, TASKS, go, placeOf, rezoom } from '../trail/trail';
+import { ALL_PAGES, LINK_MAP, TASKS, go, placeOf, rezoom } from '../trail/trail';
 import type { Stop } from '../trail/trail';
 import { samePlace } from '../held/held';
 import type { Held } from '../held/held';
 import { createFetcher } from '../fetcher/fetcher';
 import AllPages from '../AllPages/AllPages';
 import Tasks from '../Tasks/Tasks';
+import LinkMap from '../LinkMap/LinkMap';
+import type { Kept as LinkMapKept } from '../LinkMap/LinkMap';
 import type { Filter } from '../../../shared/graph';
 import type { Sort } from '../AllPages/sort/sort';
 import PageMenu from '../PageMenu/PageMenu';
@@ -161,6 +163,10 @@ function Tab({
   const browsing = trail.at(-1) === ALL_PAGES;
   /** On every task in the project (#387): on no page, as the list is. */
   const tasking = trail.at(-1) === TASKS;
+  /** On the graph view (#183): on no page, and over the whole tab. */
+  const mapping = trail.at(-1) === LINK_MAP;
+  /** The graph view's camera and where its bubbles sit, while this tab is drawn: back to it finds it as it was. */
+  const linkMapKept = useRef<LinkMapKept | null>(null);
   /**
    * What is drawn, and the place it was asked for. Null until main first
    * answers. It can be a step behind the trail while the next place is being
@@ -356,12 +362,12 @@ function Tab({
   const firstDrawn = useRef<string | null>(null);
   const navigated = useRef(false);
   useEffect(() => {
-    const key = JSON.stringify([asked, zoom ?? null, browsing, tasking]);
+    const key = JSON.stringify([asked, zoom ?? null, browsing, tasking, mapping]);
     firstDrawn.current ??= key;
     if (key !== firstDrawn.current) navigated.current = true;
     const back = !navigated.current && resume?.held && samePlace(resume.held.place, place);
     window.scrollTo(0, back ? resume.scroll : 0);
-  }, [asked, zoom, browsing, tasking]);
+  }, [asked, zoom, browsing, tasking, mapping]);
 
   /**
    * Makes a block the root of the view: what its dot does. Looked up in main
@@ -1188,6 +1194,18 @@ function Tab({
 
   return (
     <>
+      {mapping && (
+        // Outside the wrapper: a drag on it pans or moves a bubble, and is
+        // never a sweep across blocks. The journal is still asked for
+        // underneath, as it is under the list of every page.
+        <LinkMap
+          graph={graph}
+          kept={linkMapKept}
+          onOpen={(page, keys) => onOpen(page, whereFrom(keys, mac))}
+          onBlock={(id, keys) => onBlock(id, whereFrom(keys, mac))}
+          onError={(error) => act(() => Promise.reject(error))}
+        />
+      )}
       <div
         ref={wrapper}
         onClickCapture={follow}
@@ -1227,7 +1245,7 @@ function Tab({
           />
         )}
 
-        {!browsing && !tasking && own && (
+        {!browsing && !tasking && !mapping && own && (
           <PageMenu
             title={own.page.title}
             canDelete={own.page.blocks.length > 0 || own.properties.length > 0}
@@ -1257,7 +1275,7 @@ function Tab({
               act={act}
             />
           )}
-          {browsing || tasking ? null : held === null ? (
+          {browsing || tasking || mapping ? null : held === null ? (
             <p className="mt-1 text-sm text-muted">Loading…</p>
           ) : (
             held.view.showing.map(({ page, references, links, properties, tags, aliases, taggedBy, icon }) => (
@@ -1313,7 +1331,7 @@ function Tab({
           </Aside>
         )}
         </Dragging.Provider>
-        {!browsing && !tasking && held?.view.list?.next && (
+        {!browsing && !tasking && !mapping && held?.view.list?.next && (
           <p ref={older} className="mt-1 text-sm text-muted">
             {held.place ? 'Loading more linked references…' : 'Loading older days…'}
           </p>

@@ -12,16 +12,19 @@ export const ALL_PAGES = "all-pages";
 /** The Tasks view (#387) as a stop: every task in the project, on no page. */
 export const TASKS = "tasks";
 
+/** The graph view (#183) as a stop: every page and link drawn, on no page. Throwaway, with `LinkMap/`. */
+export const LINK_MAP = "link-map";
+
 /**
  * A stop on the trail: a place, the journal, which is `undefined` as it is
  * everywhere else (`graph:view` with no place is the journal), or the list
  * of every page. An empty trail is the journal too: where a project starts.
  */
-export type Stop = Place | undefined | typeof ALL_PAGES | typeof TASKS;
+export type Stop = Place | undefined | typeof ALL_PAGES | typeof TASKS | typeof LINK_MAP;
 
 /** The place a stop is, or undefined for one on no page: the journal, the list or the tasks. */
 export function placeOf(stop: Stop): Place | undefined {
-  return stop === ALL_PAGES || stop === TASKS ? undefined : stop;
+  return stop === ALL_PAGES || stop === TASKS || stop === LINK_MAP ? undefined : stop;
 }
 
 /** What a stop is called on the way back to it. */
@@ -29,6 +32,7 @@ export function label(stop: Stop): string {
   if (stop === undefined) return "Journal";
   if (stop === ALL_PAGES) return "All pages";
   if (stop === TASKS) return "Tasks";
+  if (stop === LINK_MAP) return "Graph";
   return stop.page;
 }
 
@@ -71,6 +75,11 @@ export function browse(trail: Stop[]): Stop[] {
  */
 export function tasks(trail: Stop[]): Stop[] {
   return trail.at(-1) === TASKS ? trail : [...trail, TASKS];
+}
+
+/** To the graph view (#183), as a stop of its own, as `tasks` is. Nothing to do on it already. */
+export function map(trail: Stop[]): Stop[] {
+  return trail.at(-1) === LINK_MAP ? trail : [...trail, LINK_MAP];
 }
 
 /** One step back; from the first page that is the journal. */

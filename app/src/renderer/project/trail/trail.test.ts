@@ -1,7 +1,7 @@
 /** Run with: npm test */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ALL_PAGES, TASKS, back, browse, go, home, label, leave, placeOf, renamed, rezoom, tasks } from "./trail.ts";
+import { ALL_PAGES, LINK_MAP, TASKS, back, browse, go, home, label, leave, map, placeOf, renamed, rezoom, tasks } from "./trail.ts";
 import type { Stop } from "./trail.ts";
 
 test("a link to where the view already is adds nothing", () => {
@@ -146,4 +146,13 @@ test("tasks adds every task as a stop, on no page, and back returns to it from a
 
 test("leaving a deleted page stops at the tasks", () => {
   assert.deepEqual(leave([TASKS, { page: "Mira" }], "Mira"), [TASKS]);
+});
+
+test("the graph view is a stop of its own, on no page", () => {
+  const mapped = map([{ page: "Mira" }]);
+  assert.deepEqual(mapped, [{ page: "Mira" }, LINK_MAP]);
+  assert.equal(map(mapped), mapped);
+  assert.equal(placeOf(LINK_MAP), undefined);
+  assert.equal(label(LINK_MAP), "Graph");
+  assert.deepEqual(back(go(mapped, { page: "Oslo" })), mapped);
 });
