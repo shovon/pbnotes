@@ -10,6 +10,8 @@ import type { Camera, Size } from './camera/camera';
 import { place } from './flat/flat';
 import type { Flat } from './flat/flat';
 import { createGpu } from './gpu';
+import { homes } from './grid/grid';
+import type { Layout, Rank } from './grid/grid';
 import { groups } from './groups/groups';
 import type { Groups } from './groups/groups';
 import type { Colors, Gpu, Rgb } from './gpu';
@@ -24,6 +26,12 @@ export type Kept = {
   at: Map<string, [number, number]>;
   /** Whether the journal's days show (`LinkMap.tsx`); undefined is that they do. */
   days?: boolean;
+  /** Whether blocks show in their pages; undefined is that they do. */
+  blocks?: boolean;
+  /** How the map is laid out; undefined is by its forces. */
+  layout?: Layout;
+  /** What the grid ranks pages by; undefined is every arrow that touches them. */
+  rank?: Rank;
 };
 
 /** A bubble: a page, or a block on it. */
@@ -32,6 +40,21 @@ export type Target = { page: string; block?: string };
 export type Scene = {
   /** A map to show: nodes it had already stay where they were. */
   setData(flat: Flat): void;
+  /**
+   * Whether blocks show: on, a bubble opens as it grows; off, every page is
+   * one node at any zoom, shrunk to a dot with no room kept for what is in
+   * it, and every arrow runs page to page. The map lays itself out again
+   * around the pages' new sizes.
+   */
+  setBlocks(on: boolean): void;
+  /**
+   * How the map is laid out: by its forces, or as a grid with the most
+   * linked page top left and the least bottom right, where each page is
+   * sprung hard to its cell and nothing else lays it out.
+   */
+  setLayout(layout: Layout): void;
+  /** What the grid ranks pages by: laid out as the grid, each page springs to its new cell. */
+  setRank(rank: Rank): void;
   dispose(): void;
 };
 
@@ -116,6 +139,27 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
   /** The last bubble lit, kept while it fades out, and how far lit it is. */
   let shown = -1;
   let glow = 0;
+  /** Whether blocks show, and how far they have faded in or out. */
+  let blocks = kept.current?.blocks ?? true;
+  let blocksShown = blocks ? 1 : 0;
+  let layout: Layout = kept.current?.layout ?? 'force';
+  let rank: Rank = kept.current?.rank ?? 'links';
+  /** The map as it was loaded: `flat` has the pages' radii as they are now, between compact and full. */
+  let loaded: Flat | null = null;
+  let sized = -1;
+  /** The grid's cells, for the pages as big as they are to be, in a grid the shape of the view. */
+  const setHomes = () => {
+    if (!loaded || layout !== 'grid') return;
+    gpu.setHomes(homes(loaded, blocks ? loaded.radius : loaded.compact, size.width / size.height, rank));
+  };
+  /** Each page as big as it is with the blocks showing this far, for what the CPU does with sizes. */
+  const sizePages = () => {
+    if (!flat || !loaded || sized === blocksShown) return;
+    sized = blocksShown;
+    for (let i = 0; i < flat.pages; i++) {
+      flat.radius[i] = loaded.compact[i] + (loaded.radius[i] - loaded.compact[i]) * blocksShown;
+    }
+  };
   let drawnAt = 0;
   let told = { x: 0, y: 0 };
   let pointer: { x: number; y: number; client: { x: number; y: number } } | null = null;
@@ -180,7 +224,7 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
 
   /** What is under the pointer, and what is lit up; true while either is still settling. */
   const rehover = (now: number): boolean => {
-    const hit = flat && pointer && !press ? pick(flat, state, camera, size, pointer.x, pointer.y) : undefined;
+    const hit = flat && pointer && !press ? pick(flat, state, camera, size, pointer.x, pointer.y, blocks) : undefined;
     hover = hit && !hit.ground ? hit.node : -1;
     host.style.cursor = press?.kind === 'pan' && press.moved ? 'grabbing' : hover >= 0 ? 'pointer' : 'default';
 
@@ -197,6 +241,10 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
     glow += (to - glow) * (1 - Math.exp(-(now - drawnAt) / FADE_MS));
     if (Math.abs(to - glow) < 0.01) glow = to;
     if (glow === 0) shown = -1;
+    const all = blocks ? 1 : 0;
+    blocksShown += (all - blocksShown) * (1 - Math.exp(-(now - drawnAt) / FADE_MS));
+    if (Math.abs(all - blocksShown) < 0.01) blocksShown = all;
+    sizePages();
     drawnAt = now;
 
     const at = pointer?.client ?? { x: 0, y: 0 };
@@ -207,7 +255,7 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
       told = at;
       onHover(flat && say >= 0 ? targetOf(flat, say) : null, at);
     }
-    return lit !== wanted || glow !== to;
+    return lit !== wanted || glow !== to || blocksShown !== all;
   };
 
   const onDown = (event: PointerEvent) => {
@@ -217,7 +265,7 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
     pointer = at;
     glide = null;
     touched = true;
-    const hit = pick(flat, state, camera, size, at.x, at.y);
+    const hit = pick(flat, state, camera, size, at.x, at.y, blocks);
     if (hit && !hit.ground) {
       const [wx, wy] = toWorld(camera, size, at.x, at.y);
       press = {
@@ -335,7 +383,7 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
     for (let rank = 0; rank < shown.length && named < MAX_LABELS; rank++) {
       const { node, x, y, r } = shown[rank];
       if (r < 6 && rank >= 40 && node !== lit) continue;
-      const open = map.childCount[node] > 0 && map.radius[node] * camera.zoom >= OPEN_HIGH;
+      const open = blocks && map.childCount[node] > 0 && map.radius[node] * camera.zoom >= OPEN_HIGH;
       const title = map.titles[node];
       const text = title.length > 34 ? `${title.slice(0, 33)}…` : title;
       const font = open ? '600 12px system-ui, sans-serif' : '500 11px system-ui, sans-serif';
@@ -376,7 +424,7 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
       }
       last.set(state);
       calm = fastest < STILL ? calm + 1 : 0;
-      if (calm > CALM_FRAMES && heat === 0 && press?.kind !== 'node') awake = false;
+      if (calm > CALM_FRAMES && (heat === 0 || layout === 'grid') && press?.kind !== 'node') awake = false;
     }
 
     if (glide) {
@@ -412,9 +460,23 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
     const steps = awake ? Math.min(MAX_STEPS, due) : 0;
     stepped = now;
     warm = Math.max(0, warm - steps);
-    if (drag) heat = Math.max(heat, DRAG_HEAT);
-    const clusters = flat && steps > 0 ? groups(flat, state) : RESTING;
-    gpu.frame({ camera, size, colors, hover: shown, glow, drag, steps, heat, groups: clusters });
+    // The grid is laid out by its cells alone: no heat, whatever is dragged.
+    const grid = layout === 'grid';
+    if (drag && !grid) heat = Math.max(heat, DRAG_HEAT);
+    const clusters = flat && steps > 0 && !grid ? groups(flat, state) : RESTING;
+    gpu.frame({
+      camera,
+      size,
+      colors,
+      hover: shown,
+      glow,
+      blocks: blocksShown,
+      grid,
+      drag,
+      steps,
+      heat: grid ? 0 : heat,
+      groups: clusters,
+    });
     heat *= COOLING ** steps;
     if (heat < 0.005) heat = 0;
     drawLabels();
@@ -437,7 +499,11 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
       // A map seen before only has what is new to make room for, and one with nothing new stays put.
       const grown = !fresh && next.ids.some((id) => !known.has(id));
       heat = fresh ? 1 : grown ? DRAG_HEAT : 0;
-      flat = next;
+      // Its own copy of the radii: the pages' change as the blocks come and go.
+      loaded = next;
+      flat = { ...next, radius: next.radius.slice() };
+      sized = -1;
+      sizePages();
       state = place(next, known);
       last = state.slice();
       // What was lit is another map's node now.
@@ -448,9 +514,43 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
       glow = 0;
       press = null;
       gpu.load(next, state);
+      setHomes();
       awake = true;
       calm = 0;
       stale = false;
+      kick();
+    },
+    setBlocks(on) {
+      if (on === blocks) return;
+      blocks = on;
+      // The pages are other sizes now: the map finds its shape again, from where it is,
+      // and the grid's cells are other sizes too. It is another map to look at: all of it.
+      heat = 1;
+      setHomes();
+      touched = false;
+      awake = true;
+      calm = 0;
+      kick();
+    },
+    setLayout(next) {
+      if (next === layout) return;
+      layout = next;
+      // Into the grid, every page goes to its cell; out of it, the forces take the map
+      // from where the grid left it. Either way it is another map to look at: all of it.
+      setHomes();
+      heat = 1;
+      warm = 0;
+      touched = false;
+      awake = true;
+      calm = 0;
+      kick();
+    },
+    setRank(next) {
+      if (next === rank) return;
+      rank = next;
+      setHomes();
+      awake = true;
+      calm = 0;
       kick();
     },
     dispose() {

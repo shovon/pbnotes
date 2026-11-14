@@ -3,6 +3,7 @@ import type { GraphApi, LinkMapReply } from '../../../shared/graph';
 import type { Keys } from '../opening/opening';
 import { withoutDays } from './days/days';
 import { flatten } from './flat/flat';
+import type { Layout, Rank } from './grid/grid';
 import { createScene } from './scene';
 import type { Kept, Scene, Target } from './scene';
 
@@ -14,8 +15,11 @@ export type { Kept } from './scene';
  * bubble is a dot and arrows run page to page; zoomed in it opens, and each
  * arrow runs from the block that holds it to the bubble it points at. Pinch
  * to zoom, drag or scroll to pan, drag a bubble to move it, click one to go
- * to it. Nothing here writes: where a bubble sits is this view's own. The
- * journal's days can be left out of it, from its top right corner.
+ * to it. Nothing here writes: where a bubble sits is this view's own. From
+ * its top right corner, the journal's days can be left out of it, and the
+ * blocks, so every page is one node and every arrow runs page to page; and
+ * the map can be laid out as a grid, the most linked page first, ranked by
+ * all its links, those coming in or those going out (`grid/`).
  *
  * Over the whole tab, under the title bar and beside the sidebars. Drawn
  * with WebGPU, which also runs the physics (`scene.ts`, `gpu.ts`,
@@ -51,6 +55,24 @@ export default function LinkMap({ graph, onOpen, onBlock, onError, kept }: Props
   const showDays = (on: boolean) => {
     setDays(on);
     box.current = { ...(box.current ?? { at: new Map() }), days: on };
+  };
+  /** Whether blocks show in their pages, or every page is one node. */
+  const [blocks, setBlocks] = useState(() => box.current?.blocks ?? true);
+  const showBlocks = (on: boolean) => {
+    setBlocks(on);
+    box.current = { ...(box.current ?? { at: new Map() }), blocks: on };
+  };
+  /** How the map is laid out: by its forces, or as a grid by how linked each page is. */
+  const [layout, setLayout] = useState<Layout>(() => box.current?.layout ?? 'force');
+  const lay = (next: Layout) => {
+    setLayout(next);
+    box.current = { ...(box.current ?? { at: new Map() }), layout: next };
+  };
+  /** What the grid ranks pages by. */
+  const [rank, setRank] = useState<Rank>(() => box.current?.rank ?? 'links');
+  const rankBy = (next: Rank) => {
+    setRank(next);
+    box.current = { ...(box.current ?? { at: new Map() }), rank: next };
   };
   /** The map as it shows. */
   const shown = useMemo(() => held && (days ? held : withoutDays(held)), [held, days]);
@@ -119,6 +141,18 @@ export default function LinkMap({ graph, onOpen, onBlock, onError, kept }: Props
     if (scene && shown) scene.setData(flatten(shown));
   }, [scene, shown]);
 
+  useEffect(() => {
+    scene?.setBlocks(blocks);
+  }, [scene, blocks]);
+
+  useEffect(() => {
+    scene?.setLayout(layout);
+  }, [scene, layout]);
+
+  useEffect(() => {
+    scene?.setRank(rank);
+  }, [scene, rank]);
+
   // A block says what it is only when asked: once the pointer has rested on it a moment.
   const hovered = tip?.target.block;
   useEffect(() => {
@@ -170,15 +204,54 @@ export default function LinkMap({ graph, onOpen, onBlock, onError, kept }: Props
       )}
       {problem === null && held !== null && held.pages.length > 0 && (
         // Over the map: a press on it is its own, never a pan (`scene.ts`).
-        <label className="absolute top-3 right-4 flex cursor-pointer items-center gap-1.5 rounded-md border border-line bg-bg/90 px-2 py-1 text-xs">
-          <input
-            type="checkbox"
-            className="cursor-pointer accent-accent"
-            checked={days}
-            onChange={(event) => showDays(event.target.checked)}
-          />
-          Journal days
-        </label>
+        <div className="absolute top-3 right-4 flex items-center gap-3 rounded-md border border-line bg-bg/90 px-2 py-1 text-xs">
+          <label className="flex items-center gap-1.5">
+            Layout
+            <select
+              className="cursor-pointer rounded-sm border border-line bg-bg px-1 py-0.5"
+              value={layout}
+              onChange={(event) => lay(event.target.value === 'grid' ? 'grid' : 'force')}
+            >
+              <option value="force">Force-directed</option>
+              <option value="grid">Grid</option>
+            </select>
+          </label>
+          {layout === 'grid' && (
+            <label className="flex items-center gap-1.5">
+              Rank by
+              <select
+                className="cursor-pointer rounded-sm border border-line bg-bg px-1 py-0.5"
+                value={rank}
+                onChange={(event) => {
+                  const picked = event.target.value;
+                  rankBy(picked === 'in' || picked === 'out' ? picked : 'links');
+                }}
+              >
+                <option value="links">Most links</option>
+                <option value="in">Most incoming</option>
+                <option value="out">Most outgoing</option>
+              </select>
+            </label>
+          )}
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              className="cursor-pointer accent-accent"
+              checked={blocks}
+              onChange={(event) => showBlocks(event.target.checked)}
+            />
+            Blocks
+          </label>
+          <label className="flex cursor-pointer items-center gap-1.5">
+            <input
+              type="checkbox"
+              className="cursor-pointer accent-accent"
+              checked={days}
+              onChange={(event) => showDays(event.target.checked)}
+            />
+            Journal days
+          </label>
+        </div>
       )}
       {tip && (
         <div

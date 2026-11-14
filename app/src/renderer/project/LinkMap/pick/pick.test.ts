@@ -43,3 +43,10 @@ test('a bubble that fills the view is ground, but for its rim', () => {
   assert.deepEqual(pick(SHAPE, STATE, camera, SIZE, 200, 300), { node: 0, ground: true });
   assert.deepEqual(pick(SHAPE, STATE, camera, SIZE, 200, 200 + 4 * 60 - 2), { node: 0, ground: false });
 });
+
+test('with blocks off, an open bubble is picked itself, never what is in it', () => {
+  const camera = { x: 0, y: 0, zoom: OPEN / 4 };
+  assert.deepEqual(pick(SHAPE, STATE, camera, SIZE, 200 + 2 * camera.zoom, 200, false), { node: 0, ground: false });
+  // And one that fills the view is still ground to pan by.
+  assert.deepEqual(pick(SHAPE, STATE, { x: 0, y: 0, zoom: 60 }, SIZE, 200 + 2 * 60, 200, false), { node: 0, ground: true });
+});

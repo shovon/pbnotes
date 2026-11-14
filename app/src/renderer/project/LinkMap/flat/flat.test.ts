@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { LinkMap } from '@pbnotes/graph/link-map';
+import type { LinkMap, Sub } from '@pbnotes/graph/link-map';
 import { DAY_LINE, DAY_STRENGTH, KINDS, PULL, SPRING, flatten, place } from './flat.ts';
 
 /** Mira: m1 (m2 under it), m3. Oslo: o1. Book: nothing. */
@@ -121,4 +121,27 @@ test('place: the journal\'s days start together, to the right of the other pages
   const state = place(flat);
   const x = (node: number) => state[node * 4];
   assert.ok(Math.min(x(0), x(2)) > Math.max(x(1), x(3), x(4)));
+});
+
+test('flatten: with its blocks not showing a page is a speck, and grows in a straight line with the arrows that point at it', () => {
+  const { radius, compact } = flatten(MAP);
+  // Nothing points at Book. Mira's only arrows are its own, into itself, which count for nothing.
+  assert.equal(compact[0], Math.fround(0.6));
+  assert.equal(compact[1], Math.fround(0.6));
+  // Three point at Oslo: a link, a ref to a block on it, and a tag.
+  assert.equal(compact[2], Math.fround(0.6 + 3 * 0.15));
+  // Each arrow adds as much as the last.
+  const page = (title: string, ...ids: string[]): LinkMap['pages'][number] => ({
+    title,
+    blocks: ids.length,
+    forest: ids.map((id): Sub => ({ id, children: [] })),
+  });
+  const pointing = (count: number) =>
+    flatten({
+      pages: [page('Hub'), page('Spoke', ...Array.from({ length: count }, (_, i) => `s${i}`))],
+      edges: Array.from({ length: count }, (_, i) => ({ from: { page: 'Spoke', block: `s${i}` }, to: { page: 'Hub' }, kind: 'link' as const })),
+    }).compact[0];
+  assert.ok(Math.abs(pointing(20) - pointing(10) - (pointing(10) - pointing(0))) < 1e-5);
+  // A block is the size it is.
+  assert.equal(compact[3], radius[3]);
 });

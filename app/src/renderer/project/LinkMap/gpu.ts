@@ -20,6 +20,10 @@ export type Frame = {
   /** The node lit up, or -1, and how far lit it is, 0 to 1. */
   hover: number;
   glow: number;
+  /** How far the blocks show, 0 to 1: at 0 every page is one node. */
+  blocks: number;
+  /** Whether the map is laid out as the grid: each page sprung to its cell (`setHomes`). */
+  grid: boolean;
   /** The node being dragged, and where in the world the pointer has it. */
   drag: { node: number; x: number; y: number } | null;
   /** How many times to step the physics before drawing. */
@@ -37,6 +41,8 @@ export type Gpu = {
    * positions are read back, and `onState` is called.
    */
   load(flat: Flat, state: Float32Array): void;
+  /** Each page's cell in the grid layout, two numbers a page, for the map loaded. */
+  setHomes(homes: Float32Array): void;
   frame(frame: Frame): void;
   destroy(): void;
 };
@@ -50,6 +56,7 @@ type Loaded = {
   sim: [GPUBindGroup, GPUBindGroup];
   nodes: [GPUBindGroup, GPUBindGroup];
   arrows: [GPUBindGroup, GPUBindGroup];
+  homes: GPUBuffer;
   /** Buffers to read positions back through that are not being read now. */
   free: GPUBuffer[];
   into: Float32Array;
@@ -107,7 +114,7 @@ export async function createGpu(
   }
 
   const simUniform = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-  const viewUniform = device.createBuffer({ size: 96, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  const viewUniform = device.createBuffer({ size: 112, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 
   let loaded: Loaded | null = null;
 
@@ -131,19 +138,20 @@ export async function createGpu(
       unload();
       const { count } = flat;
 
-      const packed = new ArrayBuffer(count * 36);
+      const packed = new ArrayBuffer(count * 40);
       const ints = new Int32Array(packed);
       const floats = new Float32Array(packed);
       for (let i = 0; i < count; i++) {
-        ints[i * 9] = flat.parent[i];
-        ints[i * 9 + 1] = flat.sibStart[i];
-        ints[i * 9 + 2] = flat.sibCount[i];
-        ints[i * 9 + 3] = flat.childStart[i];
-        ints[i * 9 + 4] = flat.childCount[i];
-        ints[i * 9 + 5] = flat.springStart[i];
-        ints[i * 9 + 6] = flat.springCount[i];
-        floats[i * 9 + 7] = flat.radius[i];
-        ints[i * 9 + 8] = flat.day[i];
+        ints[i * 10] = flat.parent[i];
+        ints[i * 10 + 1] = flat.sibStart[i];
+        ints[i * 10 + 2] = flat.sibCount[i];
+        ints[i * 10 + 3] = flat.childStart[i];
+        ints[i * 10 + 4] = flat.childCount[i];
+        ints[i * 10 + 5] = flat.springStart[i];
+        ints[i * 10 + 6] = flat.springCount[i];
+        floats[i * 10 + 7] = flat.radius[i];
+        ints[i * 10 + 8] = flat.day[i];
+        floats[i * 10 + 9] = flat.compact[i];
       }
       // The other node and the kind are whole numbers on the GPU.
       const springs = new ArrayBuffer(flat.springs.byteLength);
@@ -159,6 +167,7 @@ export async function createGpu(
       const nodes = storage(ints);
       const springBuffer = storage(springInts);
       const edges = storage(flat.edges);
+      const homes = storage(new Float32Array(flat.pages * 2));
       const first = storage(state, GPUBufferUsage.COPY_SRC);
       const second = storage(state, GPUBufferUsage.COPY_SRC);
       const free = [0, 1, 2].map(() =>
@@ -180,8 +189,8 @@ export async function createGpu(
         state: [first, second],
         at: 0,
         sim: [
-          group(simPipeline, [simUniform, nodes, springBuffer, first, second]),
-          group(simPipeline, [simUniform, nodes, springBuffer, second, first]),
+          group(simPipeline, [simUniform, nodes, springBuffer, first, second, homes]),
+          group(simPipeline, [simUniform, nodes, springBuffer, second, first, homes]),
         ],
         nodes: [group(nodePipeline, [viewUniform, nodes, first]), group(nodePipeline, [viewUniform, nodes, second])],
         arrows: [
@@ -190,19 +199,26 @@ export async function createGpu(
         ],
         free,
         into: state,
-        buffers: [nodes, springBuffer, edges, first, second, ...free],
+        homes,
+        buffers: [nodes, springBuffer, edges, first, second, homes, ...free],
       };
     },
 
-    frame({ camera, size, colors, hover, glow, drag, steps, heat, groups }) {
+    setHomes(homes) {
+      if (loaded) device.queue.writeBuffer(loaded.homes, 0, homes.buffer as ArrayBuffer, homes.byteOffset, homes.byteLength);
+    },
+
+    frame({ camera, size, colors, hover, glow, blocks, grid, drag, steps, heat, groups }) {
       if (destroyed) return;
       const now = loaded;
 
-      const view = new ArrayBuffer(96);
+      const view = new ArrayBuffer(112);
       const viewFloats = new Float32Array(view);
       viewFloats.set([camera.x, camera.y, size.width, size.height, camera.zoom]);
       new Int32Array(view)[5] = hover;
       viewFloats[6] = glow;
+      viewFloats[7] = blocks;
+      viewFloats[24] = grid ? 1 : 0;
       viewFloats.set([...colors.fg, 1], 8);
       viewFloats.set([...colors.muted, 1], 12);
       viewFloats.set([...colors.accent, 1], 16);
@@ -216,7 +232,7 @@ export async function createGpu(
         new Uint32Array(uniform)[0] = now.count;
         new Int32Array(uniform)[1] = drag?.node ?? -1;
         new Float32Array(uniform).set(
-          [drag?.x ?? 0, drag?.y ?? 0, heat, groups.share, groups.days.x, groups.days.y, groups.apart.x, groups.apart.y],
+          [drag?.x ?? 0, drag?.y ?? 0, heat, groups.share, groups.days.x, groups.days.y, groups.apart.x, groups.apart.y, blocks, grid ? 1 : 0],
           2,
         );
         device.queue.writeBuffer(simUniform, 0, uniform);

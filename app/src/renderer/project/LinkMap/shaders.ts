@@ -9,7 +9,7 @@ import { MIN_BLOCK, MIN_PAGE, OPEN, OPEN_HIGH, OPEN_LOW } from './pick/pick';
 /** A number as WGSL takes a float. */
 const f = (value: number) => value.toFixed(3);
 
-/** As `flat.ts` packs them (`gpu.ts`): 36 bytes a node, 16 a spring. */
+/** As `flat.ts` packs them (`gpu.ts`): 40 bytes a node, 16 a spring. */
 const STRUCTS = /* wgsl */ `
 struct Node {
   parent: i32,
@@ -22,6 +22,8 @@ struct Node {
   radius: f32,
   /** Bit 0: a journal day's page. */
   flags: u32,
+  /** A page's radius when its blocks do not show. */
+  compact: f32,
 }
 `;
 
@@ -33,10 +35,14 @@ struct View {
   /** The bubble lit up, or -1, and how far lit it is: 0 not at all, 1 fully. */
   hover: i32,
   glow: f32,
+  /** How far the blocks show: 1 as bubbles in their pages, 0 not at all, every page one node. */
+  blocks: f32,
   fg: vec4f,
   muted: vec4f,
   accent: vec4f,
   tag: vec4f,
+  /** 1 when the map is laid out as the grid. */
+  grid: f32,
 }
 
 const CORNERS = array<vec2f, 6>(
@@ -49,9 +55,15 @@ fn clip(px: vec2f) -> vec4f {
   return vec4f(px.x / (view.size.x * 0.5), -px.y / (view.size.y * 0.5), 0.0, 1.0);
 }
 
+/** A node's radius in the world: a page's shrinks to a dot as its blocks stop showing. */
+fn rad(n: Node) -> f32 {
+  if (n.parent < 0) { return mix(n.compact, n.radius, view.blocks); }
+  return n.radius;
+}
+
 /** A node's radius as drawn: never smaller than a dot. */
 fn drawn(n: Node) -> f32 {
-  return max(n.radius * view.zoom, select(${f(MIN_BLOCK)}, ${f(MIN_PAGE)}, n.parent < 0));
+  return max(rad(n) * view.zoom, select(${f(MIN_BLOCK)}, ${f(MIN_PAGE)}, n.parent < 0));
 }
 `;
 
@@ -67,17 +79,22 @@ fn drawn(n: Node) -> f32 {
  * is scaled by `heat`, which the scene cools to nothing, as d3 does its
  * alpha: some of it pushes one way only, and would turn the map for ever.
  * What keeps bubbles whole and apart is never scaled.
+ *
+ * Laid out as the grid there is no heat at all: each page is sprung to its
+ * cell, hard, and that is the whole of the layout.
  */
 export const SIM = /* wgsl */ `
 ${STRUCTS}
 struct Spring { other: u32, kind: u32, strength: f32, rest: f32 }
-struct Sim { count: u32, drag: i32, dragPos: vec2f, heat: f32, share: f32, daysAt: vec2f, apart: vec2f }
+struct Sim { count: u32, drag: i32, dragPos: vec2f, heat: f32, share: f32, daysAt: vec2f, apart: vec2f, blocks: f32, grid: f32 }
 
 @group(0) @binding(0) var<uniform> sim: Sim;
 @group(0) @binding(1) var<storage, read> nodes: array<Node>;
 @group(0) @binding(2) var<storage, read> springs: array<Spring>;
 @group(0) @binding(3) var<storage, read> before: array<vec4f>;
 @group(0) @binding(4) var<storage, read_write> after: array<vec4f>;
+/** Each page's cell in the grid layout, by its index. */
+@group(0) @binding(5) var<storage, read> homes: array<vec2f>;
 
 const DAMPING = 0.82;
 const MAX_SPEED = 6.0;
@@ -99,6 +116,18 @@ const INHERIT = 0.7;
  * pages to the middle of the map: more keeps the days closer together.
  */
 const DAY_PULL = 0.04;
+/**
+ * The grid layout: how hard a page is sprung to its cell, and how fast it may go back to it.
+ * Stiff, and a little underdamped, so a page flung off its cell snaps back and settles.
+ */
+const HOME = 0.14;
+const HOME_SPEED = 18.0;
+
+/** A node's radius: a page's shrinks to a dot as its blocks stop showing (\`sim.blocks\` 1 to 0). */
+fn rad(n: Node) -> f32 {
+  if (n.parent < 0) { return mix(n.compact, n.radius, sim.blocks); }
+  return n.radius;
+}
 
 /** The child of \`i\` the dragged node is, or is under; -1 for none. */
 fn heldUnder(i: u32) -> i32 {
@@ -120,8 +149,21 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
   let s = before[i];
   var p = s.xy;
   var v = s.zw;
-  let m = n.radius * n.radius;
   let top = n.parent < 0;
+  if (!top && sim.blocks < 1.0) {
+    // Blocks that do not show are not simulated: each rides its page, whole, so it is
+    // where it was in it when they show again.
+    var page = u32(n.parent);
+    for (var k = 0; k < 32; k++) {
+      let above = nodes[page].parent;
+      if (above < 0) { break; }
+      page = u32(above);
+    }
+    after[i] = vec4f(p + before[page].zw, 0.0, 0.0);
+    return;
+  }
+  let r = rad(n);
+  let m = r * r;
   let day = (n.flags & 1u) != 0u;
   var a = vec2f(0.0);
   // Moved outright, not sped up: what keeps two bubbles from sitting in each other.
@@ -131,7 +173,7 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
   for (var k = 0u; k < n.sibCount; k++) {
     let j = n.sibStart + k;
     if (j == i) { continue; }
-    let other = nodes[j].radius;
+    let other = rad(nodes[j]);
     var d = p - before[j].xy;
     var dist = length(d);
     if (dist < 0.001) {
@@ -141,7 +183,7 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
       dist = 0.001;
     }
     let dir = d / dist;
-    let reach = n.radius + other + GAP;
+    let reach = r + other + GAP;
     if (dist < reach) {
       // The smaller of two gives way more.
       let share = other * other / (m + other * other);
@@ -154,11 +196,15 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
     // Pages spread out among their own kind: the days among the days, the rest among the
     // rest. Where the two clusters sit beside each other is for one spring to say (groups/).
     if (top && day == ((nodes[j].flags & 1u) != 0u)) {
-      a += dir * sim.heat * CHARGE * (other + 1.0) / (max(dist - n.radius - other, 0.0) + 6.0);
+      a += dir * sim.heat * CHARGE * (other + 1.0) / (max(dist - r - other, 0.0) + 6.0);
     }
   }
 
   if (top) {
+    // Laid out as the grid, a page has a cell and one spring to it, and nothing else lays it
+    // out: the scene sends no heat. It still keeps off what it touches, so one dragged through
+    // the others shoves them, and they spring back.
+    if (sim.grid > 0.5) { a += (homes[i] - p) * HOME; }
     if (day) {
       // A journal day is drawn to the middle of all the days, not of the map.
       a += (sim.daysAt - p) * DAY_PULL * sim.heat;
@@ -173,8 +219,9 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
     let its = before[u32(n.parent)];
     let d = p - its.xy;
     let dist = length(d);
-    a -= d * CENTER / (above.radius * above.radius);
-    let limit = max(above.radius - n.radius - RIM, 0.0);
+    let room = rad(above);
+    a -= d * CENTER / (room * room);
+    let limit = max(room - r - RIM, 0.0);
     if (dist > limit) {
       a -= d / dist * (dist - limit) * WALL;
       push -= d / dist * (dist - limit) * APART;
@@ -191,12 +238,14 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
   }
 
   let held = heldUnder(i);
-  for (var k = 0u; k < n.childCount; k++) {
+  // What it holds pushes back on it only while it is simulated.
+  let inside = select(0u, n.childCount, sim.blocks >= 1.0);
+  for (var k = 0u; k < inside; k++) {
     let c = n.childStart + k;
     let cr = nodes[c].radius;
     let d = before[c].xy - p;
     let dist = length(d);
-    let limit = max(n.radius - cr - RIM, 0.0);
+    let limit = max(r - cr - RIM, 0.0);
     var wall = vec2f(0.0);
     if (dist > limit) { wall = d / dist * (dist - limit) * WALL; }
     if (i32(c) == held) {
@@ -211,7 +260,9 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
     let d = before[spring.other].xy - p;
     let dist = max(length(d), 0.001);
     if (spring.kind == 0u) {
-      a += d / dist * clamp(dist - spring.rest, -20.0, 20.0) * spring.strength * LINK * sim.heat;
+      // At rest a little apart, however big the two are just now.
+      let rest = r + rad(nodes[spring.other]) + spring.rest;
+      a += d / dist * clamp(dist - rest, -20.0, 20.0) * spring.strength * LINK * sim.heat;
     } else {
       a += d / dist * PULL * spring.strength * sim.heat;
     }
@@ -219,7 +270,8 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
 
   v = (v + a) * DAMPING;
   let speed = length(v);
-  if (speed > MAX_SPEED) { v *= MAX_SPEED / speed; }
+  let most = select(MAX_SPEED, HOME_SPEED, top && sim.grid > 0.5);
+  if (speed > most) { v *= most / speed; }
   // What it moved by of its own accord is what it is moving at: a bubble held
   // still by its neighbours is still, and carries nothing along.
   v += push;
@@ -262,14 +314,15 @@ fn vertex(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> O
   var out: Out;
   var visible = 1.0;
   if (n.parent >= 0) {
-    visible = smoothstep(${f(OPEN_LOW)}, ${f(OPEN_HIGH)}, nodes[u32(n.parent)].radius * view.zoom);
+    visible = smoothstep(${f(OPEN_LOW)}, ${f(OPEN_HIGH)}, rad(nodes[u32(n.parent)]) * view.zoom) * view.blocks;
   }
   if (visible <= 0.001) {
     out.position = vec4f(-2.0, -2.0, 0.0, 1.0);
     return out;
   }
   var open = 0.0;
-  if (n.childCount > 0u) { open = smoothstep(${f(OPEN_LOW)}, ${f(OPEN_HIGH)}, n.radius * view.zoom); }
+  // Only what shows its blocks opens: a page that does not is a dot at any size.
+  if (n.childCount > 0u) { open = smoothstep(${f(OPEN_LOW)}, ${f(OPEN_HIGH)}, rad(n) * view.zoom) * view.blocks; }
   let r = drawn(n);
   var corners = CORNERS;
   let corner = corners[vi] * (r + 2.0);
@@ -327,7 +380,8 @@ fn lift(i: u32) -> u32 {
     let above = nodes[n].parent;
     if (above < 0) { break; }
     n = u32(above);
-    if (nodes[n].radius * view.zoom < ${f(OPEN)}) { shown = n; }
+    // With the blocks not showing, that is its page, whatever the zoom.
+    if (view.blocks < 0.5 || rad(nodes[n]) * view.zoom < ${f(OPEN)}) { shown = n; }
   }
   return shown;
 }
@@ -348,6 +402,8 @@ fn vertex(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> O
   var out: Out;
   out.position = vec4f(-2.0, -2.0, 0.0, 1.0);
   if (a == b) { return out; }
+  // The journal's line is for finding the days in a map of forces: the grid has its own order.
+  if (e.kind == 3u && view.grid > 0.5) { return out; }
   let pa = (state[a].xy - view.center) * view.zoom;
   let pb = (state[b].xy - view.center) * view.zoom;
   let ra = drawn(nodes[a]);

@@ -42,7 +42,8 @@ export type Hit = {
 
 /**
  * The innermost node showing at a screen point, or undefined over nothing.
- * `state` is four numbers a node, x and y first.
+ * `state` is four numbers a node, x and y first. With `blocks` off no bubble
+ * shows what is in it, so it is a page or nothing.
  */
 export function pick(
   flat: Shape,
@@ -51,6 +52,7 @@ export function pick(
   size: Size,
   sx: number,
   sy: number,
+  blocks = true,
 ): Hit | undefined {
   const within = (start: number, count: number): Hit | undefined => {
     // Later is drawn on top.
@@ -61,7 +63,7 @@ export function pick(
       if (away > r + SLOP) continue;
       if (!isOpen(flat, camera, node)) return { node, ground: false };
       return (
-        within(flat.childStart[node], flat.childCount[node]) ?? {
+        (blocks ? within(flat.childStart[node], flat.childCount[node]) : undefined) ?? {
           node,
           ground: r > GROUND && away < r - RIM,
         }

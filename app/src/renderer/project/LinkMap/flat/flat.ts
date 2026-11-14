@@ -16,6 +16,12 @@ const PACK = 1.45;
 /** Between two siblings, and between a child and its bubble's rim. */
 const GAP = 0.35;
 const RIM = 0.6;
+/**
+ * A page with its blocks not showing: how big it is with nothing pointing at it, a speck,
+ * and how much its radius grows with each arrow that does, in a straight line.
+ */
+const COMPACT_LEAST = 0.6;
+const COMPACT_GROWTH = 0.15;
 /** How far apart two linked siblings rest, past their radii. */
 const REST = 8;
 
@@ -58,11 +64,18 @@ export type Flat = {
   childStart: Uint32Array;
   childCount: Uint32Array;
   radius: Float32Array;
+  /**
+   * A page's radius when its blocks do not show: a speck with nothing
+   * pointing at it, and bigger in a straight line with each arrow that does,
+   * from another page (its in-degree). No room is kept for what is in it. A
+   * block's is its `radius`.
+   */
+  compact: Float32Array;
   /** 1 for a journal day's page: those are drawn to each other (`shaders.ts`). */
   day: Uint8Array;
   springStart: Uint32Array;
   springCount: Uint32Array;
-  /** Four numbers a spring: the other node, `SPRING` or `PULL`, its strength, its rest length. */
+  /** Four numbers a spring: the other node, `SPRING` or `PULL`, its strength, and how far apart the two rest past their radii. */
   springs: Float32Array;
   /** Four numbers an arrow: from, to, its kind (`KINDS`), nothing. */
   edges: Uint32Array;
@@ -129,6 +142,8 @@ export function flatten(linkMap: LinkMap): Flat {
   };
 
   const edges: number[] = [];
+  /** How many arrows point at each page from another page, wherever on it they land. */
+  const into = new Uint32Array(pages);
   /** Sibling pair → how many arrows run between the two. */
   const pairs = new Map<number, number>();
   const pulls = new Set<number>();
@@ -147,11 +162,17 @@ export function flatten(linkMap: LinkMap): Flat {
       u = parent[u];
       v = parent[v];
     }
+    // Siblings with no parent are two pages: an arrow from one into the other.
+    if (parent[v] < 0) into[v]++;
     const pair = Math.min(u, v) * count + Math.max(u, v);
     pairs.set(pair, (pairs.get(pair) ?? 0) + 1);
     if (a !== u) pulls.add(a * count + b);
     if (b !== v) pulls.add(b * count + a);
   }
+
+  const compact = Float32Array.from(radius, (full, i) =>
+    i < pages ? COMPACT_LEAST + COMPACT_GROWTH * into[i] : full,
+  );
 
   const degree = new Uint32Array(count);
   for (const pair of pairs.keys()) {
@@ -165,10 +186,9 @@ export function flatten(linkMap: LinkMap): Flat {
     // As d3 has it: a link is as strong as its less linked end allows, and
     // moves the less linked end more, so a hub is not thrown by each spoke.
     const strength = 1 / Math.min(degree[u], degree[v]);
-    const rest = radius[u] + radius[v] + REST;
     const total = degree[u] + degree[v];
-    held[u].push(v, SPRING, (strength * 2 * degree[v]) / total, rest);
-    held[v].push(u, SPRING, (strength * 2 * degree[u]) / total, rest);
+    held[u].push(v, SPRING, (strength * 2 * degree[v]) / total, REST);
+    held[v].push(u, SPRING, (strength * 2 * degree[u]) / total, REST);
   }
   for (const pull of pulls) held[Math.floor(pull / count)].push(pull % count, PULL, 1, 0);
 
@@ -183,9 +203,8 @@ export function flatten(linkMap: LinkMap): Flat {
     const a = days[i - 1];
     const b = days[i];
     const strength = DAY_STRENGTH / Math.sqrt(Math.max(1, Math.round((b.at - a.at) / DAY_MS)));
-    const rest = radius[a.node] + radius[b.node] + DAY_REST;
-    held[a.node].push(b.node, SPRING, strength, rest);
-    held[b.node].push(a.node, SPRING, strength, rest);
+    held[a.node].push(b.node, SPRING, strength, DAY_REST);
+    held[b.node].push(a.node, SPRING, strength, DAY_REST);
     edges.push(a.node, b.node, DAY_LINE, 0);
   }
 
@@ -211,6 +230,7 @@ export function flatten(linkMap: LinkMap): Flat {
     childStart: Uint32Array.from(childStart),
     childCount: Uint32Array.from(childCount),
     radius,
+    compact,
     day,
     springStart,
     springCount,
