@@ -144,6 +144,12 @@ export function registerGraphIpc(session: GraphSession, images: Images): void {
 
   ipcMain.handle(GRAPH_CHANNELS.pages, () => session.pages());
 
+  // The graph view's (#183): throwaway, with `@pbnotes/graph/link-map`.
+  ipcMain.handle(GRAPH_CHANNELS.linkMap, () => session.linkMap());
+  ipcMain.handle(GRAPH_CHANNELS.blockPreviews, (_event, ids: unknown) =>
+    session.blockPreviews(requireStringArray(ids, "ids")),
+  );
+
   // Every task that meets a filter (#387), loaded `through` a title: any
   // string, as a page's linked references take, since it is only compared.
   ipcMain.handle(GRAPH_CHANNELS.tasks, (_event, filter: unknown, through: unknown) =>

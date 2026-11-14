@@ -12,6 +12,7 @@ const meta = {
     onJournal: fn(),
     onAllPages: fn(),
     onTasks: fn(),
+    onLinkMap: fn(),
     onOpen: fn(),
     onRecentMenu: fn(),
     recentCollapsed: false,
@@ -45,6 +46,7 @@ export const OnJournal: Story = { args: { showing: undefined } };
 /** On the list of every page: All pages is highlighted, and nothing else is. */
 export const OnAllPages: Story = { args: { showing: undefined, browsing: true } };
 export const OnTasks: Story = { args: { showing: undefined, tasking: true } };
+export const OnGraph: Story = { args: { showing: undefined, mapping: true } };
 
 /** Recent collapsed to its heading (#299): the chevron points right. */
 export const RecentCollapsed: Story = { args: { recentCollapsed: true } };

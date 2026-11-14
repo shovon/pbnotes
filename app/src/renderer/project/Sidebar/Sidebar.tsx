@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronDown, ChevronRight, Files, FileText, ListTodo } from "lucide-react";
+import { CalendarDays, ChevronDown, ChevronRight, Files, FileText, ListTodo, Waypoints } from "lucide-react";
 import Icon from "../../Icon/Icon";
 import PageIcon from "../PageIcon/PageIcon";
 import { isShowing } from "./recent/recent";
@@ -46,6 +46,9 @@ type Props = {
   onJournal: () => void;
   onAllPages: () => void;
   onTasks: () => void;
+  /** Whether the graph view is on screen (#183). */
+  mapping?: boolean;
+  onLinkMap?: () => void;
   /**
    * A recent page was clicked, with the keys held, which say where it
    * opens: here, beside (#287) or in a new tab (#309, `opening/`).
@@ -80,6 +83,8 @@ export default function Sidebar({
   onJournal,
   onAllPages,
   onTasks,
+  mapping = false,
+  onLinkMap,
   onOpen,
   onRecentMenu,
   recentCollapsed,
@@ -88,7 +93,7 @@ export default function Sidebar({
   onPointerEnter,
   onPointerLeave,
 }: Props) {
-  const journal = showing === undefined && !browsing && !tasking;
+  const journal = showing === undefined && !browsing && !tasking && !mapping;
   const hover = { onPointerEnter, onPointerLeave };
   // Floating: above the page and its own raised bits, still under the header.
   const lift = floating ? "z-20 shadow-[6px_0_16px_-8px_rgb(0_0_0/0.25)]" : "z-10";
@@ -143,6 +148,15 @@ export default function Sidebar({
           >
             <Icon of={ListTodo} />
             <span className="truncate">Tasks</span>
+          </button>
+          <button
+            type="button"
+            className={`${place} ${mapping ? current : ""}`}
+            aria-current={mapping ? "page" : undefined}
+            onClick={onLinkMap}
+          >
+            <Icon of={Waypoints} />
+            <span className="truncate">Graph</span>
           </button>
         </div>
 

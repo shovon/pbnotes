@@ -5,7 +5,10 @@
   "private": true,
   "type": "module",
   "main": "./src/graph.ts",
-  "exports": "./src/graph.ts",
+  "exports": {
+    ".": "./src/graph.ts",
+    "./link-map": "./link-map.ts"
+  },
   "scripts": {
     "test": "node --test \"**/*.test.ts\"",
     "typecheck": "tsc"
