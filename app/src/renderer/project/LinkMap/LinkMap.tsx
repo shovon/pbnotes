@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GraphApi, LinkMapReply } from '../../../shared/graph';
 import type { Keys } from '../opening/opening';
+import { withoutDays } from './days/days';
 import { flatten } from './flat/flat';
 import { createScene } from './scene';
 import type { Kept, Scene, Target } from './scene';
@@ -13,7 +14,8 @@ export type { Kept } from './scene';
  * bubble is a dot and arrows run page to page; zoomed in it opens, and each
  * arrow runs from the block that holds it to the bubble it points at. Pinch
  * to zoom, drag or scroll to pan, drag a bubble to move it, click one to go
- * to it. Nothing here writes: where a bubble sits is this view's own.
+ * to it. Nothing here writes: where a bubble sits is this view's own. The
+ * journal's days can be left out of it, from its top right corner.
  *
  * Over the whole tab, under the title bar and beside the sidebars. Drawn
  * with WebGPU, which also runs the physics (`scene.ts`, `gpu.ts`,
@@ -31,7 +33,7 @@ type Props = {
   onBlock: (id: string, keys: Keys) => void;
   /** A map that could not be read. */
   onError: (error: unknown) => void;
-  /** Where the view leaves its camera and its bubbles' places, so back to it finds it as it was. */
+  /** Where the view leaves its camera, its bubbles' places and whether days show, so back to it finds it as it was. */
   kept?: { current: Kept | null };
 };
 
@@ -42,7 +44,16 @@ export default function LinkMap({ graph, onOpen, onBlock, onError, kept }: Props
   const canvas = useRef<HTMLCanvasElement>(null);
   const labels = useRef<HTMLCanvasElement>(null);
   const own = useRef<Kept | null>(null);
+  const box = kept ?? own;
   const [held, setHeld] = useState<LinkMapReply | null>(null);
+  /** Whether the journal's days are on the map. */
+  const [days, setDays] = useState(() => box.current?.days ?? true);
+  const showDays = (on: boolean) => {
+    setDays(on);
+    box.current = { ...(box.current ?? { at: new Map() }), days: on };
+  };
+  /** The map as it shows. */
+  const shown = useMemo(() => held && (days ? held : withoutDays(held)), [held, days]);
   const [scene, setScene] = useState<Scene | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
@@ -81,7 +92,7 @@ export default function LinkMap({ graph, onOpen, onBlock, onError, kept }: Props
       host: host.current,
       canvas: canvas.current,
       labels: labels.current,
-      kept: kept ?? own,
+      kept: box,
       onHover: (target, at) => setTip(target && { target, x: at.x, y: at.y }),
       onPick: (target, keys) =>
         target.block === undefined
@@ -102,11 +113,11 @@ export default function LinkMap({ graph, onOpen, onBlock, onError, kept }: Props
       made?.dispose();
       setScene(null);
     };
-  }, [kept]);
+  }, [box]);
 
   useEffect(() => {
-    if (scene && held) scene.setData(flatten(held));
-  }, [scene, held]);
+    if (scene && shown) scene.setData(flatten(shown));
+  }, [scene, shown]);
 
   // A block says what it is only when asked: once the pointer has rested on it a moment.
   const hovered = tip?.target.block;
@@ -125,7 +136,7 @@ export default function LinkMap({ graph, onOpen, onBlock, onError, kept }: Props
     };
   }, [hovered, graph]);
 
-  const page = tip && held?.pages.find((it) => it.title === tip.target.page);
+  const page = tip && shown?.pages.find((it) => it.title === tip.target.page);
   const said = tip?.target.block === undefined ? undefined : previews.get(tip.target.block);
 
   return (
@@ -141,17 +152,33 @@ export default function LinkMap({ graph, onOpen, onBlock, onError, kept }: Props
         <p role="alert" className="absolute inset-x-0 top-1/3 px-6 text-center text-sm text-muted">
           {problem}
         </p>
-      ) : held === null ? (
+      ) : held === null || shown === null ? (
         <p className="absolute top-4 left-6 text-sm text-muted">Loading…</p>
       ) : held.pages.length === 0 ? (
         <p className="absolute inset-x-0 top-1/3 px-6 text-center text-sm text-muted">
           No pages yet. Write in the journal, or link to a page, and it shows up here.
         </p>
+      ) : shown.pages.length === 0 ? (
+        <p className="absolute inset-x-0 top-1/3 px-6 text-center text-sm text-muted">
+          Only journal days so far, and they are turned off.
+        </p>
       ) : (
         <p className="pointer-events-none absolute bottom-3 left-4 text-xs text-muted">
-          {held.pages.length} {held.pages.length === 1 ? 'page' : 'pages'} · {held.edges.length}{' '}
-          {held.edges.length === 1 ? 'link' : 'links'}
+          {shown.pages.length} {shown.pages.length === 1 ? 'page' : 'pages'} · {shown.edges.length}{' '}
+          {shown.edges.length === 1 ? 'link' : 'links'}
         </p>
+      )}
+      {problem === null && held !== null && held.pages.length > 0 && (
+        // Over the map: a press on it is its own, never a pan (`scene.ts`).
+        <label className="absolute top-3 right-4 flex cursor-pointer items-center gap-1.5 rounded-md border border-line bg-bg/90 px-2 py-1 text-xs">
+          <input
+            type="checkbox"
+            className="cursor-pointer accent-accent"
+            checked={days}
+            onChange={(event) => showDays(event.target.checked)}
+          />
+          Journal days
+        </label>
       )}
       {tip && (
         <div

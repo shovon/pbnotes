@@ -52,6 +52,26 @@ function project(pages: number, seed = 7): Map {
   };
 }
 
+/** `map` with a journal of `count` days from the first of November, each a block or two linking a page. */
+function journal(map: Map, count: number): Map {
+  const random = seeded(3);
+  const pages = [...map.pages];
+  const edges = [...map.edges];
+  for (let i = 0; i < count; i++) {
+    const title = `2026-11-${String(i + 1).padStart(2, '0')}`;
+    const forest = Array.from({ length: 1 + Math.floor(random() * 2) }, (_, k): Sub => ({
+      id: `${title}/${k}`,
+      children: [],
+    }));
+    for (const { id } of forest) {
+      const to = map.pages[Math.floor(random() * map.pages.length)];
+      if (to) edges.push({ from: { page: title, block: id }, to: { page: to.title }, kind: 'link' });
+    }
+    pages.push({ title, blocks: forest.length, forest });
+  }
+  return { pages, edges };
+}
+
 const bridge = (map: Map) => ({
   linkMap: async () => ({ version: 1, ...map }),
   blockPreviews: async (ids: string[]) =>
@@ -69,6 +89,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Project: Story = { args: { graph: bridge(project(60)) } };
+/** With a journal: its days sit apart from the other pages, and the toggle leaves them out. */
+export const WithJournal: Story = { args: { graph: bridge(journal(project(60), 28)) } };
 export const Large: Story = { args: { graph: bridge(project(1500, 11)) } };
 export const TwoPages: Story = {
   args: {

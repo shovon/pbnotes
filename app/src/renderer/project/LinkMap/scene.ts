@@ -20,7 +20,10 @@ import type { Keys } from '../opening/opening';
 export type Kept = {
   /** Where the user left the camera; undefined if they never moved it, so it still follows the map. */
   camera?: Camera;
+  /** Where every bubble seen so far sat, by id: one left out of the map for a while comes back to its place. */
   at: Map<string, [number, number]>;
+  /** Whether the journal's days show (`LinkMap.tsx`); undefined is that they do. */
+  days?: boolean;
 };
 
 /** A bubble: a page, or a block on it. */
@@ -208,7 +211,8 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
   };
 
   const onDown = (event: PointerEvent) => {
-    if (event.button !== 0 || !flat) return;
+    // A press on what sits over the map, its controls, is theirs.
+    if (event.button !== 0 || !flat || event.target !== canvas) return;
     const at = point(event);
     pointer = at;
     glide = null;
@@ -234,6 +238,12 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
   };
 
   const onMove = (event: PointerEvent) => {
+    if (!press && event.target !== canvas) {
+      // Over a control, the pointer is over no bubble.
+      pointer = null;
+      kick();
+      return;
+    }
     const at = point(event);
     const last = pointer;
     pointer = at;
@@ -412,17 +422,17 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
     if (awake || again) kick();
   }
 
-  /** Where every node is now, by id. */
+  /** Where every node seen so far sat, by id, the ones showing now as they are now. */
+  const memory = new Map(kept.current?.at);
   const places = () => {
-    const at = new Map<string, [number, number]>();
-    if (flat) for (let i = 0; i < flat.count; i++) at.set(flat.ids[i], [state[i * 4], state[i * 4 + 1]]);
-    return at;
+    if (flat) for (let i = 0; i < flat.count; i++) memory.set(flat.ids[i], [state[i * 4], state[i * 4 + 1]]);
+    return memory;
   };
 
   return {
     setData(next) {
-      const known = flat ? places() : kept.current?.at;
-      const fresh = !known || known.size === 0;
+      const known = places();
+      const fresh = known.size === 0;
       warm = fresh ? WARM_STEPS : 0;
       // A map seen before only has what is new to make room for, and one with nothing new stays put.
       const grown = !fresh && next.ids.some((id) => !known.has(id));
@@ -446,7 +456,7 @@ export async function createScene(options: Options): Promise<Scene | undefined> 
     dispose() {
       disposed = true;
       // Nothing loaded is nothing to keep: what was kept before stands.
-      if (flat) kept.current = { camera: touched ? camera : undefined, at: places() };
+      if (flat) kept.current = { ...kept.current, camera: touched ? camera : undefined, at: places() };
       cancelAnimationFrame(frame);
       watcher.disconnect();
       scheme.removeEventListener('change', recolor);
