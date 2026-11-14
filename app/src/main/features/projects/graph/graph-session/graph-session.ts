@@ -40,9 +40,11 @@ import {
   setProperty,
 } from "@pbnotes/graph";
 import type { Batched, GraphView as Base, Inert, PageMatch } from "@pbnotes/graph";
+import { getLinkMap, getPreviewsOf } from "@pbnotes/graph/link-map";
 import type {
   Command,
   Filter,
+  LinkMapReply,
   Matches,
   PageList,
   Place,
@@ -228,6 +230,14 @@ export function createGraphSession(
       const view = await open.require();
       return { version: view.version, pages: listPages(view.state) };
     },
+    /** The link map (#183), read beside the version as `pages` is. Throwaway. */
+    linkMap: async (): Promise<LinkMapReply> => {
+      const view = await open.require();
+      return { version: view.version, ...getLinkMap(view.state) };
+    },
+    /** What each block in `ids` says, for a hover on the graph view. */
+    blockPreviews: async (ids: string[]): Promise<[string, string | null][]> =>
+      getPreviewsOf((await open.require()).state, ids),
     /** Every task that meets `filter` (#387), its pages loaded `through` a title. */
     tasks: async (filter: Filter, through?: string): Promise<TaskView> =>
       getTaskView(await open.require(), filter, through),
