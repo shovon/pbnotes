@@ -22,7 +22,14 @@ import { humanize } from '../humanize/humanize';
 type Props = {
   projects: Pick<
     ProjectsApi,
-    'list' | 'current' | 'open' | 'pick' | 'pickerMenu' | 'availability' | 'directories'
+    | 'list'
+    | 'current'
+    | 'open'
+    | 'pick'
+    | 'pickerMenu'
+    | 'availability'
+    | 'directories'
+    | 'remove'
   >;
   /** Only what the project that is open calls. */
   graph: ProjectViewGraph;
@@ -52,6 +59,14 @@ type Props = {
   /** Opens the app's menu at a point in the window, from the ⋮ button (#341). */
   openMenu: (at: { x: number; y: number }) => Promise<void>;
 };
+
+/** `record` without `id`, or `record` itself when it has none, so React sees no change. */
+function without<T>(record: Record<string, T>, id: string): Record<string, T> {
+  if (!(id in record)) return record;
+  const rest = { ...record };
+  delete rest[id];
+  return rest;
+}
 
 export default function App({
   projects: api,
@@ -133,12 +148,7 @@ export default function App({
       setFailures((was) => ({ ...was, [id]: humanize(error) }));
       throw error;
     }
-    setFailures((was) => {
-      if (!(id in was)) return was;
-      const rest = { ...was };
-      delete rest[id];
-      return rest;
-    });
+    setFailures((was) => without(was, id));
     setManaging(false);
   }, []);
 
@@ -225,6 +235,20 @@ export default function App({
         (): void => undefined,
       ),
     [tryOpen, refresh],
+  );
+
+  /**
+   * Stops tracking `id`, from the modal. Its folder is left as it is. The
+   * open one untracked leaves none open: the modal stays, or with nothing
+   * left to list, `Welcome` takes over.
+   */
+  const untrack = useCallback(
+    (id: string): void =>
+      act(async () => {
+        await api.remove(id);
+        setFailures((was) => without(was, id));
+      }),
+    [act],
   );
 
   /**
@@ -409,6 +433,7 @@ export default function App({
           failures={failures}
           notice={notice}
           onOpen={openFromModal}
+          onUntrack={untrack}
           onAdd={addProjects}
           onClose={project ? () => setManaging(false) : undefined}
         />

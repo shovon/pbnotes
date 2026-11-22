@@ -32,6 +32,7 @@ const meta = {
     availability: {},
     failures: {},
     onOpen: () => undefined,
+    onUntrack: () => undefined,
     onAdd: () => undefined,
     onClose: () => undefined,
   },

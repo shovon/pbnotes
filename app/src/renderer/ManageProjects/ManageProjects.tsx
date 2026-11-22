@@ -16,6 +16,11 @@ type Props = {
   /** Something to say above the list: what the app's notice says while the modal hides it. */
   notice?: string | null;
   onOpen: (id: string) => void;
+  /**
+   * Stops tracking a project: it leaves the list, and its folder and notes
+   * stay where they are. Untracking the open one leaves none open.
+   */
+  onUntrack: (id: string) => void;
   /** Open project…: asks for a directory, as the picker's item does. */
   onAdd: () => void;
   /**
@@ -47,7 +52,9 @@ function statusOf(
  * stays until a project opens.
  *
  * Clicking a row opens its project, unless its folder is missing. Clicking
- * the open one closes the modal.
+ * the open one closes the modal. Each row's Untrack, shown when the row is
+ * pointed at or focused, stops tracking it, missing or not, without asking
+ * first: nothing on disk is touched, and Open project… tracks it again.
  */
 export default function ManageProjects({
   projects,
@@ -57,6 +64,7 @@ export default function ManageProjects({
   failures,
   notice,
   onOpen,
+  onUntrack,
   onAdd,
   onClose,
 }: Props) {
@@ -134,12 +142,12 @@ export default function ManageProjects({
           const missing = status?.label === 'Missing';
           const where = directories[project.id];
           return (
-            <li key={project.id}>
+            <li key={project.id} className="group relative">
               <button
                 type="button"
                 disabled={missing}
                 title={status?.reason}
-                className="flex w-full cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-left enabled:hover:bg-bar disabled:cursor-default"
+                className="flex w-full cursor-pointer items-center gap-3 rounded-md py-1.5 pr-20 pl-2 text-left group-hover:bg-bar disabled:cursor-default"
                 onClick={() => (project.id === openId ? onClose?.() : onOpen(project.id))}
               >
                 <span className="min-w-0 flex-1">
@@ -158,6 +166,17 @@ export default function ManageProjects({
                     {status.label}
                   </span>
                 )}
+              </button>
+              {/* Beside the row, not in it: a button can't hold another. Over
+                  the row's right padding, so the status never sits under it. */}
+              <button
+                type="button"
+                aria-label={`Untrack ${project.name}`}
+                title="Stop tracking this project. Its folder and notes stay where they are."
+                className="absolute top-1/2 right-2 -translate-y-1/2 cursor-pointer rounded-md px-1.5 py-0.5 text-xs text-muted opacity-0 group-hover:opacity-100 hover:text-fg focus-visible:opacity-100"
+                onClick={() => onUntrack(project.id)}
+              >
+                Untrack
               </button>
             </li>
           );
