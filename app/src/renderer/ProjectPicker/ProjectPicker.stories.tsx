@@ -24,6 +24,7 @@ const meta = {
     menu: async () => null,
     onSelect: () => undefined,
     onAdd: () => undefined,
+    onManage: () => undefined,
   },
 } satisfies Meta<typeof ProjectPicker>;
 

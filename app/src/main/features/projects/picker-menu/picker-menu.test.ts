@@ -45,6 +45,7 @@ test("rows: name with its directory under it, the open one checked", () => {
     { kind: "project", id: "b", label: "archive", sublabel: "/Volumes/archive", checked: true, mark: "radio" },
     { kind: "separator" },
     { kind: "add", label: "Open project…" },
+    { kind: "manage", label: "Manage projects…" },
   ]);
 });
 
@@ -54,6 +55,7 @@ test("rows: without sublabels, the directory after a dash", () => {
     { kind: "project", id: "b", label: "archive — /Volumes/archive", checked: false, mark: "radio" },
     { kind: "separator" },
     { kind: "add", label: "Open project…" },
+    { kind: "manage", label: "Manage projects…" },
   ]);
 });
 
@@ -63,14 +65,16 @@ test("rows: the name alone, marked with a checkbox", () => {
     { kind: "project", id: "b", label: "archive", checked: false, mark: "checkbox" },
     { kind: "separator" },
     { kind: "add", label: "Open project…" },
+    { kind: "manage", label: "Manage projects…" },
   ]);
 });
 
-test("rows: none open, or none at all, still end in Open project…", () => {
+test("rows: none open, or none at all, still end in Open project… and Manage projects…", () => {
   const rows = pickerRows(projects, null, sublabel);
   assert.ok(rows.every((row) => row.kind !== "project" || !row.checked));
   assert.deepEqual(pickerRows([], null, sublabel), [
     { kind: "separator" },
     { kind: "add", label: "Open project…" },
+    { kind: "manage", label: "Manage projects…" },
   ]);
 });

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { readPoint, requireString, requireStringArray } from '../../ipc';
 import { PROJECT_CHANNELS } from '../../../shared/projects';
 import type { AddOutcome, PickerMenuPick, PickResult } from '../../../shared/projects';
-import { pickerRows } from './picker-menu/picker-menu';
+import { homeRelative, pickerRows } from './picker-menu/picker-menu';
 import type { PickerOptions, PickerRow } from './picker-menu/picker-menu';
 import type { ProjectsStore } from './projects-store';
 import type { OpenProject } from './open-project/open-project';
@@ -57,6 +57,8 @@ function pickerItem(
       return { type: 'separator' };
     case 'add':
       return { label: row.label, click: () => resolve({ kind: 'add' }) };
+    case 'manage':
+      return { label: row.label, click: () => resolve({ kind: 'manage' }) };
   }
 }
 
@@ -105,9 +107,9 @@ export function registerProjectIpc(
       store.setPinned(requireString(id, 'id'), Boolean(pinned)),
   );
 
-  ipcMain.handle(PROJECT_CHANNELS.open, (_event, id: unknown) => {
-    openProject.open(requireString(id, 'id'));
-  });
+  ipcMain.handle(PROJECT_CHANNELS.open, (_event, id: unknown) =>
+    openProject.open(requireString(id, 'id')),
+  );
 
   ipcMain.handle(PROJECT_CHANNELS.current, () => openProject.currentProject());
 
@@ -130,6 +132,14 @@ export function registerProjectIpc(
 
   ipcMain.handle(PROJECT_CHANNELS.availability, (_event, ids: unknown) =>
     store.checkAvailability(requireStringArray(ids, 'ids')),
+  );
+
+  // The Manage projects modal's paths (#393), shortened as the picker's
+  // menu shortens them: where home is is known only here.
+  ipcMain.handle(PROJECT_CHANNELS.directories, () =>
+    Object.fromEntries(
+      store.listProjects().map((project) => [project.id, homeRelative(project.path, picker.home)]),
+    ),
   );
 
   ipcMain.handle(PROJECT_CHANNELS.reveal, (_event, id: unknown) => {

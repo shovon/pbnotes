@@ -25,6 +25,7 @@ const projects: ProjectsApi = {
   current: () => ipcRenderer.invoke(PROJECT_CHANNELS.current),
   relocate: (id) => ipcRenderer.invoke(PROJECT_CHANNELS.relocate, id),
   availability: (ids) => ipcRenderer.invoke(PROJECT_CHANNELS.availability, ids),
+  directories: () => ipcRenderer.invoke(PROJECT_CHANNELS.directories),
   reveal: (id) => ipcRenderer.invoke(PROJECT_CHANNELS.reveal, id),
   pickerMenu: (at, openId) => ipcRenderer.invoke(PROJECT_CHANNELS.pickerMenu, at, openId),
 };
