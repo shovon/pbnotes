@@ -31,14 +31,14 @@ if (!container) {
 // view below is handed what it calls, so none of them knows about `window`.
 // The clock is handed down the same way, for which day is today, and the
 // platform, for which modifier a shortcut takes.
-const { projects, graph, bench, sidebar, window: own } = window.pbnotes;
+const { projects, graph, bench, sidebar, window: own, tasks } = window.pbnotes;
 const mac = navigator.userAgent.includes('Macintosh');
 
 createRoot(container).render(
   <StrictMode>
     <App
       projects={projects}
-      graph={graph}
+      graph={{ ...graph, ...tasks }}
       bench={bench}
       recentMenu={sidebar.recentMenu}
       closeWindow={own.close}

@@ -1,8 +1,8 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OPEN_TASKS } from '../../../../shared/graph.ts';
-import type { Filter, TaskView } from '../../../../shared/graph.ts';
+import { OPEN_TASKS } from '../../contract.ts';
+import type { Filter, TaskView } from '../../contract.ts';
 import { createTaskFetcher } from './fetch.ts';
 
 /** A fetch the test answers by hand. */

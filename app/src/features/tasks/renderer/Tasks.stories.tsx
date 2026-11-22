@@ -2,8 +2,8 @@ import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { readTask } from '@pbnotes/graph';
 import type { Block, Marker, Page } from '@pbnotes/graph';
-import { OPEN_TASKS } from '../../../shared/graph';
-import type { Filter, TaskView } from '../../../shared/graph';
+import { OPEN_TASKS } from '../contract';
+import type { Filter, TaskView } from '../contract';
 import Tasks from './Tasks';
 import type { TasksGraph } from './Tasks';
 

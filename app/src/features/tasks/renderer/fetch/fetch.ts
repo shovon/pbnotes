@@ -13,7 +13,7 @@
  * Built from what it reaches outside, so a test can hand it a fake `tasks`
  * whose answers arrive late, out of order, or not at all.
  */
-import type { Filter, TaskView } from '../../../../shared/graph.ts';
+import type { Filter, TaskView } from '../../contract.ts';
 
 export type TaskFetcherPorts = {
   /** Asks main for the tasks that meet a filter, loaded `through` a title. */
