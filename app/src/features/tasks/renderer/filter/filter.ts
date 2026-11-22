@@ -8,7 +8,7 @@
  * takes the condition with it, which leaves that kind unfiltered.
  */
 import type { Marker } from '@pbnotes/graph';
-import type { Condition, Filter, FilterPick } from '../../../../shared/graph.ts';
+import type { Condition, Filter, FilterPick } from '../../contract.ts';
 
 /** One value of one condition, as a chip shows it and its × takes it off. */
 export type Chip = { kind: 'marker'; marker: Marker };

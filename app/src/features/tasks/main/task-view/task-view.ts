@@ -5,9 +5,9 @@
  */
 import { getPreviews, getTasks } from "@pbnotes/graph";
 import type { Graph } from "@pbnotes/graph";
-import type { Filter, TaskView } from "../../../../../shared/graph.ts";
+import type { Filter, TaskView } from "../../contract.ts";
 import { markersOf } from "../filter/filter.ts";
-import { cuts } from "../place-view/place-view.ts";
+import { cuts } from "../../../../main/features/projects/graph/place-view/place-view.ts";
 
 /**
  * The tasks that meet `filter`, page by page, labelled with `version`, and

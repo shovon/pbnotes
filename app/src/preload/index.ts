@@ -12,6 +12,7 @@ import { WINDOW_CHANNELS } from '../shared/window';
 import type { TabItem, WindowApi } from '../shared/window';
 import { SIDEBAR_CHANNELS } from '../shared/sidebar';
 import type { SidebarApi } from '../shared/sidebar';
+import { tasksBridge } from '../features/tasks/preload';
 
 const projects: ProjectsApi = {
   list: () => ipcRenderer.invoke(PROJECT_CHANNELS.list),
@@ -60,8 +61,6 @@ const graph: GraphApi = {
   pages: () => ipcRenderer.invoke(GRAPH_CHANNELS.pages),
   linkMap: () => ipcRenderer.invoke(GRAPH_CHANNELS.linkMap),
   blockPreviews: (ids) => ipcRenderer.invoke(GRAPH_CHANNELS.blockPreviews, ids),
-  tasks: (filter, through) => ipcRenderer.invoke(GRAPH_CHANNELS.tasks, filter, through),
-  filterMenu: (at, filter) => ipcRenderer.invoke(GRAPH_CHANNELS.filterMenu, at, filter),
   status: () => ipcRenderer.invoke(GRAPH_CHANNELS.status),
   run: (command) => ipcRenderer.invoke(GRAPH_CHANNELS.command, command),
   addImage: (bytes, mime) =>
@@ -100,4 +99,11 @@ const window: WindowApi = {
 
 // Only this explicit surface crosses the context bridge; the renderer never
 // sees `ipcRenderer` itself.
-contextBridge.exposeInMainWorld('pbnotes', { projects, graph, bench, sidebar, window });
+contextBridge.exposeInMainWorld('pbnotes', {
+  projects,
+  graph,
+  bench,
+  sidebar,
+  window,
+  tasks: tasksBridge((channel, ...args) => ipcRenderer.invoke(channel, ...args)),
+});

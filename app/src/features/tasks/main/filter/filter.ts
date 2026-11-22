@@ -1,5 +1,5 @@
 import type { Marker } from "@pbnotes/graph";
-import type { Condition, Filter } from "../../../../../shared/graph.ts";
+import type { Condition, Filter } from "../../contract.ts";
 
 const MARKERS: readonly Marker[] = ["TODO", "DOING", "DONE"];
 

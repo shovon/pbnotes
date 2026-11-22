@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Page } from '@pbnotes/graph';
 import { X } from 'lucide-react';
-import Icon from '../../Icon/Icon';
-import type { Filter, GraphApi, TaskView } from '../../../shared/graph';
-import type { Act } from '../../ui';
-import { Previews } from '../Block/Block';
-import PageView from '../PageView/PageView';
-import type { PageViewGraph } from '../PageView/PageView';
-import { under } from '../selection/shown';
+import Icon from '../../../renderer/Icon/Icon';
+import type { GraphApi } from '../../../shared/graph';
+import type { Act } from '../../../renderer/ui';
+import { Previews } from '../../../renderer/project/Block/Block';
+import PageView from '../../../renderer/project/PageView/PageView';
+import type { PageViewGraph } from '../../../renderer/project/PageView/PageView';
+import { under } from '../../../renderer/project/selection/shown';
+import type { Filter, TaskView, TasksApi } from '../contract';
 import { createTaskFetcher } from './fetch/fetch';
 import { chips, picked, unchipped } from './filter/filter';
 
 /** The part of the bridge the Tasks view calls: what each page does, and asking for its tasks. */
-export type TasksGraph = PageViewGraph & Pick<GraphApi, 'tasks' | 'onChanged' | 'filterMenu'>;
+export type TasksGraph = PageViewGraph & Pick<GraphApi, 'onChanged'> & TasksApi;
 
 type Props = {
   graph: TasksGraph;

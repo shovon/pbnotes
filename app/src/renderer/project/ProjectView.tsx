@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GraphApi, Undone } from '../../shared/graph';
 import type { SidebarApi } from '../../shared/sidebar';
+import type { TasksApi } from '../../features/tasks/contract';
 import type { Act } from '../ui';
 import type { PageViewGraph } from './PageView/PageView';
 import { back, browse, go, home, label, map, placeOf, tasks, ALL_PAGES, LINK_MAP, TASKS } from './trail/trail';
@@ -51,8 +52,6 @@ export type ProjectViewGraph = PageViewGraph &
     | 'icons'
     | 'find'
     | 'pages'
-    | 'tasks'
-    | 'filterMenu'
     | 'linkMap'
     | 'blockPreviews'
     | 'addImage'
@@ -61,7 +60,8 @@ export type ProjectViewGraph = PageViewGraph &
     | 'carryImages'
     | 'copy'
     | 'pageMenu'
-  >;
+  > &
+  TasksApi;
 
 /**
  * One value kept for this project: what the view calls, and nothing else of

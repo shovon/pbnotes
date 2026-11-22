@@ -1,8 +1,8 @@
 /** Run with: npm test */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { OPEN_TASKS } from '../../../../shared/graph.ts';
-import type { Filter } from '../../../../shared/graph.ts';
+import { OPEN_TASKS } from '../../contract.ts';
+import type { Filter } from '../../contract.ts';
 import { chips, picked, unchipped } from './filter.ts';
 
 test('the open tasks show as a chip for each marker', () => {

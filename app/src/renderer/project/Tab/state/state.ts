@@ -12,8 +12,8 @@ import { renamedIn as renamedInStack } from '../../Aside/stack/stack.ts';
 import { INITIAL_WIDTH } from '../../Aside/width/width.ts';
 import { INITIAL } from '../../AllPages/sort/sort.ts';
 import type { Sort } from '../../AllPages/sort/sort.ts';
-import { OPEN_TASKS } from '../../../../shared/graph.ts';
-import type { Filter } from '../../../../shared/graph.ts';
+import { OPEN_TASKS } from '../../../../features/tasks/contract.ts';
+import type { Filter } from '../../../../features/tasks/contract.ts';
 
 /**
  * A block to scroll to and flash once its page has drawn, and the version

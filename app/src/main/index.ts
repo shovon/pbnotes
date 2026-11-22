@@ -49,6 +49,7 @@ import {
 import { createGraphSession } from "./features/projects/graph/graph-session/graph-session";
 import { carryImages, findImage, saveImage } from "./features/projects/graph/images/images";
 import { createTokens } from "./tokens";
+import { registerTasksIpc } from "../features/tasks/main/tasks-ipc";
 import { GRAPH_CHANNELS, IMAGE_SCHEME } from "../shared/graph";
 import {
   MIN_SIZE,
@@ -311,16 +312,16 @@ app.on("ready", () => {
   // before the project changed lands where it was sent. Each is tracked as it
   // is sent; a write is tracked until it is recorded, as it waits its turn
   // after `require` has resolved.
-  const graph = createGraphSession(
-    {
-      require: () =>
-        inFlight.track(
-          (async () => ledgers.graphOf(await projects.requireProject()))(),
-        ),
-    },
-    // Every window of the app, over `graph:changed`.
-    broadcastGraph,
-  );
+  const open = {
+    require: () =>
+      inFlight.track(
+        (async () => ledgers.graphOf(await projects.requireProject()))(),
+      ),
+  };
+  // Every window of the app, over `graph:changed`.
+  const graph = createGraphSession(open, broadcastGraph);
+  // A slice that reads what is open is handed the same view of it.
+  registerTasksIpc(open);
   // What the tokens a copy carries for its images stand for (#261): a
   // project id, kept in main and never sent. The latest few, for this run.
   const imageSources = createTokens<string>({ newId: randomUUID, keep: 50 });

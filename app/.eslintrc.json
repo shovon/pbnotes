@@ -20,49 +20,126 @@
       {
         "zones": [
           {
-            "target": "./src/renderer",
+            "target": [
+              "./src/renderer",
+              "./src/features/*/renderer/**/*"
+            ],
             "from": "./src/main",
             "message": "The renderer has no Node.js. Reach the main process through the preload bridge on `window.pbnotes`."
           },
           {
-            "target": "./src/renderer",
+            "target": [
+              "./src/renderer",
+              "./src/features/*/renderer/**/*"
+            ],
             "from": "./src/preload",
             "message": "The preload bundle is not importable from the renderer; its only surface is what `contextBridge` exposes."
           },
           {
-            "target": "./src/main",
+            "target": [
+              "./src/main",
+              "./src/features/*/main/**/*"
+            ],
             "from": "./src/renderer",
             "message": "The main process has no DOM. Move anything both sides need into `src/shared`."
           },
           {
-            "target": "./src/main",
+            "target": [
+              "./src/main",
+              "./src/features/*/main/**/*"
+            ],
             "from": "./src/preload",
             "message": "Preload and main are separate bundles. Share code through `src/shared` instead."
           },
           {
-            "target": "./src/preload",
+            "target": [
+              "./src/preload",
+              "./src/features/*/preload.ts"
+            ],
             "from": "./src/main",
             "message": "Preload runs in the renderer's process and must not pull in main-process code (or the Node modules behind it)."
           },
           {
-            "target": "./src/preload",
+            "target": [
+              "./src/preload",
+              "./src/features/*/preload.ts"
+            ],
             "from": "./src/renderer",
             "message": "Preload runs before the app does and must not import renderer code."
           },
           {
-            "target": "./src/shared",
+            "target": [
+              "./src/shared",
+              "./src/features/*/contract.ts"
+            ],
             "from": "./src/main",
             "message": "`src/shared` is bundled into every process, so it can depend on none of them."
           },
           {
-            "target": "./src/shared",
+            "target": [
+              "./src/shared",
+              "./src/features/*/contract.ts"
+            ],
             "from": "./src/preload",
             "message": "`src/shared` is bundled into every process, so it can depend on none of them."
           },
           {
-            "target": "./src/shared",
+            "target": [
+              "./src/shared",
+              "./src/features/*/contract.ts"
+            ],
             "from": "./src/renderer",
             "message": "`src/shared` is bundled into every process, so it can depend on none of them."
+          },
+          {
+            "target": [
+              "./src/renderer",
+              "./src/features/*/renderer/**/*"
+            ],
+            "from": [
+              "./src/features/*/main/**/*",
+              "./src/features/*/preload.ts"
+            ],
+            "message": "A slice's renderer files have no Node.js. Inside a slice, `main/`, `preload.ts` and `renderer/` share only `contract.ts`."
+          },
+          {
+            "target": [
+              "./src/main",
+              "./src/features/*/main/**/*"
+            ],
+            "from": [
+              "./src/features/*/renderer/**/*",
+              "./src/features/*/preload.ts"
+            ],
+            "message": "A slice's main files have no DOM. Inside a slice, `main/`, `preload.ts` and `renderer/` share only `contract.ts`."
+          },
+          {
+            "target": [
+              "./src/preload",
+              "./src/features/*/preload.ts"
+            ],
+            "from": [
+              "./src/features/*/main/**/*",
+              "./src/features/*/renderer/**/*"
+            ],
+            "message": "Preload is a bundle of its own. Inside a slice, `main/`, `preload.ts` and `renderer/` share only `contract.ts`."
+          },
+          {
+            "target": [
+              "./src/shared",
+              "./src/features/*/contract.ts"
+            ],
+            "from": [
+              "./src/features/*/main/**/*",
+              "./src/features/*/preload.ts",
+              "./src/features/*/renderer/**/*"
+            ],
+            "message": "A contract is bundled into every process, so it can depend on none of them."
+          },
+          {
+            "target": "./src/shared",
+            "from": "./src/features",
+            "message": "`src/shared` knows no feature. A feature's types and names live in its own `contract.ts`."
           }
         ]
       }
@@ -70,7 +147,14 @@
   },
   "overrides": [
     {
-      "files": ["src/renderer/**", "src/preload/**", "src/shared/**"],
+      "files": [
+        "src/renderer/**",
+        "src/preload/**",
+        "src/shared/**",
+        "src/features/*/renderer/**",
+        "src/features/*/preload.ts",
+        "src/features/*/contract.ts"
+      ],
       "rules": {
         "@typescript-eslint/no-restricted-imports": [
           "error",

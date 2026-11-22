@@ -43,20 +43,17 @@ import type { Batched, GraphView as Base, Inert, PageMatch } from "@pbnotes/grap
 import { getLinkMap, getPreviewsOf } from "@pbnotes/graph/link-map";
 import type {
   Command,
-  Filter,
   LinkMapReply,
   Matches,
   PageList,
   Place,
   PlaceView,
   Reply,
-  TaskView,
   Taking,
   Undone,
 } from "../../../../../shared/graph.ts";
 import type { LogStatus } from "../../../../../shared/log.ts";
 import { getView } from "../place-view/place-view.ts";
-import { getTaskView } from "../task-view/task-view.ts";
 import { createHistory, stepOf, takenBack } from "../history/history.ts";
 import type { History, Way } from "../history/history.ts";
 
@@ -238,9 +235,6 @@ export function createGraphSession(
     /** What each block in `ids` says, for a hover on the graph view. */
     blockPreviews: async (ids: string[]): Promise<[string, string | null][]> =>
       getPreviewsOf((await open.require()).state, ids),
-    /** Every task that meets `filter` (#387), its pages loaded `through` a title. */
-    tasks: async (filter: Filter, through?: string): Promise<TaskView> =>
-      getTaskView(await open.require(), filter, through),
     status: async (): Promise<LogStatus> => (await open.require()).status,
 
     /**

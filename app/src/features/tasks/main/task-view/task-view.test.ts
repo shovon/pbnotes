@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { blockCreated, graphFold } from "@pbnotes/graph";
 import type { Graph } from "@pbnotes/graph";
-import { CUTS } from "../place-view/place-view.ts";
+import { CUTS } from "../../../../main/features/projects/graph/place-view/place-view.ts";
 import { getTaskView } from "./task-view.ts";
 
 /** The fold over `events`, as a ledger would hold it, at version 7. */
